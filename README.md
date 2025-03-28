@@ -3,7 +3,7 @@ This is the main repository for the GRAPE-Juice package.
 
 ## Installation
 To install dependencies necessary for the package <br>
-`pip install -r requirements.txt`
+`pip install -r requirements.txt` <br>
 To install dependencies necessary for testing, linting, formating, ... <br>
 `pip install -r requirements_dev.txt`
 
