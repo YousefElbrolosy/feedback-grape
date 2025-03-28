@@ -11,7 +11,7 @@ def hello_tests(x: int) -> int:
         x (int): Input integer.
 
     Returns:
-        int: Output integer. 
+        int: Output integer.
     """
 
     return x + 1
