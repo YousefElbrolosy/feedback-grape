@@ -1,0 +1,31 @@
+# Github Workflows CI, to run tests on push and pull request, and test on different os
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v3
+      with:
+        python-version: ${{ matrix.python-version }}
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements_dev.txt
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+    - name: Test with tox
+      run: tox
+
