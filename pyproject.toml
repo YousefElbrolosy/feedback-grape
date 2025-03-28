@@ -1,0 +1,4 @@
+[build-system]
+# in requires you mention the dependencies that your code needs, we would add jax later on for example
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
