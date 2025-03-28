@@ -1,10 +1,16 @@
 # for running the tests
 pytest>=8.3.5
+## for coverage tests
 pytest-cov>=6.0.0
 # for checking the statically typed code
 mypy>=1.15.0
+# for testing on different environments
 tox>=4.25.0
 tox-gh-actions>=3.3.0
-ruff>=0.11.2
 # # for checking the code style
-# ruff
+ruff>=0.11.2
+# for documentation
+sphinx>=8.2.3
+sphinx_rtd_theme>=3.0.2
+
+

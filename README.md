@@ -7,11 +7,19 @@ To install dependencies necessary for the package <br>
 To install dependencies necessary for testing, linting, formating, ... <br>
 `pip install -r requirements_dev.txt`
 
+## Documentation
+For Development: Enter the command `make html` and then open index.html with Live Server to take a look at the Documentaion
+
 ## Testing
 Simply type `pytest`. This would also generate a coverage report.
 
 ### checking for dynamically typed errors
 Simply type `mypy src`. This would give you type checking errors if any.
 
+### linting and formating
+For Linting `ruff check` <br>
+For Formating `ruff format` <br>
+
 ### Before Commiting and Pushing
 Simply type `tox`. This would test the code on different environments.
+
