@@ -1,0 +1,6 @@
+# for running the tests
+pytest
+# for checking the statically typed code
+mypy
+# # for checking the code style
+# ruff
