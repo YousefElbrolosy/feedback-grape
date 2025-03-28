@@ -14,4 +14,4 @@ Simply type `pytest`. This would also generate a coverage report.
 Simply type `mypy src`. This would give you type checking errors if any.
 
 ### Before Commiting and Pushing
-Simplt type `tox`. This would test the code on different environments.
+Simply type `tox`. This would test the code on different environments.
