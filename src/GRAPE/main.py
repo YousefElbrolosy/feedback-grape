@@ -1,6 +1,8 @@
 """
 Gradient Ascent Pulse Engineering
 """
+
+
 def hello_tests(x: int) -> int:
     """
     Test 1.
@@ -11,9 +13,12 @@ def hello_tests(x: int) -> int:
     """
     return x + 1
 
+
 def hello_tests2(x: int) -> int:
     """Test 2."""
     return x + 1
+
+
 def hello_tests3(x: int) -> int:
-  """Test 3."""
-  return x + 1
+    """Test 3."""
+    return x + 1
