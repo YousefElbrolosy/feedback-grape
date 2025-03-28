@@ -1,6 +1,7 @@
 """
 Tests for the GRAPE package.
 """
+
 import pytest
 
 from grape.main import (

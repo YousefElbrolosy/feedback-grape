@@ -1,6 +1,7 @@
 """
 Configuration file for setuptools.
 """
+
 from setuptools import (
     setup,
 )

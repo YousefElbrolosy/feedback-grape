@@ -8,8 +8,6 @@ def hello_tests(x: int) -> int:
         x (int): Input integer.
     Returns:
         int: Output integer.
-    Raises:
-        TypeError: If x is not an integer.
     """
     return x + 1
 
