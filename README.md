@@ -1,5 +1,5 @@
 # FeedBack-GRAPE
-This is the main repository for the GRAPE-Juice package.
+This is the main repository for the GRAPE-Juice package containing feedback GRAPE techniques.
 
 ## Installation
 To install dependencies necessary for the package <br>
