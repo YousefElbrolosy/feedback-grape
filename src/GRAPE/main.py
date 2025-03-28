@@ -1,2 +1,2 @@
-def hello_world() -> str:
-    return "Hello, World!"
+def hello_tests(x:int) -> int:
+    return x + 1

@@ -1,6 +1,7 @@
 # for running the tests
-pytest
+pytest>=8.3.5
+pytest-cov>=6.0.0
 # for checking the statically typed code
-mypy
+mypy>=1.15.0
 # # for checking the code style
 # ruff
