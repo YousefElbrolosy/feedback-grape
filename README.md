@@ -1,9 +1,11 @@
 # feedbackGRAPE
 This is the main repository for the feedbackGRAPE package (under development), eventually offering:
 
-- vectorized, GPU-enabled, differentiable quantum simulations via jax
+- vectorized, GPU-enabled, differentiable simulations of driven dissipative quantum systems via jax
 - efficient quantum optimal control (gradient-ascent pulse engineering, GRAPE)
 - including feedback (using the newly developed feedbackGRAPE approach)
+
+Think of parallelized, highly efficient qutip with feedback control.
 
 ## Installation
 To install dependencies necessary for the package <br>
