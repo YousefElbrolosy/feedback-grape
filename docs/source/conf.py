@@ -1,5 +1,5 @@
 """
-GrapeJuice documentation build configuration file, created by
+feedbackGRAPE documentation build configuration file, created by
 sphinx-quickstart on Mon Jan 01 00:00:00 2025.
 """
 # Configuration file for the Sphinx documentation builder.
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath("../../src/grape"))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "grapejuice"
+project = "feedbackGRAPE"
 copyright = "2025, Yousef Elbrolosy, Pablo Bilous, Florian Marquardt"
 author = "Yousef Elbrolosy, Pablo Bilous, Florian Marquardt"
 release = "0.0.0"
