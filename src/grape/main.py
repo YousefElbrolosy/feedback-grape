@@ -22,7 +22,6 @@ def hello_tests2(x: int) -> int:
 
     return x + 1
 
-
 def hello_tests3(x: int) -> int:
     """Test 3."""
 
