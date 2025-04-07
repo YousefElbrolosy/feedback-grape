@@ -4,9 +4,7 @@ Tests for the GRAPE package.
 
 import pytest
 
-from grape.main import (
-    hello_tests,
-)
+from grape.main import hello_tests
 
 # if first test fails, the rest won't be tested
 # def test_hello_test():
@@ -15,23 +13,7 @@ from grape.main import (
 
 
 # here it tells you which passed and which did not
-@pytest.mark.parametrize(
-    "x, y",
-    [
-        (
-            1,
-            2,
-        ),
-        (
-            2,
-            3,
-        ),
-        (
-            3,
-            4,
-        ),
-    ],
-)
+@pytest.mark.parametrize("x, y", [(1, 2), (2, 3), (3, 4)])
 def test_hello_test2(x, y):
     assert hello_tests(x) == y
 

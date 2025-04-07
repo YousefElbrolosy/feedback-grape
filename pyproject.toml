@@ -83,8 +83,5 @@ quote-style = "preserve"
 # PEP8 prefers spaces over tabs
 indent-style = "space"
 
-# PEP8 does not define behavior on magic trailing commas — disable Black-specific behavior
-skip-magic-trailing-comma = true
-
 # Auto-detect line ending (LF/CRLF)
 line-ending = "auto"
