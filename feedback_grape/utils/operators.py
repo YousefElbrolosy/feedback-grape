@@ -37,5 +37,11 @@ def sigmaz():
 def identity(dimensions, *, dtype=jnp.float32):
     """
     Identity operator.
+
+    Args:
+        dimensions (int): Dimensions of the identity operator.
+        dtype (dtype): Data type of the identity operator.
+    Returns:
+        jnp.ndarray: Identity operator of given dimensions and dtype.
     """
     return jnp.eye(dimensions, dtype=dtype)

@@ -14,5 +14,5 @@ sphinx>=8.2.3
 sphinx_rtd_theme>=3.0.2
 # pre-commit
 pre-commit>=4.2.0
-
-
+# qutip for comparison
+qutip>=5.1.1
