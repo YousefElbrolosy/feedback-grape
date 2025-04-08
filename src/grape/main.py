@@ -2,7 +2,6 @@
 Gradient Ascent Pulse Engineering!
 """
 
-
 def hello_tests(x: int) -> int:
     """
     Test 1.
@@ -13,7 +12,6 @@ def hello_tests(x: int) -> int:
     Returns:
         int: Output integer.
     """
-
     return x + 1
 
 
