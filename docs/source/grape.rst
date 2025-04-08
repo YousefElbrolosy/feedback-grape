@@ -1,4 +1,4 @@
-Feedback Grape
+GRAPE
 ==============
 
 .. automodule:: grape

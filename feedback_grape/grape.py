@@ -3,26 +3,7 @@ Gradient Ascent Pulse Engineering!
 """
 
 
-def hello_tests(x: int) -> int:
+def optimize_pulse():
     """
-    Test 1.
-
-    Args:
-        x (int): Input integer.
-
-    Returns:
-        int: Output integer.
+    Uses GRAPE to optimize a pulse
     """
-    return x + 1
-
-
-def hello_tests2(x: int) -> int:
-    """Test 2."""
-
-    return x + 1
-
-
-def hello_tests3(x: int) -> int:
-    """Test 3."""
-
-    return x + 1

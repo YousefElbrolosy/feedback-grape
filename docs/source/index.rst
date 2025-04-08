@@ -16,5 +16,6 @@ documentation for details.
    :caption: Contents:
    
 
-   api.rst
+   grape.rst
+   utils.rst
 

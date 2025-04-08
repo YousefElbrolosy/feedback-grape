@@ -16,8 +16,8 @@ sys.path.insert(0, os.path.abspath("../../feedback_grape"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "feedbackGRAPE"
-copyright = "2025, Yousef Elbrolosy, Pablo Bilous, Florian Marquardt"
-author = "Yousef Elbrolosy, Pablo Bilous, Florian Marquardt"
+copyright = "2025, Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
+author = "Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 release = "0.0.0"
 
 # -- General configuration ---------------------------------------------------
