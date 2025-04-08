@@ -7,5 +7,5 @@ repos:
     rev: v1.15.0
     hooks:
     - id: mypy
-      files: ^src/
+      files: ^feedback_grape/
       args: []

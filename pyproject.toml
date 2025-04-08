@@ -4,7 +4,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.mypy]
-mypy_path = "src"
+mypy_path = "feedback_grape"
 check_untyped_defs = true
 disallow_incomplete_defs = true
 warn_no_return = true
@@ -14,7 +14,7 @@ pretty = true
 disallow_any_generics = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=grape"
+addopts = "--cov=feedback_grape"
 
 testpaths = [
     "tests",

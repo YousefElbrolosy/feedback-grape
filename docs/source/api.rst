@@ -1,7 +1,7 @@
 Feedback Grape
 ==============
 
-.. automodule:: main
+.. automodule:: grape
     :members:
     :undoc-members:
     :special-members:

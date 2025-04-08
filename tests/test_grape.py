@@ -4,7 +4,7 @@ Tests for the GRAPE package.
 
 import pytest
 
-from grape.main import hello_tests
+from feedback_grape.grape import hello_tests
 
 # if first test fails, the rest won't be tested
 # def test_hello_test():

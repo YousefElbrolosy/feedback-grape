@@ -10,7 +10,7 @@ sphinx-quickstart on Mon Jan 01 00:00:00 2025.
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../../src/grape"))
+sys.path.insert(0, os.path.abspath("../../feedback_grape"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
