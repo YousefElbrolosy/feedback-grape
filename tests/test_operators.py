@@ -2,8 +2,8 @@
 Tests for the GRAPE package.
 """
 
-import jax.numpy as jnp
 import pytest
+import qutip as qt
 
 from feedback_grape.utils.operators import identity, sigmax, sigmay, sigmaz
 
@@ -17,7 +17,7 @@ def test_sigmax():
     Test the sigmax function.
     """
     result = sigmax()
-    expected = jnp.array([[0, 1], [1, 0]])
+    expected = qt.sigmax().full()
     assert (result == expected).all()
 
 
@@ -26,7 +26,7 @@ def test_sigmay():
     Test the sigmay function.
     """
     result = sigmay()
-    expected = jnp.array([[0, -1j], [1j, 0]])
+    expected = qt.sigmay().full()
     assert (result == expected).all()
 
 
@@ -35,19 +35,17 @@ def test_sigmaz():
     Test the sigmaz function.
     """
     result = sigmaz()
-    expected = jnp.array([[1, 0], [0, -1]])
+    expected = qt.sigmaz().full()
     assert (result == expected).all()
 
 
 @pytest.mark.parametrize(
     "dimensions, y",
     [
-        (2, jnp.array([[1, 0], [0, 1]])),
+        (2, qt.identity(2).full()),
         (
             4,
-            jnp.array(
-                [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
-            ),
+            qt.identity(4).full(),
         ),
     ],
 )
