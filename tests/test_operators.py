@@ -12,13 +12,6 @@ from feedback_grape.utils.operators import identity, sigmax, sigmay, sigmaz
 # TODO: see if you can add tests related to a certain file in its directory
 
 
-def test_optimize_pulse():
-    """
-    Test the optimize_pulse function.
-    """
-    assert True  # Replace with actual test logic
-
-
 def test_sigmax():
     """
     Test the sigmax function.
