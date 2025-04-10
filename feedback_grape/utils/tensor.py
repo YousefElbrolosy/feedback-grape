@@ -38,7 +38,6 @@ def tensor(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
         )
     # Both a and b are 2D arrays
     else:
-        print("Both a and b are 2D arrays")
         return jnp.einsum("ij,kl->ikjl", a, b).reshape(
             a.shape[0] * b.shape[0], a.shape[1] * b.shape[1]
         )

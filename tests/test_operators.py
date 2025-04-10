@@ -12,6 +12,10 @@ from feedback_grape.utils.operators import identity, sigmax, sigmay, sigmaz
 # TODO: see if you can add tests related to a certain file in its directory
 
 
+# TODO: may be use .isclose() better to avoid any
+# TODO: differences in floating point types
+# TODO: use like float32 and note that ints are 32
+# TODO: as well may cause overlap
 def test_sigmax():
     """
     Test the sigmax function.
