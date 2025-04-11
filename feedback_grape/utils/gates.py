@@ -12,3 +12,11 @@ def cnot():
     Controlled NOT gate.
     """
     return jnp.array([[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0]])
+
+
+# TODO: Check for the hadamard definition from qutip for n qubits
+def hadamard():
+    """
+    Hadamard transform operator.
+    """
+    return jnp.array([[1, 1], [1, -1]]) / jnp.sqrt(2)

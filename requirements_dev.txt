@@ -18,3 +18,4 @@ pre-commit==4.2.0
 qutip==5.1.1
 # qutip_qtrl for testing grape
 qutip_qtrl==0.1.5
+qutip_qip==0.4.1
