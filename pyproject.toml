@@ -11,7 +11,7 @@ warn_no_return = true
 warn_redundant_casts = true
 show_error_code_links = true
 pretty = true
-disallow_any_generics = true
+disallow_any_generics = true 
 
 [tool.pytest.ini_options]
 addopts = "--cov=feedback_grape"

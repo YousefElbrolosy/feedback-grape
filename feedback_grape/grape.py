@@ -4,13 +4,22 @@ Gradient Ascent Pulse Engineering (GRAPE)
 
 # ruff: noqa N8
 import jax
+import optax  # type: ignore
+from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-import optax
 
 # TODO: Implement this with Pavlo's Cavity + Qubit coupled in dispersive regime
 # TODO: remove side effects
 # TODO: implement optimizer same as qutip_qtrl fmin_lbfgs or sth
+
+
+class result(NamedTuple):
+    control_amplitudes: jnp.ndarray
+    final_fidelity: float
+    fidelity_history: jnp.ndarray
+    iterations: int
+    final_operator: jnp.ndarray
 
 
 def _compute_propagators(
@@ -129,15 +138,15 @@ def _optimize_adam(
 # for unitary evolution (not using density operator)
 def optimize_pulse(
     H_drift: jnp.ndarray,
-    H_control: list,
+    H_control: list[jnp.ndarray],
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
-    max_iter=1000,
-    convergence_threshold=1e-6,
-    learning_rate=0.01,
-):
+    max_iter: int = 1000,
+    convergence_threshold: float = 1e-6,
+    learning_rate: float = 0.01,
+) -> result:
     """
     Uses GRAPE to optimize a pulse.
 
@@ -187,13 +196,15 @@ def optimize_pulse(
     )
     rho_final = _compute_forward_evolution(propagators, U_0)
 
-    return {
-        "control_amplitudes": control_amplitudes,
-        "final_fidelity": fidelities[-1],
-        "fidelity_history": jnp.array(fidelities),
-        "iterations": iter_idx + 1,
-        "final_operator": rho_final,
-    }
+    final_res = result(
+        control_amplitudes,
+        fidelities[-1],
+        jnp.array(fidelities),
+        iter_idx + 1,
+        rho_final,
+    )
+
+    return final_res
 
 
 def plot_control_amplitudes(times, final_amps, labels):

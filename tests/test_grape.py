@@ -93,7 +93,7 @@ def test_optimize_pulse():
     # print("fg result: ",result)
     # assert jnp.allclose(result["final_operator"], reference.evo_full_final.full(), atol=1e-1), "The matrices are not close enough."
     print("reference.fidelity: ", reference.fid_err)
-    print("fg result[final_fidelity]: ", result["final_fidelity"])
+    print("fg result[final_fidelity]: ", result.final_fidelity)
     assert jnp.allclose(
-        1 - result["final_fidelity"], reference.fid_err, atol=1e-3
+        1 - result.final_fidelity, reference.fid_err, atol=1e-3
     ), "The fidelities are not close enough."

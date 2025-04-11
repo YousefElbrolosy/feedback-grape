@@ -40,5 +40,5 @@ if __name__ == "__main__":
         learning_rate=1e-2,
     )
 
-    print("final_fidelity: ", result["final_fidelity"])
-    print("U_f \n", result["final_operator"])
+    print("final_fidelity: ", result.final_fidelity)
+    print("U_f \n", result.final_operator)
