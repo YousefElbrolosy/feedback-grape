@@ -31,6 +31,18 @@ def sigmaz():
     """
     return jnp.array([[1, 0], [0, -1]])
 
+def sigmap():
+    """
+    Raising operator.
+    """
+    return jnp.array([[0, 1], [0, 0]])
+
+def sigmam():
+    """
+    Lowering operator.
+    """
+    return jnp.array([[0, 0], [1, 0]])
+
 
 # TODO : check for exact dimensions since dynamiqs and qutip support nested
 # TODO : Hilbert space dimensions and so on.
@@ -45,3 +57,26 @@ def identity(dimensions, *, dtype=jnp.float32):
         jnp.ndarray: Identity operator of given dimensions and dtype.
     """
     return jnp.eye(dimensions, dtype=dtype)
+
+def ladder(n, *, dagger: bool):
+    """
+    n-dimensional ladder operator
+    """
+    values = jnp.sqrt(jnp.arange(1, n, dtype=jnp.complex64))
+    shift = -1 * dagger + 1 * (not dagger)
+    return jnp.diag(values, k=shift)
+
+
+def create(n):
+    """
+    n-dimensional creation operator
+    """
+    return ladder(n, dagger=True)
+
+def destroy(n):
+    """
+    n-dimensional destruction operator
+    """
+    return ladder(n, dagger=False)
+
+

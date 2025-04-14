@@ -22,8 +22,17 @@ class result(NamedTuple):
     final_operator: jnp.ndarray
 
 
+def sesolve(Hs, delta_ts):
+    """
+    Find evolution operator for piecewise Hs on time intervals delts_ts
+    """
+    for i, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
+        U_intv = jax.scipy.linalg.expm(-1j * delta_t * H)
+        U = U_intv if i == 0 else U_intv @ U
+    return U
+
 def _compute_propagators(
-    H_drift, H_control_array, delta_t, control_amplitudes
+    H_drift, H_control_array, delta_t, control_amplitudes, time_dep=False, delta_ts=None,
 ):
     """
     Compute propagators for each time step according to Equation (4).
@@ -46,7 +55,10 @@ def _compute_propagators(
             H_control += control_amplitudes[j, k] * H_control_array[k]
 
         H_total = H_0 + H_control
-        U_j = jax.scipy.linalg.expm(-1j * delta_t * H_total)
+        if(not time_dep):
+            U_j = jax.scipy.linalg.expm(-1j * delta_t * H_total)
+        else:
+            U_j = sesolve(H_total, delta_ts)
         return U_j
 
     # Create an array of propagators
@@ -146,6 +158,8 @@ def optimize_pulse(
     max_iter: int = 1000,
     convergence_threshold: float = 1e-6,
     learning_rate: float = 0.01,
+    time_dep=False, 
+    delta_ts=None,
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
@@ -172,7 +186,7 @@ def optimize_pulse(
 
     def _fidelity(control_amplitudes):
         propagators = _compute_propagators(
-            H_drift, H_control_array, delta_t, control_amplitudes
+            H_drift, H_control_array, delta_t, control_amplitudes, time_dep, delta_ts
         )
         U_final = _compute_forward_evolution(propagators, U_0)
         overlap = (
@@ -192,7 +206,7 @@ def optimize_pulse(
     )
 
     propagators = _compute_propagators(
-        H_drift, H_control_array, delta_t, control_amplitudes
+        H_drift, H_control_array, delta_t, control_amplitudes, time_dep, delta_ts
     )
     rho_final = _compute_forward_evolution(propagators, U_0)
 
