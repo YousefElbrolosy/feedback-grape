@@ -80,9 +80,10 @@ def test_time_dep():
         learning_rate=1e-3,
         time_dep=True,
         delta_ts=delta_ts,
-        # type="state",
+        type="state",
     )
-    print(result.final_fidelity)
+    # print(result.final_fidelity)
+    return result
 
 
 def test_cnot():
@@ -125,7 +126,8 @@ def test_cnot():
 
 if __name__ == "__main__":
     # Example usage
-    test_time_dep()
+    result = test_time_dep()
+    print(result.control_amplitudes)
     # test_cnot()
 
 

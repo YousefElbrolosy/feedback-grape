@@ -31,6 +31,7 @@ def sesolve(Hs, delta_ts):
         U = U_intv if i == 0 else U_intv @ U
     return U
 
+
 def _compute_propagators(
     H_drift, H_control_array, delta_t, control_amplitudes, time_dep=False, delta_ts=None,
 ):
@@ -160,6 +161,7 @@ def optimize_pulse(
     learning_rate: float = 0.01,
     time_dep=False, 
     delta_ts=None,
+    type="unitary",  # "unitary" or "state"
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
@@ -189,11 +191,14 @@ def optimize_pulse(
             H_drift, H_control_array, delta_t, control_amplitudes, time_dep, delta_ts
         )
         U_final = _compute_forward_evolution(propagators, U_0)
-        overlap = (
+
+        if(type=="unitary"):
+            overlap = (
             jnp.trace(jnp.matmul(C_target.conj().T, U_final))
             / C_target.shape[0]
-        )
-        # just getting the real part of the overlap
+            )
+        else:
+            overlap = jnp.vdot(C_target, U_final)
         return jnp.abs(overlap) ** 2
 
     # Step 2: Gradient ascent loop
@@ -215,7 +220,7 @@ def optimize_pulse(
         fidelities[-1],
         jnp.array(fidelities),
         iter_idx + 1,
-        rho_final,
+        rho_final
     )
 
     return final_res
@@ -234,8 +239,8 @@ def plot_control_amplitudes(times, final_amps, labels):
 
     num_controls = final_amps.shape[1]
 
-    y_max = 0.1  # Fixed y-axis scale
-    y_min = -0.1
+    # y_max = 0.1  # Fixed y-axis scale
+    # y_min = -0.1
 
     for i in range(num_controls):
         fig, ax = plt.subplots(figsize=(8, 3))
@@ -255,7 +260,7 @@ def plot_control_amplitudes(times, final_amps, labels):
         ax.set_title(f"Control Fields Highlighting: {labels[i]}")
         ax.set_xlabel("Time")
         ax.set_ylabel(labels[i])
-        ax.set_ylim(y_min, y_max)  # Set fixed y-axis limits
+        # ax.set_ylim(y_min, y_max)  # Set fixed y-axis limits
         ax.grid(True)
         ax.legend()
         plt.tight_layout()
