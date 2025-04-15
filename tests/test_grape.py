@@ -5,6 +5,7 @@ Tests for the GRAPE package.
 
 import qutip as qt
 import qutip_qip.operations.gates as qip
+import pytest
 import jax.numpy as jnp
 from feedback_grape.grape import optimize_pulse
 from feedback_grape.utils.gates import cnot, hadamard
@@ -15,8 +16,14 @@ import qutip_qtrl.pulseoptim as qtrl
 # Check documentation for pytest for more decorators
 
 
+# Testing target Operator transformations
+
 # TODO: should see how we can further test more thoroughly
-def test_cnot():
+@pytest.mark.parametrize(
+    "optimizer",
+    ["adam", "l-bfgs"]
+)
+def test_cnot(optimizer):
     """
     Test the optimize_pulse function.
     """
@@ -53,6 +60,7 @@ def test_cnot():
         total_evo_time,
         max_iter=500,
         learning_rate=1e-2,
+        optimizer=optimizer
     )
 
     ############ Qutip QTRL
@@ -100,7 +108,11 @@ def test_cnot():
     ), "The fidelities are not close enough."
 
 
-def test_hadamard():
+@pytest.mark.parametrize(
+    "optimizer",
+    ["adam", "l-bfgs"]
+)
+def test_hadamard(optimizer):
     ###### General
     # Number of time slots
     n_ts = 10
@@ -162,9 +174,19 @@ def test_hadamard():
         evo_time,
         max_iter=max_iter,
         learning_rate=1e-2,
+        optimizer=optimizer
     )
     print("result_qt.fid_err: ", result_qt.fid_err)
     print("result_fg.final_fidelity: ", result_fg.final_fidelity)
     assert jnp.allclose(
         1 - result_fg.final_fidelity, result_qt.fid_err, atol=1e-3
     ), "The fidelities are not close enough."
+
+# TODO:
+def test_fidelity():
+    """
+    This tests the fidelity function for Unitary gates, states and density matrices
+    """
+    assert True, "Not implemented yet"
+
+#TODO: test for examples using states and density matrices transformations

@@ -31,11 +31,13 @@ def sigmaz():
     """
     return jnp.array([[1, 0], [0, -1]])
 
+
 def sigmap():
     """
     Raising operator.
     """
     return jnp.array([[0, 1], [0, 0]])
+
 
 def sigmam():
     """
@@ -58,6 +60,7 @@ def identity(dimensions, *, dtype=jnp.float32):
     """
     return jnp.eye(dimensions, dtype=dtype)
 
+
 def ladder(n, *, dagger: bool):
     """
     n-dimensional ladder operator
@@ -73,10 +76,9 @@ def create(n):
     """
     return ladder(n, dagger=True)
 
+
 def destroy(n):
     """
     n-dimensional destruction operator
     """
     return ladder(n, dagger=False)
-
-

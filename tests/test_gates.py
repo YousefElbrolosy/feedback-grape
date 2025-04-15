@@ -18,6 +18,7 @@ def test_cnot():
     expected_cnot = qt.core.gates.cnot().full()
     assert (cnot_test == expected_cnot).all()
 
+
 def test_hadamard():
     """
     Test the Hadamard gate.

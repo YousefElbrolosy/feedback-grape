@@ -5,10 +5,11 @@ Gradient Ascent Pulse Engineering (GRAPE)
 # ruff: noqa N8
 import jax
 import optax  # type: ignore
+import optax.tree_utils as otu
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-
+jax.config.update("jax_enable_x64", True)
 # TODO: Implement this with Pavlo's Cavity + Qubit coupled in dispersive regime
 # TODO: remove side effects
 # TODO: implement optimizer same as qutip_qtrl fmin_lbfgs or sth
@@ -17,23 +18,15 @@ import matplotlib.pyplot as plt
 class result(NamedTuple):
     control_amplitudes: jnp.ndarray
     final_fidelity: float
-    fidelity_history: jnp.ndarray
     iterations: int
     final_operator: jnp.ndarray
 
 
-def sesolve(Hs, delta_ts):
-    """
-    Find evolution operator for piecewise Hs on time intervals delts_ts
-    """
-    for i, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
-        U_intv = jax.scipy.linalg.expm(-1j * delta_t * H)
-        U = U_intv if i == 0 else U_intv @ U
-    return U
-
-
 def _compute_propagators(
-    H_drift, H_control_array, delta_t, control_amplitudes, time_dep=False, delta_ts=None,
+    H_drift,
+    H_control_array,
+    delta_t,
+    control_amplitudes,
 ):
     """
     Compute propagators for each time step according to Equation (4).
@@ -56,10 +49,8 @@ def _compute_propagators(
             H_control += control_amplitudes[j, k] * H_control_array[k]
 
         H_total = H_0 + H_control
-        if(not time_dep):
-            U_j = jax.scipy.linalg.expm(-1j * delta_t * H_total)
-        else:
-            U_j = sesolve(H_total, delta_ts)
+
+        U_j = jax.scipy.linalg.expm(-1j * delta_t * H_total)
         return U_j
 
     # Create an array of propagators
@@ -144,8 +135,64 @@ def _optimize_adam(
 
         if iter_idx % 10 == 0:
             print(f"Iteration {iter_idx}, _fidelity: {current_fidelity}")
+    final_fidelity = fidelities[-1]
+    return params, final_fidelity, iter_idx
 
-    return params, fidelities, iter_idx
+
+def _optimize_L_BFGS(
+    _fidelity,
+    control_amplitudes,
+    max_iter,
+    convergence_threshold,
+):
+    """
+    Uses L-BFGS to optimize the control amplitudes.
+    Args:
+        _fidelity: Function to compute fidelity.
+        control_amplitudes: Initial control amplitudes.
+        max_iter: Maximum number of iterations.
+        convergence_threshold: Convergence threshold for optimization.
+    Returns:
+        control_amplitudes: Optimized control amplitudes.
+        fidelities: List of fidelity values during optimization.
+    """
+
+    def neg_fidelity(params, **kwargs):
+        return -_fidelity(params, **kwargs)
+    opt = optax.lbfgs()
+
+    value_and_grad_fn = optax.value_and_grad_from_state(neg_fidelity)
+
+
+    def step(carry):
+        control_amplitudes, state , iter_idx = carry
+        value, grad = value_and_grad_fn(control_amplitudes, state=state)
+        updates, state = opt.update(
+            grad,
+            state,
+            control_amplitudes,
+            value=value,
+            grad=grad,
+            value_fn=neg_fidelity,
+        )
+        control_amplitudes = optax.apply_updates(control_amplitudes, updates)
+        return control_amplitudes, state, iter_idx + 1
+
+    def continuing_criterion(carry):
+        _, state, _ = carry
+        iter_num = otu.tree_get(state, 'count')
+        grad = otu.tree_get(state, 'grad')
+        err = otu.tree_l2_norm(grad)
+        return (iter_num == 0) | (
+            (iter_num < max_iter - 1) & (err >= convergence_threshold)
+        )
+
+    init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
+    final_params, _, final_iter_idx= jax.lax.while_loop(
+        continuing_criterion, step, init_carry
+    )
+    final_fidelity = _fidelity(final_params)
+    return final_params, final_fidelity, final_iter_idx
 
 
 # for unitary evolution (not using density operator)
@@ -159,9 +206,8 @@ def optimize_pulse(
     max_iter: int = 1000,
     convergence_threshold: float = 1e-6,
     learning_rate: float = 0.01,
-    time_dep=False, 
-    delta_ts=None,
-    type="unitary",  # "unitary" or "state"
+    type: str = "unitary",
+    optimizer: str = "adam",
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
@@ -188,39 +234,51 @@ def optimize_pulse(
 
     def _fidelity(control_amplitudes):
         propagators = _compute_propagators(
-            H_drift, H_control_array, delta_t, control_amplitudes, time_dep, delta_ts
+            H_drift, H_control_array, delta_t, control_amplitudes
         )
         U_final = _compute_forward_evolution(propagators, U_0)
 
-        if(type=="unitary"):
+        if type == "unitary":
             overlap = (
-            jnp.trace(jnp.matmul(C_target.conj().T, U_final))
-            / C_target.shape[0]
+                jnp.trace(jnp.matmul(C_target.conj().T, U_final))
+                / C_target.shape[0]
             )
         else:
-            overlap = jnp.vdot(C_target, U_final)
+            # TODO: check accuracy of this, do we really need vector conjugate or .dot will simply work?
+            norm_C_target = C_target / jnp.linalg.norm(C_target)
+            norm_U_final = U_final / jnp.linalg.norm(U_final)
+
+            overlap = jnp.vdot(norm_C_target, norm_U_final)
         return jnp.abs(overlap) ** 2
 
     # Step 2: Gradient ascent loop
-    control_amplitudes, fidelities, iter_idx = _optimize_adam(
-        _fidelity,
-        control_amplitudes,
-        max_iter,
-        learning_rate,
-        convergence_threshold,
-    )
+
+    if optimizer.upper() == "L-BFGS":
+        control_amplitudes, final_fidelity, iter_idx = _optimize_L_BFGS(
+            _fidelity,
+            control_amplitudes,
+            max_iter,
+            convergence_threshold,
+        )
+    else:
+        control_amplitudes, final_fidelity, iter_idx = _optimize_adam(
+            _fidelity,
+            control_amplitudes,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+        )
 
     propagators = _compute_propagators(
-        H_drift, H_control_array, delta_t, control_amplitudes, time_dep, delta_ts
+        H_drift, H_control_array, delta_t, control_amplitudes
     )
     rho_final = _compute_forward_evolution(propagators, U_0)
 
     final_res = result(
         control_amplitudes,
-        fidelities[-1],
-        jnp.array(fidelities),
+        final_fidelity,
         iter_idx + 1,
-        rho_final
+        rho_final,
     )
 
     return final_res

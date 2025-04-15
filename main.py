@@ -1,5 +1,3 @@
-
-
 ## MAIN.py with time_dep example
 
 import jax
@@ -11,6 +9,7 @@ from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis
 
 # ruff: noqa
+
 
 @jax.vmap
 def build_ham(e_qub, e_cav):
@@ -118,20 +117,16 @@ def test_cnot():
         total_evo_time,
         max_iter=500,
         learning_rate=1e-2,
+        optimizer="l-bfgs",
     )
 
     print("final_fidelity: ", result.final_fidelity)
-    print("U_f \n", result.final_operator)
+    print("final_iter_idx: ", result.iterations)
+    # print("U_f \n", result.final_operator)
 
 
 if __name__ == "__main__":
     # Example usage
-    result = test_time_dep()
-    print(result.control_amplitudes)
-    # test_cnot()
-
-
-
-
-
-
+    # result = test_time_dep()
+    # print(result.control_amplitudes)
+    test_cnot()
