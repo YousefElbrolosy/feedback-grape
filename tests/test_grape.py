@@ -17,8 +17,7 @@ from feedback_grape.utils.operators import (
     sigmay,
     sigmaz,
     sigmap,
-    destroy,
-    create,
+    destroy
 )
 from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis

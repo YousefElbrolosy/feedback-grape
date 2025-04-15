@@ -23,6 +23,22 @@ class result(NamedTuple):
     final_operator: jnp.ndarray
 
 
+def sesolve(Hs, delta_ts):
+    """
+    Find evolution operator for piecewise Hs on time intervals delts_ts
+    Args:
+        Hs: List of Hamiltonians for each time interval.
+        delta_ts: List of time intervals.
+    Returns:
+        U: Evolution operator for the entire time interval.
+    
+    """
+    for i, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
+        U_intv = jax.scipy.linalg.expm(-1j * H * delta_t)
+        U = U_intv if i == 0 else U_intv @ U
+    return U
+
+
 def _compute_propagators(
     H_drift,
     H_control_array,
