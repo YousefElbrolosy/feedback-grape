@@ -61,7 +61,7 @@ def identity(dimensions, *, dtype=jnp.float32):
     return jnp.eye(dimensions, dtype=dtype)
 
 
-def _ladder(n, *, dagger: bool):
+def _ladder(n: int, *, dagger: bool) -> jnp.ndarray:
     """
     n-dimensional ladder operator
     """
@@ -70,14 +70,14 @@ def _ladder(n, *, dagger: bool):
     return jnp.diag(values, k=shift)
 
 
-def create(n):
+def create(n: int) -> jnp.ndarray:
     """
     n-dimensional creation operator
     """
     return _ladder(n, dagger=True)
 
 
-def destroy(n):
+def destroy(n: int) -> jnp.ndarray:
     """
     n-dimensional destruction operator
     """

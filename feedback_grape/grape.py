@@ -5,7 +5,7 @@ Gradient Ascent Pulse Engineering (GRAPE)
 # ruff: noqa N8
 import jax
 import optax  # type: ignore
-import optax.tree_utils as otu
+import optax.tree_utils as otu # type: ignore
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
