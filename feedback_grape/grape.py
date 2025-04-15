@@ -9,6 +9,7 @@ import optax.tree_utils as otu
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+
 jax.config.update("jax_enable_x64", True)
 # TODO: Implement this with Pavlo's Cavity + Qubit coupled in dispersive regime
 # TODO: remove side effects
@@ -159,13 +160,13 @@ def _optimize_L_BFGS(
 
     def neg_fidelity(params, **kwargs):
         return -_fidelity(params, **kwargs)
+
     opt = optax.lbfgs()
 
     value_and_grad_fn = optax.value_and_grad_from_state(neg_fidelity)
 
-
     def step(carry):
-        control_amplitudes, state , iter_idx = carry
+        control_amplitudes, state, iter_idx = carry
         value, grad = value_and_grad_fn(control_amplitudes, state=state)
         updates, state = opt.update(
             grad,
@@ -188,7 +189,7 @@ def _optimize_L_BFGS(
         )
 
     init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
-    final_params, _, final_iter_idx= jax.lax.while_loop(
+    final_params, _, final_iter_idx = jax.lax.while_loop(
         continuing_criterion, step, init_carry
     )
     final_fidelity = _fidelity(final_params)

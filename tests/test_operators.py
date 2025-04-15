@@ -2,10 +2,20 @@
 Tests for the GRAPE package.
 """
 
+import jax.numpy as jnp
 import pytest
 import qutip as qt
 
-from feedback_grape.utils.operators import identity, sigmax, sigmay, sigmaz
+from feedback_grape.utils.operators import (
+    create,
+    destroy,
+    identity,
+    sigmam,
+    sigmap,
+    sigmax,
+    sigmay,
+    sigmaz,
+)
 
 # Check documentation for pytest for more decorators
 # TODO: add tests for changing dimesions
@@ -60,3 +70,41 @@ def test_identity(dimensions, y):
     result = identity(dimensions)
     expected = y
     assert (result == expected).all()
+
+
+def test_sigmap():
+    """
+    Test the sigmap function.
+    """
+    result = sigmap()
+    expected = qt.sigmap().full()
+    assert (result == expected).all()
+
+
+def test_sigmam():
+    """
+    Test the sigmam function.
+    """
+    result = sigmam()
+    expected = qt.sigmam().full()
+    assert (result == expected).all()
+
+
+def test_create():
+    """
+    Test the create function.
+    """
+    result = create(4)
+    expected = qt.create(4).full()
+    print(f"{result}")
+    print(f"{expected}")
+    assert jnp.allclose(result, expected)
+
+
+def test_destroy():
+    """
+    Test the destroy function.
+    """
+    result = destroy(4)
+    expected = qt.destroy(4).full()
+    assert jnp.allclose(result, expected)
