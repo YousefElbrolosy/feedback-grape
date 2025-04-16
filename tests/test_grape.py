@@ -30,9 +30,9 @@ import qutip_qtrl.pulseoptim as qtrl
 # Testing target Operator transformations
 
 # TODO: check if the parameterize synatx is correct for different optimizers
+# TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
 
 
-# TODO: should see how we can further test more thoroughly
 @pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
 def test_cnot(optimizer):
     """

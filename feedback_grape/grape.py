@@ -23,20 +23,22 @@ class result(NamedTuple):
     final_operator: jnp.ndarray
 
 
-def sesolve(Hs, delta_ts):
+# TODO: see if iniital may not be necessarily a state rather an operator or density matrix
+def sesolve(Hs, initial_state, delta_ts):
     """
     Find evolution operator for piecewise Hs on time intervals delts_ts
     Args:
         Hs: List of Hamiltonians for each time interval.
+        initiali_state: Initial state.
         delta_ts: List of time intervals.
     Returns:
-        U: Evolution operator for the entire time interval.
+        U: Evolved state after applying the time-dependent Hamiltonians.
     
     """
     for i, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
         U_intv = jax.scipy.linalg.expm(-1j * H * delta_t)
         U = U_intv if i == 0 else U_intv @ U
-    return U
+    return U @ initial_state
 
 
 def _compute_propagators(
@@ -212,6 +214,31 @@ def _optimize_L_BFGS(
     return final_params, final_fidelity, final_iter_idx
 
 
+# TODO: account for density matrix fidelity
+def fidelity(*, C_target, U_final, type="unitary"):
+    """
+    Computes the fidelity of the final state with respect to the target state.
+    Args:
+        C_target: Target operator.
+        U_final: Final operator after evolution.
+        type: Type of fidelity calculation ("unitary" or "state"). [density not yet accounted for]
+    Returns:
+        fidelity: Fidelity value.
+    """
+
+    if type == "unitary":
+        overlap = (
+            jnp.trace(jnp.matmul(C_target.conj().T, U_final))
+            / C_target.shape[0]
+        )
+    else:
+        # TODO: check accuracy of this, do we really need vector conjugate or .dot will simply work?
+        norm_C_target = C_target / jnp.linalg.norm(C_target)
+        norm_U_final = U_final / jnp.linalg.norm(U_final)
+
+        overlap = jnp.vdot(norm_C_target, norm_U_final)
+    return jnp.abs(overlap) ** 2
+
 # for unitary evolution (not using density operator)
 def optimize_pulse(
     H_drift: jnp.ndarray,
@@ -249,26 +276,18 @@ def optimize_pulse(
     # Convert H_control to array for easier manipulation
     H_control_array = jnp.array(H_control)
 
+    # Step 2: Gradient ascent loop
+
     def _fidelity(control_amplitudes):
         propagators = _compute_propagators(
             H_drift, H_control_array, delta_t, control_amplitudes
         )
         U_final = _compute_forward_evolution(propagators, U_0)
-
-        if type == "unitary":
-            overlap = (
-                jnp.trace(jnp.matmul(C_target.conj().T, U_final))
-                / C_target.shape[0]
-            )
-        else:
-            # TODO: check accuracy of this, do we really need vector conjugate or .dot will simply work?
-            norm_C_target = C_target / jnp.linalg.norm(C_target)
-            norm_U_final = U_final / jnp.linalg.norm(U_final)
-
-            overlap = jnp.vdot(norm_C_target, norm_U_final)
-        return jnp.abs(overlap) ** 2
-
-    # Step 2: Gradient ascent loop
+        return fidelity(
+            C_target=C_target,
+            U_final=U_final,
+            type=type,
+        )
 
     if optimizer.upper() == "L-BFGS":
         control_amplitudes, final_fidelity, iter_idx = _optimize_L_BFGS(
