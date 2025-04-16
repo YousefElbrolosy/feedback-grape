@@ -5,7 +5,7 @@ Gradient Ascent Pulse Engineering (GRAPE)
 # ruff: noqa N8
 import jax
 import optax  # type: ignore
-import optax.tree_utils as otu # type: ignore
+import optax.tree_utils as otu  # type: ignore
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
@@ -33,11 +33,11 @@ def sesolve(Hs, initial_state, delta_ts):
         delta_ts: List of time intervals.
     Returns:
         U: Evolved state after applying the time-dependent Hamiltonians.
-    
+
     """
     for i, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
         U_intv = jax.scipy.linalg.expm(-1j * H * delta_t)
-        U = U_intv if i == 0 else U_intv @ U
+        U: jnp.ndarray = U_intv if i == 0 else U_intv @ U
     return U @ initial_state
 
 
@@ -238,6 +238,7 @@ def fidelity(*, C_target, U_final, type="unitary"):
 
         overlap = jnp.vdot(norm_C_target, norm_U_final)
     return jnp.abs(overlap) ** 2
+
 
 # for unitary evolution (not using density operator)
 def optimize_pulse(

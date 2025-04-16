@@ -9,7 +9,7 @@ import qutip_qip.operations.gates as qip
 import pytest
 import jax.numpy as jnp
 import jax
-from feedback_grape.grape import optimize_pulse
+from feedback_grape.grape import optimize_pulse, sesolve
 from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     identity,
@@ -17,7 +17,7 @@ from feedback_grape.utils.operators import (
     sigmay,
     sigmaz,
     sigmap,
-    destroy
+    destroy,
 )
 from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis
@@ -31,6 +31,7 @@ import qutip_qtrl.pulseoptim as qtrl
 
 # TODO: check if the parameterize synatx is correct for different optimizers
 # TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
+
 
 
 @pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
@@ -370,6 +371,14 @@ def test_qubit_in_cavity(optimizer):
 def test_fidelity_fn():
     """
     This tests the fidelity function for Unitary gates, states and density matrices
+    """
+    assert True, "Not implemented yet"
+
+
+# TODO:
+def test_sesolve():
+    """
+    Test the sesolve function from qutip.
     """
     assert True, "Not implemented yet"
 
