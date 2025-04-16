@@ -33,7 +33,6 @@ import qutip_qtrl.pulseoptim as qtrl
 # TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
 
 
-
 @pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
 def test_cnot(optimizer):
     """

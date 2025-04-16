@@ -225,8 +225,14 @@ def fidelity(*, C_target, U_final, type="unitary"):
     Returns:
         fidelity: Fidelity value.
     """
-
-    if type == "unitary":
+    if type == "superoperator":
+        # TRACEDIFF fidelity: 1 - 0.5*Tr(|C_target - U_final|)
+        # Where |A| is the matrix absolute value (element-wise)
+        diff = C_target - U_final
+        # Alternative approach: use the trace of the absolute value directly
+        trace_diff = 0.5 * jnp.abs(jnp.trace(diff))
+        return 1.0 - trace_diff / C_target.shape[0]
+    elif type == "unitary":
         overlap = (
             jnp.trace(jnp.matmul(C_target.conj().T, U_final))
             / C_target.shape[0]
