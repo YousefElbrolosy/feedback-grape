@@ -17,16 +17,32 @@ jax.config.update("jax_enable_x64", True)
 
 
 class result(NamedTuple):
-    control_amplitudes: jnp.ndarray
+    """
+    result class to store the results of the optimization process.
+    """
+    control_amplitudes: jnp.ndarray 
+    """
+    Optimized control amplitudes.
+    """
     final_fidelity: float
+    """
+    Final fidelity of the optimized control.
+    """
     iterations: int
+    """
+    Number of iterations taken for optimization.
+    """
     final_operator: jnp.ndarray
+    """
+    Final operator after applying the optimized control amplitudes.
+    """
 
 
 # TODO: see if iniital may not be necessarily a state rather an operator or density matrix
 def sesolve(Hs, initial_state, delta_ts):
     """
     Find evolution operator for piecewise Hs on time intervals delts_ts
+
     Args:
         Hs: List of Hamiltonians for each time interval.
         initiali_state: Initial state.
@@ -218,6 +234,7 @@ def _optimize_L_BFGS(
 def fidelity(*, C_target, U_final, type="unitary"):
     """
     Computes the fidelity of the final state with respect to the target state.
+
     Args:
         C_target: Target operator.
         U_final: Final operator after evolution.
