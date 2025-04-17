@@ -10,7 +10,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-jax.config.update("jax_enable_x64", True)
+# jax.config.update("jax_enable_x64", True)
 # TODO: Implement this with Pavlo's Cavity + Qubit coupled in dispersive regime
 # TODO: remove side effects
 # TODO: implement optimizer same as qutip_qtrl fmin_lbfgs or sth
@@ -20,7 +20,8 @@ class result(NamedTuple):
     """
     result class to store the results of the optimization process.
     """
-    control_amplitudes: jnp.ndarray 
+
+    control_amplitudes: jnp.ndarray
     """
     Optimized control amplitudes.
     """
