@@ -34,7 +34,7 @@ def coherent(n: int, alpha: complex) -> jnp.ndarray:
 
     Notes
     -----
-    The state |n⟩ represents the energy eigenstate (or number state)
+    The state `|n⟩` represents the energy eigenstate (or number state)
     of the quantum harmonic oscillator with exactly n excitations
     (or n quanta/particles).
     This is also known as the Fock state. (where if 0th index is 1 then

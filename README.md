@@ -11,10 +11,12 @@ Think of parallelized, highly efficient qutip with feedback control.
 To install dependencies necessary for the package <br>
 `pip install -r requirements.txt` <br>
 To install dependencies necessary for testing, linting, formating, ... <br>
-`pip install -r requirements_dev.txt`
+`pip install -r requirements_dev.txt` <br>
+To be able to render the jupyter notebooks, make sure to install pandoc, in conda the command is `conda install conda-forge::pandoc`
+
 
 ## Documentation
-For Development: Enter the command `cd docs` then `make html` and then open index.html in docs/build with Live Server to take a look at the Documentaion
+For Development: Enter the command `cd docs` then `make html` and then open index.html in docs/build with Live Server to take a look at the Documentaion.
 
 ## Testing
 Simply type `pytest`. This would also generate a coverage report.
