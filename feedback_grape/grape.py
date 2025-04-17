@@ -233,6 +233,7 @@ def _optimize_L_BFGS(
 
 
 # TODO: account for density matrix fidelity
+# TODO: check Pavlo's definition of fidelitiest (photo)
 def fidelity(*, C_target, U_final, type="unitary"):
     """
     Computes the fidelity of the final state with respect to the target state.

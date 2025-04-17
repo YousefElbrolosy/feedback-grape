@@ -12,7 +12,8 @@ To install dependencies necessary for the package <br>
 `pip install -r requirements.txt` <br>
 To install dependencies necessary for testing, linting, formating, ... <br>
 `pip install -r requirements_dev.txt` <br>
-To be able to render the jupyter notebooks, make sure to install pandoc, in conda the command is `conda install conda-forge::pandoc`
+To be able to render the jupyter notebooks, make sure to install pandoc, in conda the command is: <br> 
+`conda install conda-forge::pandoc` <br>
 
 
 ## Documentation
