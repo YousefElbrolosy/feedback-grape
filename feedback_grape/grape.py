@@ -10,7 +10,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
-# jax.config.update("jax_enable_x64", True)
+jax.config.update("jax_enable_x64", True)
 # TODO: Implement this with Pavlo's Cavity + Qubit coupled in dispersive regime
 # TODO: remove side effects
 # TODO: implement optimizer same as qutip_qtrl fmin_lbfgs or sth
@@ -40,6 +40,7 @@ class result(NamedTuple):
 
 
 # TODO: see if iniital may not be necessarily a state rather an operator or density matrix
+# TODO: make it more efficient
 def sesolve(Hs, initial_state, delta_ts):
     """
     Find evolution operator for piecewise Hs on time intervals delts_ts
