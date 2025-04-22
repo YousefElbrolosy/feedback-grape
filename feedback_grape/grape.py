@@ -11,7 +11,6 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
-# TODO: Implement this with Pavlo's Cavity + Qubit coupled in dispersive regime
 # TODO: remove side effects
 # TODO: implement optimizer same as qutip_qtrl fmin_lbfgs or sth
 
