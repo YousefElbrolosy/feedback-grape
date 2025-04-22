@@ -31,7 +31,7 @@ jobs:
     build: 
       name: Build distribution
       needs: test
-      runs-on: macos-latest
+      runs-on: ubuntu-latest
       steps:
         - uses: actions/checkout@v4
         - name: Set up Python 3.11
@@ -53,7 +53,7 @@ jobs:
     test-pypi-publish:
         name: Upload release to TestPyPI
         needs: [build]
-        runs-on: macos-latest
+        runs-on: ubuntu-latest
         # Specifying a GitHub environment is optional, but strongly encouraged
         environment: testpypi
         permissions:
