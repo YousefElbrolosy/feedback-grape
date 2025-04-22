@@ -10,23 +10,20 @@ sphinx-quickstart on Mon Jan 01 00:00:00 2025.
 import os
 import sys
 
-sys.path.insert(0, os.path.abspath("../../src/grape"))
+sys.path.insert(0, os.path.abspath("../../feedback_grape"))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "feedbackGRAPE"
-copyright = "2025, Yousef Elbrolosy, Pablo Bilous, Florian Marquardt"
-author = "Yousef Elbrolosy, Pablo Bilous, Florian Marquardt"
+copyright = "2025, Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
+author = "Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 release = "0.0.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx.ext.napoleon",
-]
+extensions = ["sphinx.ext.autodoc", "sphinx.ext.napoleon", "nbsphinx"]
 
 templates_path = ["_templates"]
 exclude_patterns = []
