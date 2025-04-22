@@ -17,7 +17,7 @@ To be able to render the jupyter notebooks, make sure to install pandoc, in cond
 
 
 ## Documentation
-For Development: Enter the command `cd docs` then `make html` and then open index.html in docs/build with Live Server to take a look at the Documentaion.
+For Development: Enter the command `cd docs` then `make html` and then open index.html in docs/build/html with Live Server to take a look at the Documentaion.
 
 ## Testing
 Simply type `pytest`. This would also generate a coverage report.
