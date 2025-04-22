@@ -33,18 +33,26 @@ jobs:
       needs: test
       runs-on: macos-latest
       steps:
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - name: Upload distribution artifacts
-        run: |
-          python -m pip install build
-          python -m build
+        - uses: actions/checkout@v4
+        - name: Set up Python 3.11
+          uses: actions/setup-python@v4
+          with:
+            python-version: "3.11"
+        - name: Install build dependencies
+          run: |
+            python -m pip install --upgrade pip
+            python -m pip install build wheel
+        - name: Build distributions
+          run: python -m build
+        - name: Upload distribution artifacts
+          uses: actions/upload-artifact@v4
+          with:
+            name: dist
+            path: dist/
 
     test-pypi-publish:
         name: Upload release to TestPyPI
-        needs: [test, build]
+        needs: [build]
         runs-on: macos-latest
         # Specifying a GitHub environment is optional, but strongly encouraged
         environment: testpypi
