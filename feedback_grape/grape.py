@@ -126,8 +126,7 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     """
     # Random initialization
     # Here, you can't initialize with zeros, as it will lead to zero gradients
-    # and no updates. Instead, use a small random value. (perhaps because of adam, but
-    # TODO: use FMIN_L_BFGS_B instead of adam)
+    # and no updates. Instead, use a small random value.
     key = jax.random.PRNGKey(42)
     return jax.random.uniform(
         key,
