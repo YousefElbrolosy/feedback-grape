@@ -31,6 +31,7 @@ def tensor(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
     b = b.reshape(-1, 1) if b.ndim == 1 else b
     return jnp.kron(a, b)
 
+
 def tensor_einsum(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
     """
     Compute the tensor/Kronecker product of two quantum objects.

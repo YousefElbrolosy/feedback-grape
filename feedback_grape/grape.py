@@ -114,6 +114,7 @@ def _compute_forward_evolution(propagators, U_0):
 
     return U_final
 
+
 # TODO: Why is this controlled by an amplitude
 # NOTE: try different seeds for random initialization and choose the best fidelity
 def _init_control_amplitudes(num_t_slots, num_controls):
@@ -218,7 +219,9 @@ def _optimize_L_BFGS(
         iter_num = otu.tree_get(state, 'count')
         grad = otu.tree_get(state, 'grad')
         err = otu.tree_l2_norm(grad)
-        return ((iter_num == 0) & (max_iter != 0)) | (iter_num < max_iter) & (err >= convergence_threshold)
+        return ((iter_num == 0) & (max_iter != 0)) | (iter_num < max_iter) & (
+            err >= convergence_threshold
+        )
 
     init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
     final_params, _, final_iter_idx = jax.lax.while_loop(
