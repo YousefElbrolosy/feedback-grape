@@ -18,21 +18,19 @@ from feedback_grape.utils.operators import (
 )
 
 # Check documentation for pytest for more decorators
-# TODO: add tests for changing dimesions
+# TODO: add tests for changing dimesions and data type
 # TODO: see if you can add tests related to a certain file in its directory
 
 
-# TODO: may be use .isclose() better to avoid any
-# TODO: differences in floating point types
-# TODO: use like float32 and note that ints are 32
-# TODO: as well may cause overlap
+# Here I do not want to use isclose, because those are so elementary that
+# They should be exactly the same
 def test_sigmax():
     """
     Test the sigmax function.
     """
     result = sigmax()
     expected = qt.sigmax().full()
-    assert (result == expected).all()
+    assert jnp.allclose(result, expected)
 
 
 def test_sigmay():
@@ -41,7 +39,7 @@ def test_sigmay():
     """
     result = sigmay()
     expected = qt.sigmay().full()
-    assert (result == expected).all()
+    assert jnp.allclose(result, expected)
 
 
 def test_sigmaz():
@@ -50,7 +48,7 @@ def test_sigmaz():
     """
     result = sigmaz()
     expected = qt.sigmaz().full()
-    assert (result == expected).all()
+    assert jnp.allclose(result, expected)
 
 
 @pytest.mark.parametrize(
@@ -69,7 +67,7 @@ def test_identity(dimensions, y):
     """
     result = identity(dimensions)
     expected = y
-    assert (result == expected).all()
+    assert jnp.allclose(result, expected)
 
 
 def test_sigmap():
@@ -78,7 +76,7 @@ def test_sigmap():
     """
     result = sigmap()
     expected = qt.sigmap().full()
-    assert (result == expected).all()
+    assert jnp.allclose(result, expected)
 
 
 def test_sigmam():
@@ -87,7 +85,7 @@ def test_sigmam():
     """
     result = sigmam()
     expected = qt.sigmam().full()
-    assert (result == expected).all()
+    assert jnp.allclose(result, expected)
 
 
 def test_create():
@@ -107,4 +105,5 @@ def test_destroy():
     """
     result = destroy(4)
     expected = qt.destroy(4).full()
+    # default is 1e-8
     assert jnp.allclose(result, expected)

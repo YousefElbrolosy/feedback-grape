@@ -218,7 +218,7 @@ def _optimize_L_BFGS(
         iter_num = otu.tree_get(state, 'count')
         grad = otu.tree_get(state, 'grad')
         err = otu.tree_l2_norm(grad)
-        return (iter_num < max_iter) & (err >= convergence_threshold)
+        return ((iter_num == 0) & (max_iter != 0)) | (iter_num < max_iter) & (err >= convergence_threshold)
 
     init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
     final_params, _, final_iter_idx = jax.lax.while_loop(
