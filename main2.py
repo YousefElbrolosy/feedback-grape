@@ -18,7 +18,7 @@ mu_qub = 4.0
 mu_cav = 8.0
 hconj = lambda a: jnp.swapaxes(a.conj(), -1, -2)
 
-
+# Problem 1
 @jax.vmap
 def build_ham(e_qub, e_cav):
     """
@@ -62,7 +62,7 @@ def build_grape_format_ham():
 
     return H0, H_ctrl
 
-
+# Problem 2
 def test_time_dep():
     time_start = 0.0
     time_end = 1.0
@@ -93,25 +93,89 @@ def test_time_dep():
     psi = U @ psi0
 
     H0_grape, H_ctrl_grape = build_grape_format_ham()
+    num_t_slots = int((time_end - time_start) / delta_ts[0])
+    total_evo_time = time_end - time_start
+    max_iter=10000,
+    convergence_threshold=1e-9,
+    learning_rate=1e-2,
+    type_req="state",
+    optimizer="l-bfgs",
+    return H0_grape, H_ctrl_grape, psi0, psi, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
 
-    res = optimize_pulse(
-        H0_grape,
-        H_ctrl_grape,
-        psi0,
-        psi,
-        int(
-            (time_end - time_start) / delta_ts[0]
-        ),  # Ensure this is an integer
-        time_end - time_start,
-        max_iter=10000,
-        convergence_threshold=1e-9,
+
+def test_time_indep():
+    # ruff: noqa
+
+    """
+    Gradient Ascent Pulse Engineering (GRAPE)
+    """
+
+    # Example usage
+    g = 0  # Small coupling strength
+    H_drift = g * (tensor(sigmax(), sigmax()) + tensor(sigmay(), sigmay()))
+    H_ctrl = [
+        tensor(sigmax(), identity(2)),
+        tensor(sigmay(), identity(2)),
+        tensor(sigmaz(), identity(2)),
+        tensor(identity(2), sigmax()),
+        tensor(identity(2), sigmay()),
+        tensor(identity(2), sigmaz()),
+        tensor(sigmax(), sigmax()),
+        tensor(sigmay(), sigmay()),
+        tensor(sigmaz(), sigmaz()),
+    ]
+
+    U_0 = identity(4)
+    # Target operator (CNOT gate)
+    C_target = cnot()
+
+    num_t_slots = 500
+    total_evo_time = 2 * jnp.pi
+
+    # Run optimization
+    result = optimize_pulse(
+        H_drift,
+        H_ctrl,
+        U_0,
+        C_target,
+        num_t_slots,
+        total_evo_time,
+        max_iter=100,
         learning_rate=1e-2,
-        type="state",
         optimizer="l-bfgs",
     )
-    print("res.final_fidelity: ", res.final_fidelity)
-    print("res.iterations: ", res.iterations)
+    max_iter = 100
+    convergence_threshold = 1e-9
+    learning_rate = 1e-2
+    type_req = "state"
+    optimizer = "l-bfgs"
+    return H_drift, H_ctrl, U_0, C_target, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
+
 
 
 if __name__ == "__main__":
-    test_time_dep()
+
+    H0_1, H_ctrl_1, psi0_1, psi_1, num_t_slots_1, total_evo_time_1, max_iter_1, convergence_threshold_1, learning_rate_1, type_req_1, optimizer_1 = test_time_dep()
+    H0_2, H_ctrl_2, psi0_2, psi_2, num_t_slots_2, total_evo_time_2, max_iter_2, convergence_threshold_2, learning_rate_2, type_req_2, optimizer_2 = test_time_indep()
+
+    res = jax.pmap(
+        optimize_pulse
+    )(
+        H_drift=jnp.array([H0_1, H0_2]),
+        H_control=jnp.array([H_ctrl_1, H_ctrl_2]),
+        U_0=jnp.array([psi0_1, psi0_2]),
+        C_target=jnp.array([psi_1, psi_2]),
+        num_t_slots=jnp.array([num_t_slots_1, num_t_slots_2]),
+        total_evo_time=jnp.array([total_evo_time_1, total_evo_time_2]),
+        max_iter=jnp.array([max_iter_1, max_iter_2]),
+        convergence_threshold=jnp.array([convergence_threshold_1, convergence_threshold_2]),
+        learning_rate=jnp.array([learning_rate_1, learning_rate_2]),
+        type=jnp.array([type_req_1, type_req_2]),
+        optimizer=jnp.array([optimizer_1, optimizer_2]),
+    )
+
+    for i, r in enumerate(res):
+        print(f"Result {i}:")
+        print("  Final fidelity: ", r.final_fidelity)
+        print("  Iterations: ", r.iterations)
+    
