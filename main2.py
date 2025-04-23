@@ -154,7 +154,7 @@ def test_time_indep():
 
 
 if __name__ == "__main__":
-
+    # testing parralelizing gpus
     H0_1, H_ctrl_1, psi0_1, psi_1, num_t_slots_1, total_evo_time_1, max_iter_1, convergence_threshold_1, learning_rate_1, type_req_1, optimizer_1 = test_time_dep()
     H0_2, H_ctrl_2, psi0_2, psi_2, num_t_slots_2, total_evo_time_2, max_iter_2, convergence_threshold_2, learning_rate_2, type_req_2, optimizer_2 = test_time_indep()
 
