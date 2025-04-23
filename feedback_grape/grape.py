@@ -114,7 +114,8 @@ def _compute_forward_evolution(propagators, U_0):
 
     return U_final
 
-
+# TODO: Why is this controlled by an amplitude
+# NOTE: try different seeds for random initialization and choose the best fidelity
 def _init_control_amplitudes(num_t_slots, num_controls):
     """
     Initialize control amplitudes for the optimization process.
@@ -262,6 +263,7 @@ def fidelity(*, C_target, U_final, type="unitary"):
 
 
 # for unitary evolution (not using density operator)
+# TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
