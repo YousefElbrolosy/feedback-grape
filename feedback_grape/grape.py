@@ -11,8 +11,7 @@ import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
 jax.config.update("jax_enable_x64", True)
-# TODO: remove side effects
-# TODO: implement optimizer same as qutip_qtrl fmin_lbfgs or sth
+# Implemented adam/L-BFGS optimizers
 
 
 class result(NamedTuple):
@@ -158,6 +157,8 @@ def _optimize_adam(
         return new_params, new_state, -loss
 
     params = control_amplitudes
+    # setting it to -1 in the beginning in case the max_iter is 0
+    iter_idx = -1
     for iter_idx in range(max_iter):
         params, opt_state, current_fidelity = step(params, opt_state)
         fidelities.append(current_fidelity)
@@ -166,13 +167,11 @@ def _optimize_adam(
             iter_idx > 0
             and abs(fidelities[-1] - fidelities[-2]) < convergence_threshold
         ):
-            print(f"Converged after {iter_idx} iterations.")
             break
 
-        if iter_idx % 10 == 0:
-            print(f"Iteration {iter_idx}, _fidelity: {current_fidelity}")
-    final_fidelity = fidelities[-1]
-    return params, final_fidelity, iter_idx
+    final_fidelity = _fidelity(params)
+    # final_fidelity = fidelities[-1]
+    return params, final_fidelity, iter_idx + 1
 
 
 def _optimize_L_BFGS(
@@ -219,9 +218,7 @@ def _optimize_L_BFGS(
         iter_num = otu.tree_get(state, 'count')
         grad = otu.tree_get(state, 'grad')
         err = otu.tree_l2_norm(grad)
-        return (iter_num == 0) | (
-            (iter_num < max_iter - 1) & (err >= convergence_threshold)
-        )
+        return (iter_num < max_iter) & (err >= convergence_threshold)
 
     init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
     final_params, _, final_iter_idx = jax.lax.while_loop(
@@ -339,7 +336,7 @@ def optimize_pulse(
     final_res = result(
         control_amplitudes,
         final_fidelity,
-        iter_idx + 1,
+        iter_idx,
         rho_final,
     )
 
