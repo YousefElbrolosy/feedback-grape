@@ -56,7 +56,8 @@ def sesolve(Hs, initial_state, delta_ts):
         U: jnp.ndarray = U_intv if i == 0 else U_intv @ U
     return U @ initial_state
 
-#TODO: see if you implement memory and precision efficient versions
+
+# TODO: see if you implement memory and precision efficient versions
 def _compute_propagators(
     H_drift,
     H_control_array,
@@ -315,6 +316,7 @@ def optimize_pulse(
             U_final=U_final,
             type=type,
         )
+
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":

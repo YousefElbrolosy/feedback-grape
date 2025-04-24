@@ -18,6 +18,7 @@ mu_qub = 4.0
 mu_cav = 8.0
 hconj = lambda a: jnp.swapaxes(a.conj(), -1, -2)
 
+
 # Problem 1
 @jax.vmap
 def build_ham(e_qub, e_cav):
@@ -62,6 +63,7 @@ def build_grape_format_ham():
 
     return H0, H_ctrl
 
+
 # Problem 2
 def test_time_dep():
     time_start = 0.0
@@ -95,12 +97,24 @@ def test_time_dep():
     H0_grape, H_ctrl_grape = build_grape_format_ham()
     num_t_slots = int((time_end - time_start) / delta_ts[0])
     total_evo_time = time_end - time_start
-    max_iter=10000
-    convergence_threshold=1e-9
-    learning_rate=1e-2
-    type_req="state"
-    optimizer="l-bfgs"
-    return H0_grape, H_ctrl_grape, psi0, psi, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
+    max_iter = 10000
+    convergence_threshold = 1e-9
+    learning_rate = 1e-2
+    type_req = "state"
+    optimizer = "l-bfgs"
+    return (
+        H0_grape,
+        H_ctrl_grape,
+        psi0,
+        psi,
+        num_t_slots,
+        total_evo_time,
+        max_iter,
+        convergence_threshold,
+        learning_rate,
+        type_req,
+        optimizer,
+    )
 
 
 def test_time_indep():
@@ -137,7 +151,19 @@ def test_time_indep():
     learning_rate = 1e-2
     type_req = "state"
     optimizer = "l-bfgs"
-    return H_drift, H_ctrl, U_0, C_target, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
+    return (
+        H_drift,
+        H_ctrl,
+        U_0,
+        C_target,
+        num_t_slots,
+        total_evo_time,
+        max_iter,
+        convergence_threshold,
+        learning_rate,
+        type_req,
+        optimizer,
+    )
 
 
 def simple_vectorized_wrapper():
@@ -156,8 +182,12 @@ def simple_vectorized_wrapper():
         optimizer,
     ) = test_time_dep()
     batch_size = 2
-    H_drift_batched = jnp.stack([H0_grape] * batch_size)  # Shape: (2, dim, dim)
-    H_control_batched = [jnp.stack([h] * batch_size) for h in H_ctrl_grape]  # List of (2, dim, dim)
+    H_drift_batched = jnp.stack(
+        [H0_grape] * batch_size
+    )  # Shape: (2, dim, dim)
+    H_control_batched = [
+        jnp.stack([h] * batch_size) for h in H_ctrl_grape
+    ]  # List of (2, dim, dim)
     U_0_batched = jnp.stack([psi0] * batch_size)  # Shape: (2, dim)
     C_target_batched = jnp.stack([psi] * batch_size)  # Shape: (2, dim)
     # Define vectorized optimize_pulse
@@ -175,7 +205,12 @@ def simple_vectorized_wrapper():
             type_req,
             optimizer,
         ),
-        in_axes=(0, 0, 0, 0),  # Batch H_drift, U_0, C_target; H_control is a list
+        in_axes=(
+            0,
+            0,
+            0,
+            0,
+        ),  # Batch H_drift, U_0, C_target; H_control is a list
     )
 
     # Run vectorized optimization
@@ -185,13 +220,14 @@ def simple_vectorized_wrapper():
 
     # Extract results
     for i in range(batch_size):
-        print(f"Instance {i+1}:")
+        print(f"Instance {i + 1}:")
         print(f"  Final Fidelity: {results.final_fidelity[i]}")
         print(f"  Iterations: {results.iterations[i]}")
-        print(f"  Control Amplitudes Shape: {results.control_amplitudes[i].shape}")
+        print(
+            f"  Control Amplitudes Shape: {results.control_amplitudes[i].shape}"
+        )
         print(f"  Final Operator Shape: {results.final_operator[i].shape}")
 
 
 if __name__ == "__main__":
     simple_vectorized_wrapper()
-    
