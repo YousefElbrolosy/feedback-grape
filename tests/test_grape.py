@@ -379,7 +379,107 @@ def test_sesolve():
     """
     Test the sesolve function from qutip.
     """
-    assert True, "Not implemented yet"
+
+    N_cav = 10
+    chi = 0.2385 * (2 * jnp.pi)
+    mu_qub = 4.0
+    mu_cav = 8.0
+    hconj = lambda a: jnp.swapaxes(a.conj(), -1, -2)
+
+    time_start = 0.0
+    time_end = 1.0
+    time_intervals_num = 5
+    N_cav = 10
+    t_grid = jnp.linspace(time_start, time_end, time_intervals_num + 1)
+    delta_ts = t_grid[1:] - t_grid[:-1]
+    fake_random_key = jax.random.key(seed=0)
+    e_data = jax.random.uniform(
+        fake_random_key, shape=(4, len(delta_ts)), minval=-1, maxval=1
+    )
+    e_qub = e_data[0] + 1j * e_data[1]
+    e_cav = e_data[2] + 1j * e_data[3]
+
+    # Using fg
+
+    @jax.vmap
+    def build_ham(e_qub, e_cav):
+        """
+        Build Hamiltonian for given (complex) e_qub and e_cav
+        """
+
+        a = tensor(identity(2), destroy(N_cav))
+        adag = hconj(a)
+        n_phot = adag @ a
+        sigz = tensor(sigmaz(), identity(N_cav))
+        sigp = tensor(sigmap(), identity(N_cav))
+        one = tensor(identity(2), identity(N_cav))
+
+        H0 = +(chi / 2) * n_phot @ (sigz + one)
+
+        H_ctrl = mu_qub * sigp * e_qub + mu_cav * adag * e_cav
+        H_ctrl += hconj(H_ctrl)
+        # You just pass an array of the Hamiltonian matrices "Hs" corresponding to the time
+        # intervals "delta_ts" (that is, "Hs" is a 3D array).
+        return H0, H_ctrl
+
+    H0, H_ctrl = build_ham(e_qub, e_cav)
+
+    psi0 = tensor(basis(2), basis(N_cav))
+    psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts)
 
 
-# TODO: test for examples using states and density matrices transformations
+
+    # Using qutip QTRL
+
+    def build_ham_qt(e_qub, e_cav):
+        a = qt.tensor(qt.identity(2), qt.destroy(N_cav))
+        adag = a.dag()
+        n_phot = adag * a
+        sigz = qt.tensor(qt.sigmaz(), qt.identity(N_cav))
+        sigp = qt.tensor(qt.sigmap(), qt.identity(N_cav))
+        one = qt.tensor(qt.identity(2), qt.identity(N_cav))
+
+        H0 = +(chi / 2) * n_phot * (sigz + one)
+
+        H_ctrl_qub = mu_qub * sigp
+        H_ctrl_cav = mu_cav * adag
+
+        H = [
+            # time independent part
+            H0,
+            # time dependent on e_qub (you can consider e_qub an array of different coefficients each time step to
+            # represent changing Hamiltonian with time)
+            [H_ctrl_qub, e_qub],
+            # time dependent on e_qub.conj()
+            [H_ctrl_qub.dag(), e_qub.conj()],
+            # time dependent on e_cav
+            [H_ctrl_cav, e_cav],
+            # time dependent on e_cav.conj()
+            [H_ctrl_cav.dag(), e_cav.conj()],
+        ]
+
+        return H
+
+    psi0_qt = qt.tensor(qt.basis(2), qt.basis(N_cav))
+    time_subintervals_num_qt = 100
+    t_grid_qt = np.linspace(
+        time_start, time_end, time_subintervals_num_qt * time_intervals_num
+    )
+
+    t_grid = np.linspace(time_start, time_end, time_intervals_num + 1)
+    delta_ts = t_grid[1:] - t_grid[:-1]
+    fake_random_key = jax.random.key(seed=0)
+    e_data = jax.random.uniform(
+        fake_random_key, shape=(4, len(delta_ts)), minval=-1, maxval=1
+    )
+    e_qub = e_data[0] + 1j * e_data[1]
+    e_cav = e_data[2] + 1j * e_data[3]
+    e_qub_qt = np.repeat(np.array(e_qub), time_subintervals_num_qt)
+    e_cav_qt = np.repeat(np.array(e_cav), time_subintervals_num_qt)
+    H_qt = build_ham_qt(e_qub_qt, e_cav_qt)
+    psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
+
+
+    print("psi_qt: ", psi_qt)
+    print("psi_fg: ", psi_fg)
+    assert jnp.allclose(psi_fg, psi_qt.full(), atol=1e-2), "The states are not close enough."
