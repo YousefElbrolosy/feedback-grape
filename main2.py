@@ -95,11 +95,11 @@ def test_time_dep():
     H0_grape, H_ctrl_grape = build_grape_format_ham()
     num_t_slots = int((time_end - time_start) / delta_ts[0])
     total_evo_time = time_end - time_start
-    max_iter=10000,
-    convergence_threshold=1e-9,
-    learning_rate=1e-2,
-    type_req="state",
-    optimizer="l-bfgs",
+    max_iter=10000
+    convergence_threshold=1e-9
+    learning_rate=1e-2
+    type_req="state"
+    optimizer="l-bfgs"
     return H0_grape, H_ctrl_grape, psi0, psi, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
 
 
@@ -138,6 +138,9 @@ def test_time_indep():
     type_req = "state"
     optimizer = "l-bfgs"
     return H_drift, H_ctrl, U_0, C_target, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
+
+
+
 
 
 def simple_vectorized_wrapper():
@@ -190,7 +193,6 @@ def simple_vectorized_wrapper():
         print(f"  Iterations: {results.iterations[i]}")
         print(f"  Control Amplitudes Shape: {results.control_amplitudes[i].shape}")
         print(f"  Final Operator Shape: {results.final_operator[i].shape}")
-
 
 
 if __name__ == "__main__":
