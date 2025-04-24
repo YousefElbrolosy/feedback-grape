@@ -1,15 +1,14 @@
-## MAIN.py with time_dep example
-
 import jax
 import qutip as qt
 import numpy as np
 import jax.numpy as jnp
 import qutip_qtrl.pulseoptim as qtrl
-from feedback_grape.grape import optimize_pulse
+from feedback_grape.grape import optimize_pulse, result
 from feedback_grape.utils.gates import *
 from feedback_grape.utils.operators import *
 from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis
+
 # ruff: noqa
 
 N_cav = 10
@@ -24,7 +23,6 @@ def build_ham(e_qub, e_cav):
     """
     Build Hamiltonian for given (complex) e_qub and e_cav
     """
-
     a = tensor(identity(2), destroy(N_cav))
     adag = hconj(a)
     n_phot = adag @ a
@@ -36,8 +34,6 @@ def build_ham(e_qub, e_cav):
 
     H_ctrl = mu_qub * sigp * e_qub + mu_cav * adag * e_cav
     H_ctrl += hconj(H_ctrl)
-    # You just pass an array of the Hamiltonian matrices "Hs" corresponding to the time
-    # intervals "delta_ts" (that is, "Hs" is a 3D array).
     return H0, H_ctrl
 
 
@@ -45,7 +41,6 @@ def build_grape_format_ham():
     """
     Build Hamiltonian for given (complex) e_qub and e_cav
     """
-
     a = tensor(identity(2), destroy(N_cav))
     adag = hconj(a)
     n_phot = adag @ a
@@ -62,7 +57,7 @@ def build_grape_format_ham():
 
     return H0, H_ctrl
 
-# Problem 2
+
 def test_time_dep():
     time_start = 0.0
     time_end = 1.0
@@ -78,7 +73,6 @@ def test_time_dep():
     e_cav = e_data[2] + 1j * e_data[3]
     H0, H_ctrl = build_ham(e_qub, e_cav)
 
-    # Representation for time dependent Hamiltonian
     def solve(Hs, delta_ts):
         """
         Find evolution operator for piecewise Hs on time intervals delts_ts
@@ -95,52 +89,29 @@ def test_time_dep():
     H0_grape, H_ctrl_grape = build_grape_format_ham()
     num_t_slots = int((time_end - time_start) / delta_ts[0])
     total_evo_time = time_end - time_start
-    max_iter=10000,
-    convergence_threshold=1e-9,
-    learning_rate=1e-2,
-    type_req="state",
-    optimizer="l-bfgs",
-    return H0_grape, H_ctrl_grape, psi0, psi, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
-
-
-def test_time_indep():
-    # ruff: noqa
-
-    """
-    Gradient Ascent Pulse Engineering (GRAPE)
-    """
-
-    # Example usage
-    g = 0  # Small coupling strength
-    H_drift = g * (tensor(sigmax(), sigmax()) + tensor(sigmay(), sigmay()))
-    H_ctrl = [
-        tensor(sigmax(), identity(2)),
-        tensor(sigmay(), identity(2)),
-        tensor(sigmaz(), identity(2)),
-        tensor(identity(2), sigmax()),
-        tensor(identity(2), sigmay()),
-        tensor(identity(2), sigmaz()),
-        tensor(sigmax(), sigmax()),
-        tensor(sigmay(), sigmay()),
-        tensor(sigmaz(), sigmaz()),
-    ]
-
-    U_0 = identity(4)
-    # Target operator (CNOT gate)
-    C_target = cnot()
-
-    num_t_slots = 500
-    total_evo_time = 2 * jnp.pi
-
-    max_iter = 100
+    max_iter = 10000
     convergence_threshold = 1e-9
     learning_rate = 1e-2
     type_req = "state"
     optimizer = "l-bfgs"
-    return H_drift, H_ctrl, U_0, C_target, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
+
+    return (
+        H0_grape,
+        H_ctrl_grape,
+        psi0,
+        psi,
+        num_t_slots,
+        total_evo_time,
+        max_iter,
+        convergence_threshold,
+        learning_rate,
+        type_req,
+        optimizer,
+    )
 
 
-def simple_vectorized_wrapper():
+# Vectorized optimization
+def vectorized_optimize_pulse():
     # Get inputs from test_time_dep
     (
         H0_grape,
@@ -155,11 +126,14 @@ def simple_vectorized_wrapper():
         type_req,
         optimizer,
     ) = test_time_dep()
+
+    # Create batched inputs for two identical instances
     batch_size = 2
     H_drift_batched = jnp.stack([H0_grape] * batch_size)  # Shape: (2, dim, dim)
     H_control_batched = [jnp.stack([h] * batch_size) for h in H_ctrl_grape]  # List of (2, dim, dim)
     U_0_batched = jnp.stack([psi0] * batch_size)  # Shape: (2, dim)
     C_target_batched = jnp.stack([psi] * batch_size)  # Shape: (2, dim)
+
     # Define vectorized optimize_pulse
     vectorized_optimize = jax.vmap(
         lambda H_d, H_c, U_0, C_t: optimize_pulse(
@@ -192,7 +166,5 @@ def simple_vectorized_wrapper():
         print(f"  Final Operator Shape: {results.final_operator[i].shape}")
 
 
-
 if __name__ == "__main__":
-    simple_vectorized_wrapper()
-    
+    vectorized_optimize_pulse()

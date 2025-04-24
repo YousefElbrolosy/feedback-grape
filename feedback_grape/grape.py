@@ -315,7 +315,8 @@ def optimize_pulse(
             U_final=U_final,
             type=type,
         )
-
+    if isinstance(optimizer, tuple):
+        optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
         control_amplitudes, final_fidelity, iter_idx = _optimize_L_BFGS(
             _fidelity,
