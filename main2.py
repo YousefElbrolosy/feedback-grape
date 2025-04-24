@@ -154,14 +154,14 @@ def simple_vectorized_wrapper():
         learning_rate,
         type_req,
         optimizer,
-    ) = test_time_indep()
+    ) = test_time_dep()
     batch_size = 2
     H_drift_batched = jnp.stack([H0_grape] * batch_size)  # Shape: (2, dim, dim)
     H_control_batched = [jnp.stack([h] * batch_size) for h in H_ctrl_grape]  # List of (2, dim, dim)
     U_0_batched = jnp.stack([psi0] * batch_size)  # Shape: (2, dim)
     C_target_batched = jnp.stack([psi] * batch_size)  # Shape: (2, dim)
     # Define vectorized optimize_pulse
-    vectorized_optimize = jax.vmap(
+    vectorized_optimize = jax.pmap(
         lambda H_d, H_c, U_0, C_t: optimize_pulse(
             H_d,
             H_c,
