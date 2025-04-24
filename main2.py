@@ -140,9 +140,6 @@ def test_time_indep():
     return H_drift, H_ctrl, U_0, C_target, num_t_slots, total_evo_time, max_iter, convergence_threshold, learning_rate, type_req, optimizer
 
 
-
-
-
 def simple_vectorized_wrapper():
     # Get inputs from test_time_dep
     (
@@ -157,7 +154,7 @@ def simple_vectorized_wrapper():
         learning_rate,
         type_req,
         optimizer,
-    ) = test_time_dep()
+    ) = test_time_indep()
     batch_size = 2
     H_drift_batched = jnp.stack([H0_grape] * batch_size)  # Shape: (2, dim, dim)
     H_control_batched = [jnp.stack([h] * batch_size) for h in H_ctrl_grape]  # List of (2, dim, dim)
