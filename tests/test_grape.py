@@ -732,9 +732,7 @@ def test_dissipative_model(optimizer):
         (
             "state",
             get_targets_for_qubit_in_cavity_problem()[0],
-            get_finals(
-                *get_results_for_qubit_in_cavity_problem("adam")
-            )[0],
+            get_finals(*get_results_for_qubit_in_cavity_problem("adam"))[0],
         ),
         (
             "unitary",
@@ -744,8 +742,7 @@ def test_dissipative_model(optimizer):
         (
             "superoperator",
             get_targets_for_dissipation_problem()[0],
-            get_finals(
-                *get_results_for_dissipation_problem("adam"))[0],
+            get_finals(*get_results_for_dissipation_problem("adam"))[0],
         ),
     ],
 )
@@ -758,14 +755,17 @@ def test_fidelity_fn(fid_type, target, final):
 
     # Normalize the target and final states
 
-
     fidelity_fg = fidelity(C_target=target, U_final=final, type=fid_type)
     if fid_type == "superoperator":
-        fidelity_qt = qt.tracedist(qt.Qobj(target).unit(), qt.Qobj(final).unit())
+        fidelity_qt = qt.tracedist(
+            qt.Qobj(target).unit(), qt.Qobj(final).unit()
+        )
     else:
-        fidelity_qt = qt.fidelity(qt.Qobj(target).unit(), qt.Qobj(final).unit())
-    print(f"qt fidelity for {fid_type}: ",fidelity_qt)
-    print(f"fg fidelity: for {fid_type}",fidelity_fg)
+        fidelity_qt = qt.fidelity(
+            qt.Qobj(target).unit(), qt.Qobj(final).unit()
+        )
+    print(f"qt fidelity for {fid_type}: ", fidelity_qt)
+    print(f"fg fidelity: for {fid_type}", fidelity_fg)
     assert jnp.allclose(fidelity_fg, fidelity_qt, atol=1e-1), (
         "fidelities not close enough"
     )
