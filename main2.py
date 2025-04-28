@@ -115,7 +115,7 @@ def test_time_dep():
         learning_rate,
         type_req,
         optimizer,
-        propcomp,
+        propcomp
     )
 
 
@@ -295,102 +295,5 @@ def simple_vectorized_wrapper():
         print(f"  Final Operator Shape: {results.final_operator[i].shape}")
 
 
-def vectorized_wrapper_all():
-    # Get inputs from test_time_dep
-    (
-        H0_grape,
-        H_ctrl_grape,
-        psi0,
-        psi,
-        num_t_slots,
-        total_evo_time,
-        max_iter,
-        convergence_threshold,
-        learning_rate,
-        type_req,
-        optimizer,
-        propcomp,
-    ) = test_time_dep()
-    batch_size = 2
-    H_drift_batched = jnp.stack(
-        [H0_grape] * batch_size
-    )  # Shape: (2, dim, dim)
-    H_control_batched = [
-        jnp.stack([h] * batch_size) for h in H_ctrl_grape
-    ]  # List of (2, dim, dim)
-    U_0_batched = jnp.stack([psi0] * batch_size)  # Shape: (2, dim)
-    C_target_batched = jnp.stack([psi] * batch_size)  # Shape: (2, dim)
-
-    num_t_slots_batched = jnp.stack([num_t_slots] * batch_size)
-    total_evo_time_batched = jnp.stack([total_evo_time] * batch_size)
-    max_iter_batched = jnp.stack([max_iter] * batch_size)
-    convergence_threshold_batched = jnp.stack(
-        [convergence_threshold] * batch_size
-    )
-    learning_rate_batched = jnp.stack([learning_rate] * batch_size)
-    type_req_batched = jnp.stack([type_req] * batch_size)
-    optimizer_batched = jnp.stack([optimizer] * batch_size)
-    propcomp_batched = jnp.stack([propcomp] * batch_size)
-    # Define vectorized optimize_pulse
-    vectorized_optimize = jax.vmap(
-        lambda H_d,
-        H_c,
-        U_0,
-        C_t,
-        num_t_slots,
-        total_evo_time,
-        max_iter,
-        convergence_threshold,
-        learning_rate,
-        type_req,
-        optimizer,
-        propcomp,: optimize_pulse(
-            H_d,
-            H_c,
-            U_0,
-            C_t,
-            num_t_slots,
-            total_evo_time,
-            max_iter,
-            convergence_threshold,
-            learning_rate,
-            type_req,
-            optimizer,
-            propcomp,
-        ),
-        in_axes=(
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-        ),
-    )
-
-    # Run vectorized optimization
-    results = vectorized_optimize(
-        H_drift_batched, H_control_batched, U_0_batched, C_target_batched, num_t_slots_batched, total_evo_time_batched, max_iter_batched, convergence_threshold_batched, learning_rate_batched, type_req_batched, optimizer_batched, propcomp_batched
-    )
-
-    # Extract results
-    for i in range(batch_size):
-        print(f"Instance {i + 1}:")
-        print(f"  Final Fidelity: {results.final_fidelity[i]}")
-        print(f"  Iterations: {results.iterations[i]}")
-        print(
-            f"  Control Amplitudes Shape: {results.control_amplitudes[i].shape}"
-        )
-        print(f"  Final Operator Shape: {results.final_operator[i].shape}")
-
-
 if __name__ == "__main__":
-    # simple_vectorized_wrapper()
-    vectorized_wrapper_all()
-    # test_cat_state()
+    simple_vectorized_wrapper()

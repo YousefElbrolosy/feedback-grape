@@ -9,6 +9,7 @@ import optax.tree_utils as otu  # type: ignore
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+from functools import partial
 
 jax.config.update("jax_enable_x64", True)
 # Implemented adam/L-BFGS optimizers
@@ -305,6 +306,7 @@ def fidelity(*, C_target, U_final, type="unitary"):
 
 # for unitary evolution (not using density operator)
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
+@partial(jax.jit, static_argnums=[4, 5, 6, 7, 8, 9, 10, 11])
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
