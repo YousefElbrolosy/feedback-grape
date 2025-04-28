@@ -115,7 +115,7 @@ def test_time_dep():
         learning_rate,
         type_req,
         optimizer,
-        propcomp
+        propcomp,
     )
 
 
@@ -269,7 +269,7 @@ def simple_vectorized_wrapper():
             learning_rate,
             type_req,
             optimizer,
-            propcomp
+            propcomp,
         ),
         in_axes=(
             0,

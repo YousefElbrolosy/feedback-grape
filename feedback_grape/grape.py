@@ -130,7 +130,7 @@ def _compute_forward_evolution_memory_efficient(
         delta_t: Time step for evolution.
         control_amplitudes: Control amplitudes for each time slot.
         U_0: Initial operator.
-    
+
     Returns:
         U_final: Final operator after evolution.
     """
@@ -146,10 +146,11 @@ def _compute_forward_evolution_memory_efficient(
             H_control += control_amplitudes[j, k] * H_control_array[k]
 
         # Compute U_j and immediately update U_final to discard U_j from memory
-        U_final = jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control)) @ U_final
+        U_final = (
+            jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control)) @ U_final
+        )
 
     return U_final
-
 
 
 # TODO: Why is this controlled by an amplitude
@@ -351,7 +352,9 @@ def optimize_pulse(
             H_drift, H_control_array, delta_t, control_amplitudes
         )
         if propcomp == "time-efficient":
-            U_final = _compute_forward_evolution_time_efficient(propagators, U_0)
+            U_final = _compute_forward_evolution_time_efficient(
+                propagators, U_0
+            )
         else:
             U_final = _compute_forward_evolution_memory_efficient(
                 H_drift, H_control_array, delta_t, control_amplitudes, U_0

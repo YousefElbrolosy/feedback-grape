@@ -685,7 +685,15 @@ def get_finals(result_fg, result_qt):
     return final_operator_fg, final_operator_qt
 
 
-@pytest.mark.parametrize("optimize, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+@pytest.mark.parametrize(
+    "optimize, propcomp",
+    [
+        ("adam", "memory-efficient"),
+        ("l-bfgs", "memory-efficient"),
+        ("adam", "time-efficient"),
+        ("l-bfgs", "time-efficient"),
+    ],
+)
 def test_cnot(optimize, propcomp):
     result_fg, result_qt = get_results_for_cnot_problem(optimize, propcomp)
     # print("reference.evo_full_final.full()): ",reference.evo_full_final.full())
@@ -698,7 +706,15 @@ def test_cnot(optimize, propcomp):
     ), "The fidelities are not close enough."
 
 
-@pytest.mark.parametrize("optimize, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+@pytest.mark.parametrize(
+    "optimize, propcomp",
+    [
+        ("adam", "memory-efficient"),
+        ("l-bfgs", "memory-efficient"),
+        ("adam", "time-efficient"),
+        ("l-bfgs", "time-efficient"),
+    ],
+)
 def test_hadamard(optimize, propcomp):
     result_fg, result_qt = get_results_for_hadamard_problen(optimize, propcomp)
     print("result_qt.fid_err: ", result_qt.fid_err)
@@ -709,9 +725,19 @@ def test_hadamard(optimize, propcomp):
 
 
 # Testing states
-@pytest.mark.parametrize("optimize, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+@pytest.mark.parametrize(
+    "optimize, propcomp",
+    [
+        ("adam", "memory-efficient"),
+        ("l-bfgs", "memory-efficient"),
+        ("adam", "time-efficient"),
+        ("l-bfgs", "time-efficient"),
+    ],
+)
 def test_qubit_in_cavity(optimizer, propcomp):
-    result_fg, result_qt = get_results_for_qubit_in_cavity_problem(optimizer, propcomp)
+    result_fg, result_qt = get_results_for_qubit_in_cavity_problem(
+        optimizer, propcomp
+    )
     print("result_qt.fid: ", 1 - result_qt.fid_err)
     print("result_fg.final_fidelity: ", result_fg.final_fidelity)
     assert jnp.allclose(
@@ -719,9 +745,19 @@ def test_qubit_in_cavity(optimizer, propcomp):
     ), "The fidelities are not close enough."
 
 
-@pytest.mark.parametrize("optimizer, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+@pytest.mark.parametrize(
+    "optimizer, propcomp",
+    [
+        ("adam", "memory-efficient"),
+        ("l-bfgs", "memory-efficient"),
+        ("adam", "time-efficient"),
+        ("l-bfgs", "time-efficient"),
+    ],
+)
 def test_dissipative_model(optimizer, propcomp):
-    result_fg, result_qt = get_results_for_dissipation_problem(optimizer, propcomp)
+    result_fg, result_qt = get_results_for_dissipation_problem(
+        optimizer, propcomp
+    )
     print("result_qt.fid_err: ", result_qt.fid_err)
     print("result_fg.final_fidelity: ", result_fg.final_fidelity)
     assert jnp.allclose(
@@ -736,17 +772,25 @@ def test_dissipative_model(optimizer, propcomp):
         (
             "state",
             get_targets_for_qubit_in_cavity_problem()[0],
-            get_finals(*get_results_for_qubit_in_cavity_problem("adam", "time-efficient"))[0],
+            get_finals(
+                *get_results_for_qubit_in_cavity_problem(
+                    "adam", "time-efficient"
+                )
+            )[0],
         ),
         (
             "unitary",
             get_targets_for_cnot_problem()[0],
-            get_finals(*get_results_for_cnot_problem("adam", "memory-efficient"))[0],
+            get_finals(
+                *get_results_for_cnot_problem("adam", "memory-efficient")
+            )[0],
         ),
         (
             "superoperator",
             get_targets_for_dissipation_problem()[0],
-            get_finals(*get_results_for_dissipation_problem("adam", "time-efficient"))[0],
+            get_finals(
+                *get_results_for_dissipation_problem("adam", "time-efficient")
+            )[0],
         ),
     ],
 )

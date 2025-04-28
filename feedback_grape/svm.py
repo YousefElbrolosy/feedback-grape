@@ -5,6 +5,7 @@ from utils.operators import *
 from utils.states import basis, coherent
 from utils.tensor import tensor
 import time
+
 T = 1  # microsecond
 num_of_intervals = 100
 N = 30  # dimension of hilbert space
@@ -20,6 +21,8 @@ cat_target_state = coherent(N, alpha) + jnp.exp(-1j * phi) * coherent(
     N, -alpha
 )
 psi_target = tensor(basis(2), cat_target_state)
+
+
 # Using Jaynes-Cummings model for qubit + cavity
 def build_grape_format_ham():
     """
@@ -43,8 +46,8 @@ def build_grape_format_ham():
 
     return H0, H_ctrl
 
-def test_mem():
 
+def test_mem():
     start_time = time.time()
     # Outputs Fidelity of 0.9799029117042408 but in like 30 minutes
     H0, H_ctrl = build_grape_format_ham()
@@ -74,9 +77,8 @@ def test_mem():
 # 0.9940626257082056
 # 1000
 
+
 def test_time():
-
-
     start_time = time.time()
     # Outputs Fidelity of 0.9799029117042408 but in like 30 minutes
     H0, H_ctrl = build_grape_format_ham()
@@ -96,6 +98,7 @@ def test_time():
     print(f"Execution time: {end_time - start_time} seconds")
     print(res_fg.final_fidelity)
     print(res_fg.iterations)
+
 
 if __name__ == "__main__":
     test_mem()
