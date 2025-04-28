@@ -94,16 +94,16 @@ def _compute_propagators(
     return propagators
 
 
-def _compute_forward_evolution(propagators, U_0):
+def _compute_forward_evolution_time_efficient(propagators, U_0):
     """
     Compute the forward evolution states (ρⱼ) according to the paper's definition.
     ρⱼ = Uⱼ···U₁ρ₀U₁†···Uⱼ†
 
     Args:
         propagators: List of propagators for each time step.
-        U_0: Initial density operator.
+        U_0: Initial operator.
     Returns:
-        rho_j: List of density operators for each time step j.
+        U_final: final operator after evolution.
     """
 
     U_final = U_0
@@ -114,6 +114,42 @@ def _compute_forward_evolution(propagators, U_0):
         U_final = U_j @ U_final
 
     return U_final
+
+
+def _compute_forward_evolution_memory_efficient(
+    H_drift, H_control_array, delta_t, control_amplitudes, U_0
+):
+    """
+    Computes the forward evolution using a memory-efficient method.
+    Where we donot precompute all propagators, but rather compute them
+    on the fly.
+
+    Args:
+        H_drift: Drift Hamiltonian.
+        H_control_array: Array of control Hamiltonians.
+        delta_t: Time step for evolution.
+        control_amplitudes: Control amplitudes for each time slot.
+        U_0: Initial operator.
+    
+    Returns:
+        U_final: Final operator after evolution.
+    """
+
+    num_t_slots = control_amplitudes.shape[0]
+    U_final = U_0
+
+    for j in range(num_t_slots):
+        # Calculate total Hamiltonian for time step j
+        H_0 = H_drift
+        H_control = 0
+        for k in range(len(H_control_array)):
+            H_control += control_amplitudes[j, k] * H_control_array[k]
+
+        # Compute U_j and immediately update U_final to discard U_j from memory
+        U_final = jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control)) @ U_final
+
+    return U_final
+
 
 
 # TODO: Why is this controlled by an amplitude
@@ -280,6 +316,7 @@ def optimize_pulse(
     learning_rate: float = 0.01,
     type: str = "unitary",
     optimizer: str = "adam",
+    propcomp: str = "time-efficient",
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
@@ -294,6 +331,9 @@ def optimize_pulse(
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold for _fidelity change.
         learning_rate: Learning rate for gradient ascent.
+        type: Type of fidelity calculation ("unitary" or "state" or "superoperator").
+        optimizer: Optimizer to use ("adam" or "L-BFGS").
+        propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
@@ -310,7 +350,12 @@ def optimize_pulse(
         propagators = _compute_propagators(
             H_drift, H_control_array, delta_t, control_amplitudes
         )
-        U_final = _compute_forward_evolution(propagators, U_0)
+        if propcomp == "time-efficient":
+            U_final = _compute_forward_evolution_time_efficient(propagators, U_0)
+        else:
+            U_final = _compute_forward_evolution_memory_efficient(
+                H_drift, H_control_array, delta_t, control_amplitudes, U_0
+            )
         return fidelity(
             C_target=C_target,
             U_final=U_final,
@@ -335,10 +380,15 @@ def optimize_pulse(
             convergence_threshold,
         )
 
-    propagators = _compute_propagators(
-        H_drift, H_control_array, delta_t, control_amplitudes
-    )
-    rho_final = _compute_forward_evolution(propagators, U_0)
+    if propcomp == "time-efficient":
+        propagators = _compute_propagators(
+            H_drift, H_control_array, delta_t, control_amplitudes
+        )
+        rho_final = _compute_forward_evolution_time_efficient(propagators, U_0)
+    else:
+        rho_final = _compute_forward_evolution_memory_efficient(
+            H_drift, H_control_array, delta_t, control_amplitudes, U_0
+        )
 
     final_res = result(
         control_amplitudes,

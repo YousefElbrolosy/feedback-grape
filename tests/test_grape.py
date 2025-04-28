@@ -35,7 +35,7 @@ from qutip.core.superoperator import (
 
 # Testing target Operator transformations
 
-# TODO: check if the parameterize synatx is correct for different optimizers
+# TODO: check if the parameterize synatx is correct for different optimizers and propcomps
 # TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
 
 
@@ -141,7 +141,7 @@ def get_targets_for_qubit_in_cavity_problem():
     return psi_fg, psi_qt
 
 
-def get_results_for_qubit_in_cavity_problem(optimizer):
+def get_results_for_qubit_in_cavity_problem(optimizer, propcomp):
     N_cav = 10
     chi = 0.2385 * (2 * jnp.pi)
     mu_qub = 4.0
@@ -239,6 +239,7 @@ def get_results_for_qubit_in_cavity_problem(optimizer):
         learning_rate=1e-2,
         type="state",
         optimizer=optimizer,
+        propcomp=propcomp,
     )
 
     # Using qutip QTRL
@@ -316,7 +317,7 @@ def get_targets_for_cnot_problem():
     return C_target_fg, C_target_qt
 
 
-def get_results_for_cnot_problem(optimizer):
+def get_results_for_cnot_problem(optimizer, propcomp):
     """
     Test the optimize_pulse function.
     """
@@ -354,6 +355,7 @@ def get_results_for_cnot_problem(optimizer):
         max_iter=500,
         learning_rate=1e-2,
         optimizer=optimizer,
+        propcomp=propcomp,
     )
 
     ############ Qutip QTRL
@@ -399,7 +401,7 @@ def get_targets_for_hadamard_problem():
     return C_target_fg, C_target_qt
 
 
-def get_results_for_hadamard_problen(optimizer):
+def get_results_for_hadamard_problen(optimizer, propcomp):
     ###### General
     # Number of time slots
     n_ts = 10
@@ -462,6 +464,7 @@ def get_results_for_hadamard_problen(optimizer):
         max_iter=max_iter,
         learning_rate=1e-2,
         optimizer=optimizer,
+        propcomp=propcomp,
     )
 
     return (result_fg, result_qt)
@@ -547,7 +550,7 @@ def get_targets_for_dissipation_problem():
     return C_target_fg, C_target_qt
 
 
-def get_results_for_dissipation_problem(optimizer):
+def get_results_for_dissipation_problem(optimizer, propcomp):
     # Number of time slots
     n_ts = 10
     # Time allowed for the evolution
@@ -600,6 +603,7 @@ def get_results_for_dissipation_problem(optimizer):
         convergence_threshold=1e-16,
         max_iter=1000,
         learning_rate=0.1,
+        propcomp=propcomp,
     )
 
     ## Qutip
@@ -681,9 +685,9 @@ def get_finals(result_fg, result_qt):
     return final_operator_fg, final_operator_qt
 
 
-@pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
-def test_cnot(optimizer):
-    result_fg, result_qt = get_results_for_cnot_problem(optimizer)
+@pytest.mark.parametrize("optimize, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+def test_cnot(optimize, propcomp):
+    result_fg, result_qt = get_results_for_cnot_problem(optimize, propcomp)
     # print("reference.evo_full_final.full()): ",reference.evo_full_final.full())
     # print("fg result: ",result)
     # assert jnp.allclose(result["final_operator"], reference.evo_full_final.full(), atol=1e-1), "The matrices are not close enough."
@@ -694,9 +698,9 @@ def test_cnot(optimizer):
     ), "The fidelities are not close enough."
 
 
-@pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
-def test_hadamard(optimizer):
-    result_fg, result_qt = get_results_for_hadamard_problen(optimizer)
+@pytest.mark.parametrize("optimize, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+def test_hadamard(optimize, propcomp):
+    result_fg, result_qt = get_results_for_hadamard_problen(optimize, propcomp)
     print("result_qt.fid_err: ", result_qt.fid_err)
     print("result_fg.final_fidelity: ", result_fg.final_fidelity)
     assert jnp.allclose(
@@ -705,9 +709,9 @@ def test_hadamard(optimizer):
 
 
 # Testing states
-@pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
-def test_qubit_in_cavity(optimizer):
-    result_fg, result_qt = get_results_for_qubit_in_cavity_problem(optimizer)
+@pytest.mark.parametrize("optimize, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+def test_qubit_in_cavity(optimizer, propcomp):
+    result_fg, result_qt = get_results_for_qubit_in_cavity_problem(optimizer, propcomp)
     print("result_qt.fid: ", 1 - result_qt.fid_err)
     print("result_fg.final_fidelity: ", result_fg.final_fidelity)
     assert jnp.allclose(
@@ -715,9 +719,9 @@ def test_qubit_in_cavity(optimizer):
     ), "The fidelities are not close enough."
 
 
-@pytest.mark.parametrize("optimizer", ["adam", "l-bfgs"])
-def test_dissipative_model(optimizer):
-    result_fg, result_qt = get_results_for_dissipation_problem(optimizer)
+@pytest.mark.parametrize("optimizer, propcomp", [("adam", "memory-efficient"), ("l-bfgs", "memory-efficient"), ("adam", "time-efficient"), ("l-bfgs", "time-efficient")])
+def test_dissipative_model(optimizer, propcomp):
+    result_fg, result_qt = get_results_for_dissipation_problem(optimizer, propcomp)
     print("result_qt.fid_err: ", result_qt.fid_err)
     print("result_fg.final_fidelity: ", result_fg.final_fidelity)
     assert jnp.allclose(
@@ -732,17 +736,17 @@ def test_dissipative_model(optimizer):
         (
             "state",
             get_targets_for_qubit_in_cavity_problem()[0],
-            get_finals(*get_results_for_qubit_in_cavity_problem("adam"))[0],
+            get_finals(*get_results_for_qubit_in_cavity_problem("adam", "time-efficient"))[0],
         ),
         (
             "unitary",
             get_targets_for_cnot_problem()[0],
-            get_finals(*get_results_for_cnot_problem("adam"))[0],
+            get_finals(*get_results_for_cnot_problem("adam", "memory-efficient"))[0],
         ),
         (
             "superoperator",
             get_targets_for_dissipation_problem()[0],
-            get_finals(*get_results_for_dissipation_problem("adam"))[0],
+            get_finals(*get_results_for_dissipation_problem("adam", "time-efficient"))[0],
         ),
     ],
 )

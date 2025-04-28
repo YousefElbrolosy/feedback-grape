@@ -102,6 +102,7 @@ def test_time_dep():
     learning_rate = 1e-2
     type_req = "state"
     optimizer = "l-bfgs"
+    propcomp = "memory-efficient"
     return (
         H0_grape,
         H_ctrl_grape,
@@ -114,6 +115,7 @@ def test_time_dep():
         learning_rate,
         type_req,
         optimizer,
+        propcomp
     )
 
 
@@ -173,6 +175,7 @@ def test_cat_state():
     from feedback_grape.utils.operators import identity
     from feedback_grape.utils.states import basis, coherent
     from feedback_grape.utils.tensor import tensor
+
     T = 1  # microsecond
     num_of_intervals = 100
     N = 30  # dimension of hilbert space
@@ -188,6 +191,7 @@ def test_cat_state():
         N, -alpha
     )
     psi_target = tensor(basis(2), cat_target_state)
+
     # Using Jaynes-Cummings model for qubit + cavity
     def build_grape_format_ham():
         """
@@ -210,6 +214,7 @@ def test_cat_state():
         H_ctrl = [H_ctrl_qub, H_ctrl_qub_dag, H_ctrl_cav, H_ctrl_cav_dag]
 
         return H0, H_ctrl
+
     # Outputs Fidelity of 0.9799029117042408 but in like 30 minutes
     H0, H_ctrl = build_grape_format_ham()
     res = fg.optimize_pulse(
@@ -239,6 +244,7 @@ def simple_vectorized_wrapper():
         learning_rate,
         type_req,
         optimizer,
+        propcomp,
     ) = test_time_dep()
     batch_size = 2
     H_drift_batched = jnp.stack(
@@ -250,7 +256,7 @@ def simple_vectorized_wrapper():
     U_0_batched = jnp.stack([psi0] * batch_size)  # Shape: (2, dim)
     C_target_batched = jnp.stack([psi] * batch_size)  # Shape: (2, dim)
     # Define vectorized optimize_pulse
-    vectorized_optimize = jax.pmap(
+    vectorized_optimize = jax.vmap(
         lambda H_d, H_c, U_0, C_t: optimize_pulse(
             H_d,
             H_c,
@@ -263,6 +269,7 @@ def simple_vectorized_wrapper():
             learning_rate,
             type_req,
             optimizer,
+            propcomp
         ),
         in_axes=(
             0,
@@ -289,5 +296,5 @@ def simple_vectorized_wrapper():
 
 
 if __name__ == "__main__":
-    # simple_vectorized_wrapper()
-    test_cat_state()
+    simple_vectorized_wrapper()
+    # test_cat_state()
