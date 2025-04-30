@@ -9,9 +9,7 @@ with open("README.md", "r") as f:
 if __name__ == "__main__":
     # Installs requried packages
     setup(
-        packages = find_packages(include=
-                                 ["feedback_grape", "feedback_grape.*"]
-                                ),
+        packages=find_packages(include=["feedback_grape", "feedback_grape.*"]),
         long_description=description,
         long_description_content_type="text/markdown",
     )

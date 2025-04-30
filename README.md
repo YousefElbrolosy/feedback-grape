@@ -14,6 +14,9 @@ To install dependencies necessary for testing, linting, formating, ... <br>
 `pip install -r requirements_dev.txt` <br>
 To be able to render the jupyter notebooks, make sure to install pandoc, in conda the command is: <br> 
 `conda install conda-forge::pandoc` <br>
+To be able to run your code on GPUs please make sure to install jax[cuda12] using the following command: <br>
+`pip install -U "jax[cuda12]"` or <br>
+`pip install -r requirements_gpu.txt` <br>
 
 
 ## Documentation

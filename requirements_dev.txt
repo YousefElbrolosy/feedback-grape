@@ -20,3 +20,5 @@ qutip==5.1.1
 # qutip_qtrl for testing grape
 qutip_qtrl==0.1.5
 qutip_qip==0.4.1
+# for lexer (showing python code in the notebook)
+ipython==9.1.0
