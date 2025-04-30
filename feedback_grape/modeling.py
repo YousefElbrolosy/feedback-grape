@@ -1,4 +1,5 @@
-from utils.operators import (
+# type: ignore
+from feedback_grape.utils.operators import (
     create,
     destroy,
     identity,
@@ -7,7 +8,7 @@ from utils.operators import (
     sigmay,
     sigmaz,
 )
-from utils.tensor import tensor
+from feedback_grape.utils.tensor import tensor
 
 
 class _Qubit:

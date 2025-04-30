@@ -10,7 +10,6 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from functools import partial
-import qutip as qt
 
 jax.config.update("jax_enable_x64", True)
 # Implemented adam/L-BFGS optimizers
@@ -304,7 +303,7 @@ def _optimize_L_BFGS(
     return final_params, final_fidelity, final_iter_idx
 
 
-def isket(a: jnp.ndarray) -> bool:
+def _isket(a: jnp.ndarray) -> bool:
     """
     Check if the input is a ket (column vector).
     Args:
@@ -312,10 +311,18 @@ def isket(a: jnp.ndarray) -> bool:
     Returns:
         bool: True if A is a ket, False otherwise.
     """
-    return a.ndim == 1 and a.shape[0] > 1
+    if not isinstance(a, jnp.ndarray):
+        return False
+
+    # Check shape - a ket should be a column vector (n x 1)
+    shape = a.shape
+    if len(shape) != 2 or shape[1] != 1:
+        return False
+
+    return True
 
 
-def isbra(a: jnp.ndarray) -> bool:
+def _isbra(a: jnp.ndarray) -> bool:
     """
     Check if the input is a bra (row vector).
     Args:
@@ -323,10 +330,18 @@ def isbra(a: jnp.ndarray) -> bool:
     Returns:
         bool: True if A is a bra, False otherwise.
     """
-    return a.ndim == 1 and a.shape[0] > 1 and a.shape[0] == 1
+    if not isinstance(a, jnp.ndarray):
+        return False
+
+    # Check shape - a bra should be a row vector (1 x n)
+    shape = a.shape
+    if len(shape) != 2 or shape[0] != 1:
+        return False
+
+    return True
 
 
-def ket2dm(a: jnp.ndarray) -> jnp.ndarray:
+def _ket2dm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Convert a ket to a density matrix.
     Args:
@@ -362,19 +377,19 @@ def _state_density_fidelity(A, B):
         Fidelity pseudo-metric between A and B.
 
     """
-    if isket(A) or isbra(A):
-        if isket(B) or isbra(B):
+    if _isket(A) or _isbra(A):
+        if _isket(B) or _isbra(B):
             A = A / jnp.linalg.norm(A)
             B = B / jnp.linalg.norm(B)
             # The fidelity for pure states reduces to the modulus of their
             # inner product.
-            return jnp.abs(A.overlap(B))
+            return jnp.abs(jnp.vdot(A, B)) ** 2
         # Take advantage of the fact that the density operator for A
         # is a projector to avoid a sqrtm call.
         A = A / jnp.linalg.norm(A)
-        sqrtmA = ket2dm(A)
+        sqrtmA = _ket2dm(A)
     else:
-        if isket(B) or isbra(B):
+        if _isket(B) or _isbra(B):
             # Swap the order so that we can take a more numerically
             # stable square root of B.
             return _state_density_fidelity(B, A)
@@ -396,8 +411,6 @@ def _state_density_fidelity(A, B):
     return jnp.real(jnp.sum(jnp.sqrt(eig_vals)))
 
 
-# TODO: account for density matrix fidelity
-# TODO: check Pavlo's definition of fidelitiest (photo)
 def fidelity(*, C_target, U_final, type="unitary"):
     """
     Computes the fidelity of the final state/operator/density matrix/superoperator
@@ -405,16 +418,15 @@ def fidelity(*, C_target, U_final, type="unitary"):
 
     For calculating the fidelity of superoperators, the tracediff method is used.
     The fidelity is calculated as:
-        - For unitary: Tr(C_target^† U_final) / dim
-        - For state: |<C_target|U_final>|^2 where C_target and U_final are normalized
-        - For density: |<C_target|U_final>|^2 where C_target and U_final are normalized
-        - For superoperator: 1 - (0.5*Tr(|C_target - U_final|)) / C_target.dim
+    - For unitary: ``Tr(C_target^† U_final) / dim``
+    - For state: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
+    - For density: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
+    - For superoperator: ``1 - (0.5 * Tr(|C_target - U_final|)) / C_target.dim``
 
     Args:
         C_target: Target operator.
         U_final: Final operator after evolution.
-        type: Type of fidelity calculation ("unitary" or "state" or "superoperator
-        (using tracediff method)") or "density")
+        type: Type of fidelity calculation ("unitary", "state", "density", or "superoperator (using tracediff method)")
     Returns:
         fidelity: Fidelity value.
     """
@@ -475,10 +487,10 @@ def optimize_pulse(
         learning_rate: Learning rate for gradient ascent.
         type: Type of fidelity calculation ("unitary" or "state" or "density" or "superoperator").
             When to use each type:
-                - "unitary": For unitary evolution.
-                - "state": For state evolution.
-                - "density": For density matrix evolution.
-                - "superoperator": For superoperator evolution (using tracediff method).
+            - "unitary": For unitary evolution.
+            - "state": For state evolution.
+            - "density": For density matrix evolution.
+            - "superoperator": For superoperator evolution (using tracediff method).
         optimizer: Optimizer to use ("adam" or "L-BFGS").
         propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
     Returns:

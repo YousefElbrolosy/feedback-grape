@@ -1,9 +1,9 @@
 # ruff: noqa
-import grape as fg
+import feedback_grape.grape as fg
 import jax.numpy as jnp
-from utils.operators import *
-from utils.states import basis, coherent
-from utils.tensor import tensor
+from feedback_grape.utils.operators import *
+from feedback_grape.utils.states import basis, coherent
+from feedback_grape.utils.tensor import tensor
 import time
 
 T = 1  # microsecond

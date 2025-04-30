@@ -15,7 +15,7 @@ import jax.numpy as jnp
 # TODO: check how tensor can take only one arg
 
 
-def tensor(*args) -> jnp.ndarray:
+def tensor(*args: jnp.ndarray) -> jnp.ndarray:
     """
     Compute the tensor/Kronecker product of two quantum objects.
 
@@ -28,7 +28,7 @@ def tensor(*args) -> jnp.ndarray:
     # Ensure inputs are reshaped properly for Kronecker product
     if len(args) < 2:
         return args[0]
-    args = [arg.reshape(-1, 1) if arg.ndim == 1 else arg for arg in args]
+    args = [arg.reshape(-1, 1) if arg.ndim == 1 else arg for arg in args]  # type: ignore
     result = args[0]
     for arg in args[1:]:
         result = jnp.kron(result, arg)
