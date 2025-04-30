@@ -10,6 +10,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from functools import partial
+import qutip as qt
 
 jax.config.update("jax_enable_x64", True)
 # Implemented adam/L-BFGS optimizers
@@ -95,7 +96,7 @@ def _compute_propagators(
     return propagators
 
 
-def _compute_forward_evolution_time_efficient(propagators, U_0):
+def _compute_forward_evolution_time_efficient(propagators, U_0, type):
     """
     Compute the forward evolution states (ρⱼ) according to the paper's definition.
     ρⱼ = Uⱼ···U₁ρ₀U₁†···Uⱼ†
@@ -107,18 +108,28 @@ def _compute_forward_evolution_time_efficient(propagators, U_0):
         U_final: final operator after evolution.
     """
 
-    U_final = U_0
-    for U_j in propagators:
-        # Forward evolution
-        # Use below if density operator is used
-        # rho_final = U_j @ rho_final @ U_j.conj().T
-        U_final = U_j @ U_final
+    if type == "density":
+        rho_final = U_0
+        for U_j in propagators:
+            # Forward evolution
+            # Use below if density operator is used
+            rho_final = U_j @ rho_final @ U_j.conj().T
+        return rho_final
 
-    return U_final
+    else:
+        U_final = U_0
+
+        for U_j in propagators:
+            # Forward evolution
+            # Use below if density operator is used
+            # rho_final = U_j @ rho_final @ U_j.conj().T
+            U_final = U_j @ U_final
+
+        return U_final
 
 
 def _compute_forward_evolution_memory_efficient(
-    H_drift, H_control_array, delta_t, control_amplitudes, U_0
+    H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
 ):
     """
     Computes the forward evolution using a memory-efficient method.
@@ -137,21 +148,44 @@ def _compute_forward_evolution_memory_efficient(
     """
 
     num_t_slots = control_amplitudes.shape[0]
-    U_final = U_0
 
-    for j in range(num_t_slots):
-        # Calculate total Hamiltonian for time step j
-        H_0 = H_drift
-        H_control = 0
-        for k in range(len(H_control_array)):
-            H_control += control_amplitudes[j, k] * H_control_array[k]
+    if type == "density":
+        rho_final = U_0
+        for j in range(num_t_slots):
+            # Calculate total Hamiltonian for time step j
+            H_0 = H_drift
+            H_control = 0
+            for k in range(len(H_control_array)):
+                H_control += control_amplitudes[j, k] * H_control_array[k]
 
-        # Compute U_j and immediately update U_final to discard U_j from memory
-        U_final = (
-            jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control)) @ U_final
-        )
+            # Compute U_j and immediately update rho_final to discard U_j from memory
+            rho_final = (
+                jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control))
+                @ rho_final
+                @ jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control))
+                .conj()
+                .T
+            )
 
-    return U_final
+        return rho_final
+
+    else:
+        U_final = U_0
+
+        for j in range(num_t_slots):
+            # Calculate total Hamiltonian for time step j
+            H_0 = H_drift
+            H_control = 0
+            for k in range(len(H_control_array)):
+                H_control += control_amplitudes[j, k] * H_control_array[k]
+
+            # Compute U_j and immediately update U_final to discard U_j from memory
+            U_final = (
+                jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control))
+                @ U_final
+            )
+
+        return U_final
 
 
 # TODO: Why is this controlled by an amplitude
@@ -270,16 +304,117 @@ def _optimize_L_BFGS(
     return final_params, final_fidelity, final_iter_idx
 
 
+def isket(a: jnp.ndarray) -> bool:
+    """
+    Check if the input is a ket (column vector).
+    Args:
+        A: Input array.
+    Returns:
+        bool: True if A is a ket, False otherwise.
+    """
+    return a.ndim == 1 and a.shape[0] > 1
+
+
+def isbra(a: jnp.ndarray) -> bool:
+    """
+    Check if the input is a bra (row vector).
+    Args:
+        A: Input array.
+    Returns:
+        bool: True if A is a bra, False otherwise.
+    """
+    return a.ndim == 1 and a.shape[0] > 1 and a.shape[0] == 1
+
+
+def ket2dm(a: jnp.ndarray) -> jnp.ndarray:
+    """
+    Convert a ket to a density matrix.
+    Args:
+        a: Input ket (column vector).
+    Returns:
+        dm: Density matrix corresponding to the input ket.
+    """
+    return jnp.outer(a, a.conj())
+
+
+def _state_density_fidelity(A, B):
+    """
+    Inspired by qutip's implementation
+    Calculates the fidelity (pseudo-metric) between two density matrices.
+
+    Notes
+    -----
+    Uses the definition from Nielsen & Chuang, "Quantum Computation and Quantum
+    Information". It is the square root of the fidelity defined in
+    R. Jozsa, Journal of Modern Optics, 41:12, 2315 (1994), used in
+    :func:`qutip.core.metrics.process_fidelity`.
+
+    Parameters
+    ----------
+    A : qobj
+        Density matrix or state vector.
+    B : qobj
+        Density matrix or state vector with same dimensions as A.
+
+    Returns
+    -------
+    fid : float
+        Fidelity pseudo-metric between A and B.
+
+    """
+    if isket(A) or isbra(A):
+        if isket(B) or isbra(B):
+            A = A / jnp.linalg.norm(A)
+            B = B / jnp.linalg.norm(B)
+            # The fidelity for pure states reduces to the modulus of their
+            # inner product.
+            return jnp.abs(A.overlap(B))
+        # Take advantage of the fact that the density operator for A
+        # is a projector to avoid a sqrtm call.
+        A = A / jnp.linalg.norm(A)
+        sqrtmA = ket2dm(A)
+    else:
+        if isket(B) or isbra(B):
+            # Swap the order so that we can take a more numerically
+            # stable square root of B.
+            return _state_density_fidelity(B, A)
+        # If we made it here, both A and B are operators, so
+        # we have to take the sqrtm of one of them.
+        A = A / jnp.linalg.trace(A)
+        B = B / jnp.linalg.trace(B)
+        sqrtmA = jax.scipy.linalg.sqrtm(A)
+
+    if sqrtmA.shape != B.shape:
+        raise TypeError('Density matrices do not have same dimensions.')
+
+    # We don't actually need the whole matrix here, just the trace
+    # of its square root, so let's just get its eigenenergies instead.
+    # We also truncate negative eigenvalues to avoid nan propagation;
+    # even for positive semidefinite matrices, small negative eigenvalues
+    # can be reported.
+    eig_vals = jnp.linalg.eigvals(sqrtmA @ B @ sqrtmA)
+    return jnp.real(jnp.sum(jnp.sqrt(eig_vals)))
+
+
 # TODO: account for density matrix fidelity
 # TODO: check Pavlo's definition of fidelitiest (photo)
 def fidelity(*, C_target, U_final, type="unitary"):
     """
-    Computes the fidelity of the final state with respect to the target state.
+    Computes the fidelity of the final state/operator/density matrix/superoperator
+    with respect to the target state/operator/density matrix/superoperator.
+
+    For calculating the fidelity of superoperators, the tracediff method is used.
+    The fidelity is calculated as:
+        - For unitary: Tr(C_target^† U_final) / dim
+        - For state: |<C_target|U_final>|^2 where C_target and U_final are normalized
+        - For density: |<C_target|U_final>|^2 where C_target and U_final are normalized
+        - For superoperator: 1 - (0.5*Tr(|C_target - U_final|)) / C_target.dim
 
     Args:
         C_target: Target operator.
         U_final: Final operator after evolution.
-        type: Type of fidelity calculation ("unitary" or "state"). [density not yet accounted for]
+        type: Type of fidelity calculation ("unitary" or "state" or "superoperator
+        (using tracediff method)") or "density")
     Returns:
         fidelity: Fidelity value.
     """
@@ -291,22 +426,26 @@ def fidelity(*, C_target, U_final, type="unitary"):
         trace_diff = 0.5 * jnp.abs(jnp.trace(diff))
         return 1.0 - trace_diff / C_target.shape[0]
     elif type == "unitary":
-        overlap = (
-            jnp.trace(jnp.matmul(C_target.conj().T, U_final))
-            / C_target.shape[0]
-        )
-    else:
         # TODO: check accuracy of this, do we really need vector conjugate or .dot will simply work?
         norm_C_target = C_target / jnp.linalg.norm(C_target)
         norm_U_final = U_final / jnp.linalg.norm(U_final)
 
         overlap = jnp.vdot(norm_C_target, norm_U_final)
+    elif type == "density" or type == "state":
+        # normalization occurs in the _state_density_fidelity function
+        return _state_density_fidelity(
+            C_target,
+            U_final,
+        )
+    else:
+        raise ValueError(
+            "Invalid type. Choose 'unitary', 'state', 'density', 'superoperator'."
+        )
     return jnp.abs(overlap) ** 2
 
 
 # for unitary evolution (not using density operator)
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
-@partial(jax.jit, static_argnums=[4, 5, 6, 7, 8, 9, 10, 11])
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
@@ -334,7 +473,12 @@ def optimize_pulse(
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold for _fidelity change.
         learning_rate: Learning rate for gradient ascent.
-        type: Type of fidelity calculation ("unitary" or "state" or "superoperator").
+        type: Type of fidelity calculation ("unitary" or "state" or "density" or "superoperator").
+            When to use each type:
+                - "unitary": For unitary evolution.
+                - "state": For state evolution.
+                - "density": For density matrix evolution.
+                - "superoperator": For superoperator evolution (using tracediff method).
         optimizer: Optimizer to use ("adam" or "L-BFGS").
         propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
     Returns:
@@ -350,16 +494,21 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _fidelity(control_amplitudes):
-        propagators = _compute_propagators(
-            H_drift, H_control_array, delta_t, control_amplitudes
-        )
         if propcomp == "time-efficient":
+            propagators = _compute_propagators(
+                H_drift, H_control_array, delta_t, control_amplitudes
+            )
             U_final = _compute_forward_evolution_time_efficient(
-                propagators, U_0
+                propagators, U_0, type
             )
         else:
             U_final = _compute_forward_evolution_memory_efficient(
-                H_drift, H_control_array, delta_t, control_amplitudes, U_0
+                H_drift,
+                H_control_array,
+                delta_t,
+                control_amplitudes,
+                U_0,
+                type,
             )
         return fidelity(
             C_target=C_target,
@@ -389,10 +538,12 @@ def optimize_pulse(
         propagators = _compute_propagators(
             H_drift, H_control_array, delta_t, control_amplitudes
         )
-        rho_final = _compute_forward_evolution_time_efficient(propagators, U_0)
+        rho_final = _compute_forward_evolution_time_efficient(
+            propagators, U_0, type
+        )
     else:
         rho_final = _compute_forward_evolution_memory_efficient(
-            H_drift, H_control_array, delta_t, control_amplitudes, U_0
+            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
         )
 
     final_res = result(

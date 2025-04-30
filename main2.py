@@ -115,7 +115,7 @@ def test_time_dep():
         learning_rate,
         type_req,
         optimizer,
-        propcomp
+        propcomp,
     )
 
 
