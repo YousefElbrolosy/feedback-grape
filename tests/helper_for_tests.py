@@ -5,7 +5,8 @@ import qutip_qip.operations.gates as qip
 
 import jax.numpy as jnp
 import jax
-from feedback_grape.grape import optimize_pulse, sesolve
+from feedback_grape.grape import optimize_pulse
+from feedback_grape.solver import sesolve, mesolve
 from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     identity,
@@ -28,7 +29,7 @@ from qutip.core.superoperator import (
 
 
 # State to state transfer example
-def get_targets_for_qubit_in_cavity_problem(type="density"):
+def get_targets_for_qubit_in_cavity_problem(type="state"):
     N_cav = 10
     chi = 0.2385 * (2 * jnp.pi)
     mu_qub = 4.0
@@ -75,10 +76,8 @@ def get_targets_for_qubit_in_cavity_problem(type="density"):
 
     psi0 = tensor(basis(2), basis(N_cav))
     if type == "density":
-        psi_fg = (
-            sesolve(H0 + H_ctrl, psi0, delta_ts)
-            @ sesolve(H0 + H_ctrl, psi0, delta_ts).conj().T
-        )
+        psi0 = psi0 @ psi0.conj().T
+        psi_fg = mesolve(H0 + H_ctrl, psi0, delta_ts)
     else:
         psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts)
     # Using qutip QTRL
@@ -129,7 +128,11 @@ def get_targets_for_qubit_in_cavity_problem(type="density"):
     e_qub_qt = np.repeat(np.array(e_qub), time_subintervals_num_qt)
     e_cav_qt = np.repeat(np.array(e_cav), time_subintervals_num_qt)
     H_qt = build_ham_qt(e_qub_qt, e_cav_qt)
-    psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
+    if type == "density":
+        psi0_qt = psi0_qt * psi0_qt.dag()
+        psi_qt = qt.mesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
+    else:
+        psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
 
     return psi_fg, psi_qt
 
@@ -668,7 +671,7 @@ def get_results_for_dissipation_problem(optimizer, propcomp):
 
 def get_targets_for_density_example():
     # Representation for time dependent Hamiltonian
-    return get_targets_for_qubit_in_cavity_problem()
+    return get_targets_for_qubit_in_cavity_problem(type="density")
 
 
 def get_results_for_density_example(optimizer, propcomp):
@@ -784,7 +787,6 @@ def get_results_for_density_example(optimizer, propcomp):
     result_fg = test_time_dep(optimizer, propcomp)
 
     ###
-
     def build_ham_qt(e_qub, e_cav):
         a = qt.tensor(qt.identity(2), qt.destroy(N_cav))
         adag = a.dag()
@@ -831,6 +833,7 @@ def get_results_for_density_example(optimizer, propcomp):
     e_qub_qt = np.repeat(np.array(e_qub), time_subintervals_num_qt)
     e_cav_qt = np.repeat(np.array(e_cav), time_subintervals_num_qt)
     H_qt = build_ham_qt(e_qub_qt, e_cav_qt)
+    # only for state vectors and unitary operators
     psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
 
     # Extract just the control operators from H_qt[1:] (not the coefficient arrays) (but that just completely discards the time dep part!)

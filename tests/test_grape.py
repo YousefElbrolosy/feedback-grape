@@ -193,11 +193,23 @@ def test_fidelity_fn(fid_type, target, final):
         "fidelities not close enough"
     )
 
+
 def test_sesolve():
     """
     Test the sesolve function from qutip.
     """
     psi_fg, psi_qt = get_targets_for_qubit_in_cavity_problem("state")
+    psi_fg_2, psi_qt_2 = get_targets_for_qubit_in_cavity_problem("density")
     assert jnp.allclose(psi_fg, psi_qt.full(), atol=1e-2), (
+        "The states are not close enough."
+    )
+
+    # NOTE: qt.sesolve(does not solve for density matrices)
+    # Schrodinger equation evolution of a state vector or unitary matrix
+    # for a given Hamiltonian.
+    # that's why we use internally when state == "density" the mesolve function
+    print("psi_fg_2: ", psi_fg_2)
+    print("psi_qt_2: ", psi_qt_2.full())
+    assert jnp.allclose(psi_fg_2, psi_qt_2.full(), atol=1e-2), (
         "The states are not close enough."
     )

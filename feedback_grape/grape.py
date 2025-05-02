@@ -38,27 +38,6 @@ class result(NamedTuple):
     """
 
 
-# TODO: see if iniital may not be necessarily a state rather an operator or density matrix
-# TODO: make it more efficient
-def sesolve(Hs, initial_state, delta_ts):
-    """
-    Find evolution operator for piecewise Hs on time intervals delts_ts
-
-    Args:
-        Hs: List of Hamiltonians for each time interval.
-        initiali_state: Initial state.
-        delta_ts: List of time intervals.
-    Returns:
-        U: Evolved state after applying the time-dependent Hamiltonians.
-
-    """
-    for i, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
-        U_intv = jax.scipy.linalg.expm(-1j * H * delta_t)
-        U: jnp.ndarray = U_intv if i == 0 else U_intv @ U
-    return U @ initial_state
-
-
-# TODO: see if you implement memory and precision efficient versions
 def _compute_propagators(
     H_drift,
     H_control_array,
