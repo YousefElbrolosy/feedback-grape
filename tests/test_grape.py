@@ -27,7 +27,6 @@ from tests.helper_for_tests import (
 
 # Testing target Operator transformations
 
-# TODO: check if the parameterize synatx is correct for different optimizers and propcomps
 # TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
 
 
@@ -125,7 +124,6 @@ def test_density_example(optimizer, propcomp):
     ), "The fidelities are not close enough."
 
 
-# TODO:
 @pytest.mark.parametrize(
     "fid_type, target, final",
     [
@@ -195,8 +193,6 @@ def test_fidelity_fn(fid_type, target, final):
         "fidelities not close enough"
     )
 
-
-# TODO:
 def test_sesolve():
     """
     Test the sesolve function from qutip.

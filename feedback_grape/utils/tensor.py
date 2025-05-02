@@ -12,7 +12,6 @@ import jax.numpy as jnp
 # TODO : Add proper citation for Nelsen and Chuang's book
 # TODO: Check if the output would rather be n object of our creation
 # TODO: make tensor work for n dimensions
-# TODO: check how tensor can take only one arg
 
 
 def tensor(*args: jnp.ndarray) -> jnp.ndarray:
