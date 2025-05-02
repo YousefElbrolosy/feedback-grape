@@ -7,7 +7,7 @@ import jax
 from grape import _isket
 
 
-# TODO: make it more efficient
+# TODO: make it more efficient (using ODE methods maybe?)
 def sesolve(Hs, initial_state, delta_ts):
     """
     Find evolution operator for piecewise Hs on time intervals delta_ts
@@ -27,7 +27,7 @@ def sesolve(Hs, initial_state, delta_ts):
         U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final
     return U_final
 
-
+# TODO: Add functionality for Liouvillian
 def mesolve(Hs, rho_0, delta_ts):
     """
     Master equation evolution of a density matrix for a given Hamiltonian and

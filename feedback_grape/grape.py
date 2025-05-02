@@ -37,7 +37,9 @@ class result(NamedTuple):
     Final operator after applying the optimized control amplitudes.
     """
 
-
+# TODO: for next 3 functions related to propagator computation
+# TODO: Confirm if for a Lioviliian (superoperator) the same evolution technique
+# TODO: can be used or should it be different?
 def _compute_propagators(
     H_drift,
     H_control_array,
