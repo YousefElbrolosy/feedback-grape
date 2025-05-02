@@ -2,6 +2,10 @@
 Module for solving the time-dependent Schrödinger equation and master equation
 """
 
+# TODO: IMPRORTANT: THIS CURRENTLY ALLOWS ONLY FOR UNITARY EVOLUTION
+# --> NEED TO ADD MASTER EQUATION EVOLUTION
+
+
 # ruff: noqa N8
 import jax
 from grape import _isket
