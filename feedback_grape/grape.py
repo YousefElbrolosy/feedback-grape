@@ -459,8 +459,8 @@ def optimize_pulse(
     Args:
         H_drift: Drift Hamiltonian.
         H_control: List of Control Hamiltonians.
-        U_0: Initial density operator.
-        C_target: Target operator.
+        U_0: Initial state or /unitary/density/super operator.
+        C_target: Target state or /unitary/density/super operator.
         num_t_slots: Number of time slots.
         total_evo_time: Total evolution time.
         max_iter: Maximum number of iterations.
