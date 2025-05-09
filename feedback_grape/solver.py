@@ -5,7 +5,6 @@ Module for solving the time-dependent Schrödinger equation and master equation
 # TODO: IMPRORTANT: THIS CURRENTLY ALLOWS ONLY FOR UNITARY EVOLUTION
 # --> NEED TO ADD MASTER EQUATION EVOLUTION
 
-
 # ruff: noqa N8
 import jax
 from grape import _isket
@@ -30,6 +29,7 @@ def sesolve(Hs, initial_state, delta_ts):
     for _, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
         U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final
     return U_final
+
 
 # TODO: Add functionality for Liouvillian
 def mesolve(Hs, rho_0, delta_ts):
