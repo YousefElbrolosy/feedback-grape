@@ -437,45 +437,6 @@ def fidelity(*, C_target, U_final, type="unitary"):
         )
     return jnp.abs(overlap) ** 2
 
-
-# QUESTION: should initial controls be provided by the user?
-def optimize_pulse_parameterized(
-    U_0: jnp.ndarray,
-    C_target: jnp.ndarray,
-    feedback: bool,  # True, False
-    parameterized_gates: list[callable],
-    num_time_steps: int,
-    mode: str,  # nn, lookup
-    goal: str,  # purity, fidelity, both
-    optimizer: str,  # adam, l-bfgs
-    max_iter: int,
-    convergence_threshold: float,
-    type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
-) -> result:
-    """
-    Optimizes pulse parameters for quantum systems based on the specified configuration.
-
-    Args:
-        U_0: Initial state or /unitary/density/super operator.
-        C_target: Target state or /unitary/density/super operator.
-        feedback (bool): Indicates whether feedback is enabled (True) or disabled (False).
-        parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        num_time_steps (int): The number of time steps for the optimization process.
-        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
-        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
-        optimizer (str): The optimization algorithm to use, such as 'adam' or 'l-bfgs'.
-        max_iter (int): The maximum number of iterations for the optimization process.
-        convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
-        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'superoperator'.
-                    This is primarily used for fidelity calculation.
-    Returns:
-        result: Dictionary containing optimized pulse and convergence data.
-    """
-    pass
-
-
-# for unitary evolution (not using density operator)
-# QUESTION: should non-parameterized hava an option for feedback as well?
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
 def optimize_pulse(
     H_drift: jnp.ndarray,

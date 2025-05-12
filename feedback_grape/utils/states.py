@@ -61,14 +61,23 @@ def coherent(n: int, alpha: complex) -> jnp.ndarray:
     return coherent_state
 
 
+
+def fock(n: int, n_cav: int) -> jnp.ndarray:
+    """
+    Creates a Fock state |n_cav⟩ in an n-dimensional Hilbert space.
+    """
+    return basis(n, n_cav)
+
 # TODO: confirm that implementation is indeed correct
+# TODO: This can actually be implemented related to basis states
 # TODO: test and compare with the qutip implementation
 # TODO: see if can be improved
-def fock(n: int, n_cav: int) -> jnp.ndarray:
+def fock_2(n: int, n_cav: int) -> jnp.ndarray:
     """
     Defines a fock state
     """
-    numerator = reduce(jnp.matmul, [create(n_cav) for _ in range(n)])
-    denominator = jnp.pow(jax.scipy.special.factorial(n), (0.5))
-    fock_state = (numerator / denominator) @ basis(n_cav)
+    numerator = reduce(jnp.matmul, [create(n) for _ in range(n_cav)])
+    denominator = jnp.pow(jax.scipy.special.factorial(n_cav), (0.5))
+    fock_state = (numerator / denominator) @ basis(n)
     return fock_state
+
