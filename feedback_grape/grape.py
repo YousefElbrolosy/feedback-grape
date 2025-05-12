@@ -229,6 +229,7 @@ def _optimize_adam(
     return params, final_fidelity, iter_idx + 1
 
 
+# TODO: L_bfgs ouputs error when params are complex amplitudes
 def _optimize_L_BFGS(
     _fidelity,
     control_amplitudes,
@@ -436,6 +437,7 @@ def fidelity(*, C_target, U_final, type="unitary"):
             "Invalid type. Choose 'unitary', 'state', 'density', 'superoperator'."
         )
     return jnp.abs(overlap) ** 2
+
 
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
 def optimize_pulse(

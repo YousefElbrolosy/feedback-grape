@@ -1,32 +1,48 @@
 # ruff: noqa N8
-from feedback_grape.grape import fidelity, result, _optimize_adam, _optimize_L_BFGS
+from feedback_grape.grape import (
+    fidelity,
+    result,
+    _optimize_adam,
+    _optimize_L_BFGS,
+)
 import jax
 import jax.numpy as jnp
+
 jax.config.update("jax_enable_x64", True)
+
 
 def _calculate_sequence_unitary(parameterized_gates, parameters, time_step):
     size = parameterized_gates[0](parameters[time_step][0]).shape[0]
     combined_unitary = jnp.eye(size)
-    for gate, parameter in zip(parameterized_gates, parameters[time_step]):
-        combined_unitary = combined_unitary @ gate(parameter)
+    for i, gate in enumerate(parameterized_gates):
+        param = parameters[time_step, i]
+        gate_unitary = gate(param)
+        combined_unitary = combined_unitary @ gate_unitary
+
     return combined_unitary
 
-# either this way or the parameter vectors are repeated for each time step
-def _calculate_trajectory(U_0, parameters, time_steps, parameterized_gates, type):
+
+def _compute_time_step(U_0, parameterized_gates, parameters, time_step, type):
+    combined_unitary = _calculate_sequence_unitary(
+        parameterized_gates, parameters, time_step
+    )
     if type == "density":
-        rho_t = U_0
-        for t in range(time_steps):
-            combined_unitary = _calculate_sequence_unitary(parameterized_gates, parameters, t)
-            rho_t = combined_unitary @ rho_t @ combined_unitary.conj().T
-            # if feedback is done, then it happens here (after each time step) based on measurement outcome
+        rho_t = combined_unitary @ U_0 @ combined_unitary.conj().T
         return rho_t
     else:
-        U_t = U_0
-        for t in range(time_steps):
-            combined_unitary = _calculate_sequence_unitary(parameterized_gates, parameters, t)
-            U_t = combined_unitary @ U_t
-            # if feedback is done, then it happens here (after each time step) based on measurement outcome
+        U_t = combined_unitary @ U_0
         return U_t
+
+
+# either this way or the parameter vectors are repeated for each time step
+def _calculate_trajectory(
+    U_0, parameters, time_steps, parameterized_gates, type
+):
+    U_t = U_0
+    for t in range(time_steps):
+        U_t = _compute_time_step(U_t, parameterized_gates, parameters, t, type)
+    return U_t
+
 
 # QUESTION: should non-parameterized hava an option for feedback as well? -- I think yes
 # QUESTION: should initial parameters be provided by the user?
@@ -36,7 +52,7 @@ def optimize_pulse_parameterized(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     feedback: bool,  # True, False
-    parameterized_gates: list[callable],
+    parameterized_gates: list[callable],  # type: ignore
     initial_parameters: jnp.ndarray,
     num_time_steps: int,
     mode: str,  # nn, lookup
@@ -47,7 +63,7 @@ def optimize_pulse_parameterized(
     learning_rate: float,
     type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
     propcomp: str = "time-efficient",  # time-efficient, memory-efficient
-) -> result:
+) -> result | None:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration.
 
@@ -77,7 +93,11 @@ def optimize_pulse_parameterized(
             # Compute the forward evolution using the parameterized gates
             if not feedback:
                 U_final = _calculate_trajectory(
-                    U_0, initial_parameters, num_time_steps, parameterized_gates, type
+                    U_0,
+                    initial_parameters,
+                    num_time_steps,
+                    parameterized_gates,
+                    type,
                 )
             return fidelity(
                 C_target=C_target,
@@ -105,9 +125,13 @@ def optimize_pulse_parameterized(
 
         if not feedback:
             U_final = _calculate_trajectory(
-                    U_0, optimized_parameters, num_time_steps, parameterized_gates, type
+                U_0,
+                optimized_parameters,
+                num_time_steps,
+                parameterized_gates,
+                type,
             )
-
+            # TODO: check if iter_idx outputs the correct number of iterations
             final_res = result(
                 optimized_parameters,
                 final_fidelity,
@@ -117,5 +141,4 @@ def optimize_pulse_parameterized(
 
         return final_res
     else:
-        pass  # TODO: implement this part
-
+        return None  # TODO: implement this part

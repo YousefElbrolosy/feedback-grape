@@ -7,7 +7,7 @@ Module for solving the time-dependent Schrödinger equation and master equation
 
 # ruff: noqa N8
 import jax
-from grape import _isket
+from feedback_grape.grape import _isket
 
 
 # TODO: make it more efficient (using ODE methods maybe?)
