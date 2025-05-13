@@ -11,6 +11,10 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 
+# here the time_step is important, because we do an intialization to all
+# parameters in all time steps, since we don't have feedback from one
+# time step to the next, and then all paramaters are updated
+# by the optimization loop at once
 def _calculate_sequence_unitary(parameterized_gates, parameters, time_step):
     size = parameterized_gates[0](parameters[time_step][0]).shape[0]
     combined_unitary = jnp.eye(size)
@@ -111,13 +115,17 @@ def optimize_pulse_parameterized(
             max_iter,
             convergence_threshold,
         )
-    else:
+    elif optimizer.upper() == "ADAM":
         optimized_parameters, final_fidelity, iter_idx = _optimize_adam(
             _fidelity,
             initial_parameters,
             max_iter,
             learning_rate,
             convergence_threshold,
+        )
+    else:
+        raise ValueError(
+            f"Optimizer {optimizer} not supported. Use 'adam' or 'l-bfgs'."
         )
     U_final = _calculate_trajectory(
         U_0,

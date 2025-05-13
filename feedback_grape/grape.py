@@ -438,6 +438,7 @@ def fidelity(*, C_target, U_final, type="unitary"):
         )
     return jnp.abs(overlap) ** 2
 
+
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
 # TODO: see if we need to implement purity functionality for normal grape as well
 def optimize_pulse(
@@ -519,13 +520,17 @@ def optimize_pulse(
             max_iter,
             convergence_threshold,
         )
-    else:
+    elif optimizer.upper() == "ADAM":
         control_amplitudes, final_fidelity, iter_idx = _optimize_adam(
             _fidelity,
             control_amplitudes,
             max_iter,
             learning_rate,
             convergence_threshold,
+        )
+    else:
+        raise ValueError(
+            f"Optimizer {optimizer} not supported. Use 'adam' or 'l-bfgs'."
         )
 
     if propcomp == "time-efficient":
