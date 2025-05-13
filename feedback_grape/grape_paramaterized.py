@@ -48,15 +48,14 @@ def _calculate_trajectory(
 # QUESTION: should initial parameters be provided by the user?
 # NOTE: Here a deliberate choice is made that the user should provide
 # initial parameters, since he/she might have a better guess than random initialization
+# TODO: see if we need to handle purity here
+# TODO: handle propcomp
 def optimize_pulse_parameterized(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
-    feedback: bool,  # True, False
     parameterized_gates: list[callable],  # type: ignore
     initial_parameters: jnp.ndarray,
     num_time_steps: int,
-    mode: str,  # nn, lookup
-    goal: str,  # purity, fidelity, both
     optimizer: str,  # adam, l-bfgs
     max_iter: int,
     convergence_threshold: float,
@@ -87,58 +86,52 @@ def optimize_pulse_parameterized(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
-    if goal == "fidelity":
 
-        def _fidelity(initial_parameters):
-            # Compute the forward evolution using the parameterized gates
-            if not feedback:
-                U_final = _calculate_trajectory(
-                    U_0,
-                    initial_parameters,
-                    num_time_steps,
-                    parameterized_gates,
-                    type,
-                )
-            return fidelity(
-                C_target=C_target,
-                U_final=U_final,
-                type=type,
-            )
+    def _fidelity(initial_parameters):
+        # Compute the forward evolution using the parameterized gates
+        U_final = _calculate_trajectory(
+            U_0,
+            initial_parameters,
+            num_time_steps,
+            parameterized_gates,
+            type,
+        )
+        return fidelity(
+            C_target=C_target,
+            U_final=U_final,
+            type=type,
+        )
 
-        if isinstance(optimizer, tuple):
-            optimizer = optimizer[0]
-        if optimizer.upper() == "L-BFGS":
-            optimized_parameters, final_fidelity, iter_idx = _optimize_L_BFGS(
-                _fidelity,
-                initial_parameters,
-                max_iter,
-                convergence_threshold,
-            )
-        else:
-            optimized_parameters, final_fidelity, iter_idx = _optimize_adam(
-                _fidelity,
-                initial_parameters,
-                max_iter,
-                learning_rate,
-                convergence_threshold,
-            )
-
-        if not feedback:
-            U_final = _calculate_trajectory(
-                U_0,
-                optimized_parameters,
-                num_time_steps,
-                parameterized_gates,
-                type,
-            )
-            # TODO: check if iter_idx outputs the correct number of iterations
-            final_res = result(
-                optimized_parameters,
-                final_fidelity,
-                iter_idx,
-                U_final,
-            )
-
-        return final_res
+    if isinstance(optimizer, tuple):
+        optimizer = optimizer[0]
+    if optimizer.upper() == "L-BFGS":
+        optimized_parameters, final_fidelity, iter_idx = _optimize_L_BFGS(
+            _fidelity,
+            initial_parameters,
+            max_iter,
+            convergence_threshold,
+        )
     else:
-        return None  # TODO: implement this part
+        optimized_parameters, final_fidelity, iter_idx = _optimize_adam(
+            _fidelity,
+            initial_parameters,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+        )
+    U_final = _calculate_trajectory(
+        U_0,
+        optimized_parameters,
+        num_time_steps,
+        parameterized_gates,
+        type,
+    )
+    # TODO: check if iter_idx outputs the correct number of iterations
+    final_res = result(
+        optimized_parameters,
+        final_fidelity,
+        iter_idx,
+        U_final,
+    )
+
+    return final_res

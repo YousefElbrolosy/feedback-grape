@@ -7,7 +7,7 @@ def test_parameterized_grape():
     Test the parameterized grape function.
     """
     # ruff: noqa
-    from feedback_grape.fgrape import optimize_pulse_parameterized
+    from feedback_grape.grape_paramaterized import optimize_pulse_parameterized
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -74,11 +74,8 @@ def test_parameterized_grape():
     result = optimize_pulse_parameterized(
         U_0=psi0,
         C_target=psi_target,
-        feedback=False,
         parameterized_gates=[qubit_unitary, qubit_cavity_unitary],
         initial_parameters=initial_parameters,
-        mode="nn",
-        goal="fidelity",
         num_time_steps=time_steps,
         optimizer="adam",
         max_iter=1000,

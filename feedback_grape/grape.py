@@ -438,8 +438,8 @@ def fidelity(*, C_target, U_final, type="unitary"):
         )
     return jnp.abs(overlap) ** 2
 
-
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
+# TODO: see if we need to implement purity functionality for normal grape as well
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
