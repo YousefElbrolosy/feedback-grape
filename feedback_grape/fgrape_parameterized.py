@@ -337,9 +337,14 @@ def _calculate_trajectory(
             )
         )
         total_log_prob += log_prob
-        gamma_delta_dict = {'gamma': current_params['gamma'], 'delta': current_params['delta']}
-        print("current_povm_params: ", gamma_delta_dict)
-        arr_of_povm_params = arr_of_povm_params.at[i].set(jnp.array([current_params['gamma'], current_params['delta']]))
+        gamma_delta_dict = {
+            'gamma': current_params['gamma'],
+            'delta': current_params['delta'],
+        }
+        # print("current_povm_params: ", gamma_delta_dict)
+        arr_of_povm_params = arr_of_povm_params.at[i].set(
+            jnp.array([current_params['gamma'], current_params['delta']])
+        )
 
     return rho_meas, measurement, total_log_prob, arr_of_povm_params
 
@@ -388,7 +393,7 @@ def optimize_pulse_with_feedback(
 
     key = jax.random.PRNGKey(0)
     if mode == "nn":
-        print("input shape: ", initial_params.shape)
+        # print("input shape: ", initial_params.shape)
         hidden_size = 30
         output_size = initial_params.shape[0]
 
@@ -474,7 +479,7 @@ def optimize_pulse_with_feedback(
                 final_purity=best_purity,
                 iterations=iter_idx,
                 final_state=rho_meas_best,
-                arr_of_povm_params=arr_of_povm_params
+                arr_of_povm_params=arr_of_povm_params,
             )
 
             return final_result

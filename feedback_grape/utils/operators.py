@@ -8,6 +8,7 @@ gates.py are more predefined in terms of dimensions I think?
 # TODO : see if we should give user ability to choose the dtype of the gates
 # TODO : see if we should jit the operators
 
+import jax
 import jax.numpy as jnp
 
 
@@ -87,3 +88,19 @@ def destroy(n: int, dtype: jnp.dtype = jnp.complex64) -> jnp.ndarray:  # type: i
     n-dimensional destruction operator
     """
     return _ladder(n, dagger=False, dtype=dtype)
+
+# TODO: test with dynamiqs version
+def cosm(a: jnp.ndarray):
+    """
+    Cosine of a matrix.
+    """
+    return (jax.scipy.linalg.expm(1j * a) + jax.scipy.linalg.expm(-1j * a)) / 2
+
+# TODO: test with dynamiqs version
+def sinm(a: jnp.ndarray):
+    """
+    Sine of a matrix.
+    """
+    return (jax.scipy.linalg.expm(1j * a) - jax.scipy.linalg.expm(-1j * a)) / (
+        2j
+    )
