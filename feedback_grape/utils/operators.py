@@ -89,12 +89,14 @@ def destroy(n: int, dtype: jnp.dtype = jnp.complex64) -> jnp.ndarray:  # type: i
     """
     return _ladder(n, dagger=False, dtype=dtype)
 
+
 # TODO: test with dynamiqs version
 def cosm(a: jnp.ndarray):
     """
     Cosine of a matrix.
     """
     return (jax.scipy.linalg.expm(1j * a) + jax.scipy.linalg.expm(-1j * a)) / 2
+
 
 # TODO: test with dynamiqs version
 def sinm(a: jnp.ndarray):

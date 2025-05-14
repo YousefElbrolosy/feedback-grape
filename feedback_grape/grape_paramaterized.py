@@ -39,7 +39,7 @@ def _compute_time_step(U_0, parameterized_gates, parameters, time_step, type):
 
 
 # either this way or the parameter vectors are repeated for each time step
-def _calculate_trajectory(
+def calculate_trajectory(
     U_0, parameters, time_steps, parameterized_gates, type
 ):
     U_t = U_0
@@ -93,7 +93,7 @@ def optimize_pulse_parameterized(
 
     def _fidelity(initial_parameters):
         # Compute the forward evolution using the parameterized gates
-        U_final = _calculate_trajectory(
+        U_final = calculate_trajectory(
             U_0,
             initial_parameters,
             num_time_steps,
@@ -128,7 +128,7 @@ def optimize_pulse_parameterized(
         raise ValueError(
             f"Optimizer {optimizer} not supported. Use 'adam' or 'l-bfgs'."
         )
-    U_final = _calculate_trajectory(
+    U_final = calculate_trajectory(
         U_0,
         optimized_parameters,
         num_time_steps,

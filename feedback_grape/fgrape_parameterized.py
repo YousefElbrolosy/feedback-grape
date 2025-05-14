@@ -287,7 +287,7 @@ def _calculate_time_step(
 
 # TODO: should one accumilate the log probabilities?
 # TODO: understand state management
-def _calculate_trajectory(
+def calculate_trajectory(
     rho_cav,
     time_steps,
     povm_measure_operator,
@@ -419,7 +419,7 @@ def optimize_pulse_with_feedback(
                     'delta': initial_params[0][1],
                 }
                 key_local = jax.random.PRNGKey(0)
-                rho_final, _, log_prob, _ = _calculate_trajectory(
+                rho_final, _, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     time_steps=num_time_steps,
                     povm_measure_operator=povm_measure_operator,
@@ -464,7 +464,7 @@ def optimize_pulse_with_feedback(
                 'delta': initial_params[0][1],
             }
 
-            rho_meas_best, _, _, arr_of_povm_params = _calculate_trajectory(
+            rho_meas_best, _, _, arr_of_povm_params = calculate_trajectory(
                 rho_cav=U_0,
                 time_steps=num_time_steps,
                 povm_measure_operator=povm_measure_operator,
