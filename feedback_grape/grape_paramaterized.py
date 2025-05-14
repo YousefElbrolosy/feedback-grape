@@ -114,6 +114,7 @@ def optimize_pulse_parameterized(
             initial_parameters,
             max_iter,
             convergence_threshold,
+            learning_rate,
         )
     elif optimizer.upper() == "ADAM":
         optimized_parameters, final_fidelity, iter_idx = _optimize_adam(

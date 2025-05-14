@@ -235,6 +235,7 @@ def _optimize_L_BFGS(
     control_amplitudes,
     max_iter,
     convergence_threshold,
+    learning_rate,
 ):
     """
     Uses L-BFGS to optimize the control amplitudes.
@@ -251,10 +252,11 @@ def _optimize_L_BFGS(
     def neg_fidelity(params, **kwargs):
         return -_fidelity(params, **kwargs)
 
-    opt = optax.lbfgs()
+    opt = optax.lbfgs(learning_rate)
 
     value_and_grad_fn = optax.value_and_grad_from_state(neg_fidelity)
 
+    @jax.jit
     def step(carry):
         control_amplitudes, state, iter_idx = carry
         value, grad = value_and_grad_fn(control_amplitudes, state=state)
@@ -519,6 +521,7 @@ def optimize_pulse(
             control_amplitudes,
             max_iter,
             convergence_threshold,
+            learning_rate,
         )
     elif optimizer.upper() == "ADAM":
         control_amplitudes, final_fidelity, iter_idx = _optimize_adam(

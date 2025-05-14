@@ -4,3 +4,4 @@ matplotlib>=3.10.1
 jax==0.5.3
 optax==0.2.4
 chex==0.1.89
+flax==0.10.6

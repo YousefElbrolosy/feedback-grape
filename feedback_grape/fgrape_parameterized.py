@@ -1,15 +1,57 @@
+from typing import NamedTuple
 import jax.numpy as jnp
-from feedback_grape.grape import result
+import optax
+from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
+import jax
+import flax.linen as nn
+import optax.tree_utils as otu  # type: ignore
+
 # ruff: noqa N8
 
 
+class fg_result_purity(NamedTuple):
+    """
+    result class to store the results of the optimization process.
+    """
+
+    optimized_parameters: jnp.ndarray
+    """
+    Optimized control amplitudes.
+    """
+    final_purity: float
+    """
+    Final fidelity of the optimized control.
+    """
+    iterations: int
+    """
+    Number of iterations taken for optimization.
+    """
+    final_state: jnp.ndarray
+    """
+    Final operator after applying the optimized control amplitudes.
+    """
+
+
 def _probability_of_a_measurement_outcome_given_a_certain_state(
-    rho_cav, measurement_outcome, povm_measure_operator, **kwargs
+    rho_cav, measurement_outcome, povm_measure_operator, initial_params
 ):
+    """
+    Calculate the probability of a measurement outcome given a quantum state.
+
+    Args:
+        rho_cav: Density matrix of the cavity
+        measurement_outcome: The measurement outcome
+        povm_measure_operator: The POVM measurement operator
+        kwargs: Additional parameters for the POVM operator
+
+    Returns:
+        Probability of the measurement outcome
+    """
     Em = povm_measure_operator(
-        measurement_outcome, **kwargs
-    ).conj().T @ povm_measure_operator(measurement_outcome, **kwargs)
-    return jnp.trace(Em @ rho_cav)
+        measurement_outcome, **initial_params
+    ).conj().T @ povm_measure_operator(measurement_outcome, **initial_params)
+    # would jnp.real be useful here?
+    return jnp.real(jnp.trace(Em @ rho_cav))
 
 
 # TODO: should generalize if input is a state rather than a density matrix
@@ -17,28 +59,99 @@ def _post_measurement_state(
     rho_cav, measurement_outcome, povm_measure_operator, initial_params
 ):
     """
-    returns the state after the measurement
+    Returns the state after the measurement
+
+    Args:
+        rho_cav: Density matrix of the cavity
+        measurement_outcome: The measurement outcome
+        povm_measure_operator: The POVM measurement operator
+        params: Parameters for the POVM operator
+
+    Returns:
+        Post-measurement state
     """
-    return (
-        povm_measure_operator(measurement_outcome, **initial_params)
-        @ rho_cav
-        @ povm_measure_operator(measurement_outcome, **initial_params).conj().T
-        / jnp.sqrt(
-            _probability_of_a_measurement_outcome_given_a_certain_state(
-                rho_cav,
-                measurement_outcome,
-                povm_measure_operator,
-                **initial_params,
-            )
-        )
+    Mm_op = povm_measure_operator(measurement_outcome, **initial_params)
+    prob = _probability_of_a_measurement_outcome_given_a_certain_state(
+        rho_cav,
+        measurement_outcome,
+        povm_measure_operator,
+        initial_params,
     )
+
+    prob = jnp.maximum(prob, 1e-10)
+    # is denominator sqrted or not?
+    return Mm_op @ rho_cav @ Mm_op.conj().T / prob
+
+
+class GRUCellImplementation(nn.Module):
+    features: int
+
+    @nn.compact
+    def __call__(self, h, x):
+        """
+        Args:
+            h: hidden state [batch_size, features] (carry)
+            x: input [batch_size, input_size] (input of current time step)
+        Returns:
+            New hidden state [batch_size, features]
+        """
+        h_stack = jnp.concatenate([x, h], axis=-1)
+        # Reset gate
+        r = nn.sigmoid(
+            nn.Dense(features=self.features, name='reset_gate')(h_stack)
+        )
+        # Update gate
+        z = nn.sigmoid(
+            nn.Dense(features=self.features, name='update_gate')(h_stack)
+        )
+        # Candidate hidden state
+        h_reset = jnp.concatenate([x, r * h], axis=-1)
+        h_tilde = jnp.tanh(
+            nn.Dense(features=self.features, name='candidate')(h_reset)
+        )
+        new_h = (1 - z) * h + z * h_tilde
+        return new_h, new_h
+
+
+class FeedbackRNN(nn.Module):
+    """
+    Recurrent Neural Network (RNN) for feedback control.
+    """
+
+    hidden_size: int
+    output_size: int
+
+    @nn.compact
+    def __call__(self, measurements, reset=False):
+        # Initialize or get hidden state
+        h = self.variable(
+            'state',
+            'h',
+            lambda: jnp.zeros((measurements.shape[0], self.hidden_size)),
+        )
+        if reset:
+            h.value = jnp.zeros((measurements.shape[0], self.hidden_size))
+
+        # Process each measurement
+        gru_cell = nn.GRUCell(features=self.hidden_size)
+
+        # Expand dimensions if needed for single sample
+        if measurements.ndim == 1:
+            measurements = measurements.reshape(1, -1)
+
+        # Update hidden state with the measurement
+        h.value, _ = gru_cell(h.value, measurements)
+
+        # Output layer
+        output = nn.Dense(features=self.output_size)(h.value)
+        return output
 
 
 def povm(
     rho_cav: jnp.ndarray,
-    measurement_outcome: int,
     povm_measure_operator: callable,
     initial_params: jnp.ndarray,
+    key: jnp.ndarray,
 ) -> tuple[jnp.ndarray, int, float]:
     """
     Perform a POVM measurement on the given state.
@@ -48,32 +161,67 @@ def povm(
         measurement_outcome (int): The measurement outcome.
         povm_measure_operator (callable): The POVM measurement operator.
         initial_params (jnp.ndarray): Initial parameters for the POVM measurement operator.
+        key (jnp.ndarray): Random key for stochastic operations.
 
     Returns:
         tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
     """
-    if measurement_outcome == 0:
-        measurement = -1
-    else:
-        measurement = 1
+
+    prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
+        rho_cav, 1, povm_measure_operator, initial_params
+    )
+    prob_minus = _probability_of_a_measurement_outcome_given_a_certain_state(
+        rho_cav, -1, povm_measure_operator, initial_params
+    )
+
+    prob_sum = prob_plus + prob_minus
+    prob_plus = prob_plus / prob_sum
+    prob_minus = prob_minus / prob_sum
+
+    key, subkey = jax.random.split(key)
+    random_value = jax.random.uniform(subkey, shape=())
+    measurement = jnp.where(random_value < prob_plus, 1, -1)
 
     rho_meas = _post_measurement_state(
-        rho_cav, measurement_outcome, povm_measure_operator, **initial_params
+        rho_cav, measurement, povm_measure_operator, initial_params
     )
-    prob = _probability_of_a_measurement_outcome_given_a_certain_state(
-        rho_cav, measurement_outcome, povm_measure_operator, **initial_params
+    prob = jax.lax.cond(
+        measurement == 1,
+        lambda _: prob_plus,
+        lambda _: prob_minus,
+        operand=None,
+    )
+    log_prob = jnp.log(jnp.maximum(prob, 1e-10))
+    log_prob = jnp.clip(log_prob, -10, 10)
+    return rho_meas, measurement, log_prob, key
+
+
+def _get_new_params_from_rnn(rnn_model, params, measurement, rnn_state, key):
+    """
+    Get new parameters from the RNN model based on measurement outcomes.
+
+    Args:
+        rnn_model: The RNN model
+        params: Current model parameters
+        measurement: The measurement outcome
+        rnn_state: Current RNN state
+        key: JAX random key
+
+    Returns:
+        New parameters and updated RNN state
+    """
+    variables = {'params': params, 'state': rnn_state}
+    measurement_input = jnp.array([measurement])
+    output, new_variables = rnn_model.apply(
+        variables, measurement_input, mutable=['state']
     )
 
-    random = jnp.random.uniform(0, 1)
+    gamma = output[0, 0]
+    delta = output[0, 1]  # No constraints on delta
 
-    if random < prob:
-        measurement = measurement_outcome
-    else:
-        measurement = -1 * measurement_outcome
+    updated_params = {'gamma': gamma, 'delta': delta}
 
-    log_prob = jnp.log(jnp.abs(prob))
-
-    return rho_meas, measurement, log_prob
+    return updated_params, new_variables['state'], key
 
 
 def purity(*, rho, type="density"):
@@ -87,53 +235,112 @@ def purity(*, rho, type="density"):
         purity: Purity value.
     """
     if type == "density":
-        return jnp.trace(rho @ rho)
+        # do we need to do jnp.real?
+        return jnp.real(jnp.trace(rho @ rho))
     elif type == "superoperator":
         pass  # TODO: implement superoperator purity if such a thing exists
     else:
         raise ValueError("Invalid type. Choose 'density' or 'superoperator'.")
 
 
+# TODO: understand state management
 def _calculate_time_step(
     rho_cav,
-    initial_fake_measurement_outcome,
     povm_measure_operator,
-    initial_params,
+    params,
+    rnn_model=None,
+    rnn_params=None,
+    rnn_state=None,
+    key=None,
 ):
     """
     Calculate the time step for the given density matrix and POVM measurement operator.
+
+    Args:
+        rho_cav: Density matrix of the cavity
+        current_measurement_outcome: Current measurement outcome
+        povm_measure_operator: POVM measurement operator
+        params: Parameters for the POVM operator
+        rnn_model: RNN model for feedback (optional)
+        rnn_params: RNN parameters (optional)
+        rnn_state: RNN state (optional)
+        key: JAX random key
+
+    Returns:
+        Updated state, measurement outcome, log probability, updated params, updated RNN state, and key
     """
-    return povm(
-        rho_cav,
-        initial_fake_measurement_outcome,
-        povm_measure_operator,
-        **initial_params,
+    # Perform measurement
+    rho_meas, measurement, log_prob, key = povm(
+        rho_cav, povm_measure_operator, params, key
     )
 
-
-def calculate_trajectory(
-    rho_cav, time_steps, povm_measure_operator, initial_params
-):
-    rho_meas = rho_cav
-    new_params = initial_params
-    # would the initial be something fake in random be better? QUESTION, TODO
-    # initial_fake_measurement_outcome = jnp.random.choice([-1, 1])
-    # initial_ fake measurement
-    measurement = 1
-    for _ in range(time_steps - 1):
-        rho_meas, measurement, log_prob = _calculate_time_step(
-            rho_meas, measurement, povm_measure_operator, new_params
+    # If using an RNN for feedback
+    updated_params = params
+    if rnn_model is not None and rnn_params is not None:
+        updated_params, rnn_state, key = _get_new_params_from_rnn(
+            rnn_model, rnn_params, measurement, rnn_state, key
         )
-        # put measurement to RNN
-        # TODO: implement RNN
-        updated_params = _get_new_params_from_rnn(measurement)
-        # get updated params
-        new_params = updated_params
-    # for the last time step
-    return _calculate_time_step(rho_meas, 1, povm_measure_operator, new_params)
+
+    return rho_meas, measurement, log_prob, updated_params, rnn_state, key
 
 
-def optimize_pulse_parameterized(
+# TODO: should one accumilate the log probabilities?
+# TODO: understand state management
+def _calculate_trajectory(
+    rho_cav,
+    time_steps,
+    povm_measure_operator,
+    initial_params,
+    rnn_model=None,
+    rnn_params=None,
+    key=None,
+):
+    """
+    Calculate a complete quantum trajectory with feedback.
+
+    Args:
+        rho_cav: Initial density matrix
+        time_steps: Number of time steps
+        povm_measure_operator: POVM measurement operator
+        initial_params: Initial parameters for the POVM
+        rnn_model: RNN model for feedback (optional)
+        rnn_params: RNN parameters (optional)
+        key: JAX random key
+
+    Returns:
+        Final state, final measurement, log probability
+    """
+    rho_meas = rho_cav
+    current_params = initial_params
+    total_log_prob = 0.0
+
+    # Initialize RNN state if using RNN
+    rnn_state = None
+    if rnn_model is not None:
+        # Create initial state
+        batch_size = 1
+        hidden_size = rnn_model.hidden_size
+        rnn_state = {'h': jnp.zeros((batch_size, hidden_size))}
+
+    # Run through all time steps
+    for _ in range(time_steps):
+        rho_meas, measurement, log_prob, current_params, rnn_state, key = (
+            _calculate_time_step(
+                rho_meas,
+                povm_measure_operator,
+                current_params,
+                rnn_model,
+                rnn_params,
+                rnn_state,
+                key,
+            )
+        )
+        total_log_prob += log_prob
+
+    return rho_meas, measurement, total_log_prob
+
+
+def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
@@ -148,7 +355,7 @@ def optimize_pulse_parameterized(
     learning_rate: float,
     type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
     propcomp: str = "time-efficient",  # time-efficient, memory-efficient
-) -> result | None:
+) -> fg_result_purity | None:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration.
 
@@ -172,133 +379,121 @@ def optimize_pulse_parameterized(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
-    if num_time_steps == 0:
+    if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
-    if goal == "purity":
-        if povm_measure_operator is None:
-            raise ValueError(
-                "POVM measurement operator is required for purity optimization."
-            )
 
-        def _purity(params):
-            """
-            Computes the purity of the cavity state after a measurement.
-            """
-            rho_meas, _, _ = calculate_trajectory(
-                rho_cav=U_0,
-                time_steps=num_time_steps,
-                povm_measure_operator=povm_measure_operator,
-                initial_params=params,
-            )
-            return purity(rho_meas, type="density")
+    key = jax.random.PRNGKey(0)
+    if mode == "nn":
+        hidden_size = 30
+        output_size = len(initial_params)
 
-        if mode == "nn":
-            # TODO: Construct NN
-            network_variables = None # Placeholder for the neural network parameters
-            if isinstance(optimizer, tuple):
-                optimizer = optimizer[0]
-            if optimizer.upper() == "L-BFGS":
-                optimized_parameters, final_fidelity, iter_idx = (
-                    _optimize_L_BFGS_feedback(
-                        _purity,
-                        initial_params,
-                        max_iter,
-                        convergence_threshold,
-                        network_variables=network_variables,
-                    )
+        rnn_model = FeedbackRNN(
+            hidden_size=hidden_size, output_size=output_size
+        )
+
+        # Initialize RNN parameters
+        key, subkey = jax.random.split(key)
+        dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
+        rnn_params = rnn_model.init(subkey, dummy_input)['params']
+
+        if goal == "purity":
+
+            def loss_fn(params):
+                """
+                Loss function for purity optimization.
+                Returns negative purity (we want to minimize this).
+                """
+                updated_rnn_params = params
+                povm_params = {
+                    'gamma': initial_params[0][0],
+                    'delta': initial_params[0][1],
+                }
+                key_local = jax.random.PRNGKey(0)
+                rho_final, _, log_prob = _calculate_trajectory(
+                    rho_cav=U_0,
+                    time_steps=num_time_steps,
+                    povm_measure_operator=povm_measure_operator,
+                    initial_params=povm_params,
+                    rnn_model=rnn_model,
+                    rnn_params=updated_rnn_params,
+                    key=key_local,
                 )
-            elif optimizer.upper() == "ADAM":
-                optimized_parameters, final_fidelity, iter_idx = (
-                    _optimize_adam_feedback(
-                        _purity,
-                        initial_params,
-                        max_iter,
-                        learning_rate,
-                        convergence_threshold,
-                        network_variables=network_variables,
-                    )
+                # Calculate purity
+                purity_value = purity(rho=rho_final, type=type)
+
+                # Return negative purity since we're minimizing
+                loss1 = -purity_value
+                loss2 = log_prob * jax.lax.stop_gradient(-purity_value)
+
+                return loss1 + loss2
+
+            # set up optimizer and training state
+            if optimizer.upper() == "ADAM":
+                best_model_params, best_purity, iter_idx = _optimize_adam(
+                    loss_fn,
+                    rnn_params,
+                    max_iter,
+                    learning_rate,
+                    convergence_threshold,
+                )
+
+            elif optimizer.upper() == "L-BFGS":
+                best_model_params, best_purity, iter_idx = _optimize_L_BFGS(
+                    loss_fn,
+                    rnn_params,
+                    max_iter,
+                    learning_rate,
+                    convergence_threshold,
                 )
             else:
                 raise ValueError(
                     "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
                 )
-        elif mode == "lookup":
-            pass
+            povm_params = {
+                'gamma': initial_params[0][0],
+                'delta': initial_params[0][1],
+            }
 
-    elif goal == "fidelity":
-        pass  # TODO: implement fidelity optimization
-    elif goal == "both":
-        if povm_measure_operator is None:
-            raise ValueError(
-                "POVM measurement operator is required for purity optimization."
+            rho_meas_best, _, _ = _calculate_trajectory(
+                rho_cav=U_0,
+                time_steps=num_time_steps,
+                povm_measure_operator=povm_measure_operator,
+                initial_params=povm_params,
+                rnn_model=rnn_model,
+                rnn_params=best_model_params,
+                key=jax.random.PRNGKey(0),
             )
-        pass  # TODO: implement both optimization
-    else:
-        raise ValueError(
-            "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+
+            final_result = fg_result_purity(
+                optimized_parameters=best_model_params,
+                final_purity=best_purity,
+                iterations=iter_idx,
+                final_state=rho_meas_best,
+            )
+
+            return final_result
+        elif goal == "fidelity":
+            # TODO: Implement fidelity optimization
+            raise NotImplementedError(
+                "Fidelity optimization not implemented yet."
+            )
+
+        elif goal == "both":
+            # TODO: Implement combined optimization
+            raise NotImplementedError(
+                "Combined optimization not implemented yet."
+            )
+
+        else:
+            raise ValueError(
+                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+            )
+
+    elif mode == "lookup":
+        # TODO: Implement look-up table approach
+        raise NotImplementedError(
+            "Look-up table approach not implemented yet."
         )
 
-
-def _optimize_L_BFGS_feedback():
-    """
-    Optimizes the network parameters using the L-BFGS algorithm.
-    """
-    pass  # TODO: implement L-BFGS optimization
-
-
-def _optimize_adam_feedback():
-    """
-    Optimizes the network parameters using the Adam algorithm.
-    """
-    pass  # TODO: implement Adam optimization
-
-
-
-### Important:
-
-#     if goal == "fidelity":
-#         final_fidelity = compute_fidelity(rho, rho_target)
-#         if just_last_fidelity:
-#             R = final_fidelity
-#         else:
-#             R = fidelity
-
-#     if goal == "purity":
-#         final_purity = tf.abs(tf.linalg.trace(rho ** 2))
-#         R = final_purity
-
-#     if goal == "both":
-#         final_fidelity = compute_fidelity(rho, rho_target)
-#         final_purity = tf.abs(tf.linalg.trace(rho ** 2))
-#         R = final_fidelity + final_purity
-
-#     loss1 = tf.reduce_mean(-R)
-#     if not feedback:
-#         loss = loss1
-#     if feedback and with_logP_term:
-#         loss2 = tf.reduce_mean(log_probs * tf.stop_gradient(-R))
-#         loss = loss1 + loss2
-# # Define parameters to optimize
-# if mode == "network":
-#     params = network.trainable_variables
-# if mode == "lookup":
-#     params = [F]
-# if mode == "none":
-#     params = [controls_array]
-# if feedback:
-#     params += [F_1_0]
-
-# grads = tape.gradient(loss, params)
-
-# # Add noise to the gradients
-# # t = tf.cast(epoch, grads[0].dtype )
-# # variance = 0.01 / ((1 + t) ** 0.55)
-# # grads = [ grad + tf.random.normal(grad.shape, mean=0.0, stddev=tf.math.sqrt(variance), dtype=grads[0].dtype) for grad in grads ]
-# # epoch = epoch + 1
-
-# if goal == "fidelity":
-#     return grads, -loss1 / max_steps, final_fidelity, rho
-# if goal == "purity":
-#     return grads, loss, final_purity, rho
-# if goal == "both":
-#     return grads, loss, final_fidelity, final_purity, rho
+    else:
+        raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
