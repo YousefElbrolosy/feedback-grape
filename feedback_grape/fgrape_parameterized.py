@@ -97,11 +97,12 @@ class GRUCellImplementation(nn.Module):
             New hidden state [batch_size, features]
         """
         h_stack = jnp.concatenate([x, h], axis=-1)
-        # Reset gate
+        # Reset gate Decides how much of the past state to forget
         r = nn.sigmoid(
             nn.Dense(features=self.features, name='reset_gate')(h_stack)
         )
-        # Update gate
+
+        # Update gate decides what info to throw away and what to keep
         z = nn.sigmoid(
             nn.Dense(features=self.features, name='update_gate')(h_stack)
         )
@@ -125,6 +126,7 @@ class FeedbackRNN(nn.Module):
     @nn.compact
     def __call__(self, measurements, reset=False):
         # Initialize or get hidden state
+        # state is the collection name, h is name of the variable, and this is the non-trainable variable
         h = self.variable(
             'state',
             'h',
@@ -146,6 +148,7 @@ class FeedbackRNN(nn.Module):
         # Output layer
         output = nn.Dense(features=self.output_size)(h.value)
         return output
+
 
 
 def povm(
