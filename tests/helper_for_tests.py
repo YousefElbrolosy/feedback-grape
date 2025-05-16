@@ -6,7 +6,7 @@ import qutip_qip.operations.gates as qip
 import jax.numpy as jnp
 import jax
 from feedback_grape.grape import optimize_pulse
-from feedback_grape.solver import sesolve, mesolve
+from feedback_grape.utils.solver import sesolve, mesolve
 from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     identity,

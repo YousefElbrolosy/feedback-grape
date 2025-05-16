@@ -11,7 +11,7 @@ class FgResultPurity(NamedTuple):
     result class to store the results of the optimization process.
     """
 
-    optimized_parameters: jnp.ndarray
+    optimized_rnn_parameters: jnp.ndarray
     """
     Optimized control amplitudes.
     """
@@ -257,7 +257,7 @@ def optimize_pulse_with_feedback(
 
             # set up optimizer and training state
             if optimizer.upper() == "ADAM":
-                best_model_params, best_purity, iter_idx = _optimize_adam(
+                best_model_params, iter_idx = _optimize_adam(
                     loss_fn,
                     rnn_params,
                     max_iter,
@@ -266,7 +266,7 @@ def optimize_pulse_with_feedback(
                 )
 
             elif optimizer.upper() == "L-BFGS":
-                best_model_params, best_purity, iter_idx = _optimize_L_BFGS(
+                best_model_params, iter_idx = _optimize_L_BFGS(
                     loss_fn,
                     rnn_params,
                     max_iter,
@@ -277,3 +277,44 @@ def optimize_pulse_with_feedback(
                 raise ValueError(
                     "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
                 )
+            # Calculate final state and purity
+            rho_final, _, arr_of_povm_params = calculate_trajectory(
+                rho_cav=U_0,
+                povm_measure_operator=povm_measure_operator,
+                initial_povm_params=best_model_params,
+                time_steps=num_time_steps,
+            )
+            final_purity = purity(rho=rho_final)
+            return FgResultPurity(
+                optimized_rnn_parameters=best_model_params,
+                final_purity=final_purity,
+                iterations=iter_idx,
+                final_state=rho_final,
+                arr_of_povm_params=arr_of_povm_params,
+            )
+        
+        elif goal == "fidelity":
+            # TODO: Implement fidelity optimization
+            raise NotImplementedError(
+                "Fidelity optimization not implemented yet."
+            )
+
+        elif goal == "both":
+            # TODO: Implement combined optimization
+            raise NotImplementedError(
+                "Combined optimization not implemented yet."
+            )
+
+        else:
+            raise ValueError(
+                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+            )
+
+    elif mode == "lookup":
+        # TODO: Implement look-up table approach
+        raise NotImplementedError(
+            "Look-up table approach not implemented yet."
+        )
+
+    else:
+        raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")

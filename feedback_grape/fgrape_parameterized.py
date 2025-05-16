@@ -441,7 +441,7 @@ def optimize_pulse_with_feedback(
 
             # set up optimizer and training state
             if optimizer.upper() == "ADAM":
-                best_model_params, best_purity, iter_idx = _optimize_adam(
+                best_model_params, iter_idx = _optimize_adam(
                     loss_fn,
                     rnn_params,
                     max_iter,
@@ -450,7 +450,7 @@ def optimize_pulse_with_feedback(
                 )
 
             elif optimizer.upper() == "L-BFGS":
-                best_model_params, best_purity, iter_idx = _optimize_L_BFGS(
+                best_model_params, iter_idx = _optimize_L_BFGS(
                     loss_fn,
                     rnn_params,
                     max_iter,
@@ -475,7 +475,9 @@ def optimize_pulse_with_feedback(
                 rnn_params=best_model_params,
                 key=jax.random.PRNGKey(0),
             )
-
+            best_purity = purity(
+                rho=rho_meas_best, type=type
+            )
             final_result = fg_result_purity(
                 optimized_parameters=best_model_params,
                 final_purity=best_purity,
