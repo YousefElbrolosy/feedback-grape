@@ -1,7 +1,9 @@
 # ruff: noqa N8
 from feedback_grape.grape import (
     fidelity,
-    result,
+    result
+)
+from feedback_grape.utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,
 )
@@ -91,7 +93,7 @@ def optimize_pulse_parameterized(
         result: Dictionary containing optimized pulse and convergence data.
     """
 
-    def _fidelity(initial_parameters):
+    def _loss(initial_parameters):
         # Compute the forward evolution using the parameterized gates
         U_final = calculate_trajectory(
             U_0,
@@ -100,7 +102,7 @@ def optimize_pulse_parameterized(
             parameterized_gates,
             type,
         )
-        return fidelity(
+        return -1 * fidelity(
             C_target=C_target,
             U_final=U_final,
             type=type,
@@ -109,16 +111,16 @@ def optimize_pulse_parameterized(
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
-        optimized_parameters, final_fidelity, iter_idx = _optimize_L_BFGS(
-            _fidelity,
+        optimized_parameters, iter_idx = _optimize_L_BFGS(
+            _loss,
             initial_parameters,
             max_iter,
             convergence_threshold,
             learning_rate,
         )
     elif optimizer.upper() == "ADAM":
-        optimized_parameters, final_fidelity, iter_idx = _optimize_adam(
-            _fidelity,
+        optimized_parameters, iter_idx = _optimize_adam(
+            _loss,
             initial_parameters,
             max_iter,
             learning_rate,
@@ -134,6 +136,11 @@ def optimize_pulse_parameterized(
         num_time_steps,
         parameterized_gates,
         type,
+    )
+    final_fidelity = fidelity(
+        C_target=C_target,
+        U_final=U_final,
+        type=type,
     )
     # TODO: check if iter_idx outputs the correct number of iterations
     final_res = result(

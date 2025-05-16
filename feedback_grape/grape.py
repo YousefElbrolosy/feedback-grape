@@ -4,12 +4,14 @@ Gradient Ascent Pulse Engineering (GRAPE)
 
 # ruff: noqa N8
 import jax
-import optax  # type: ignore
-import optax.tree_utils as otu  # type: ignore
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from functools import partial
+from feedback_grape.utils.optimizers import (
+    _optimize_adam,
+    _optimize_L_BFGS,
+)
 
 jax.config.update("jax_enable_x64", True)
 # Implemented adam/L-BFGS optimizers
@@ -192,102 +194,6 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     )
 
 
-def _optimize_adam(
-    _fidelity,
-    control_amplitudes,
-    max_iter,
-    learning_rate,
-    convergence_threshold,
-):
-    optimizer = optax.adam(learning_rate)
-    opt_state = optimizer.init(control_amplitudes)
-    fidelities = []
-
-    @jax.jit
-    def step(params, state):
-        loss = -_fidelity(params)  # Minimize -_fidelity
-        grads = jax.grad(lambda x: -_fidelity(x))(params)
-        updates, new_state = optimizer.update(grads, state, params)
-        new_params = optax.apply_updates(params, updates)
-        return new_params, new_state, -loss
-
-    params = control_amplitudes
-    # setting it to -1 in the beginning in case the max_iter is 0
-    iter_idx = -1
-    for iter_idx in range(max_iter):
-        params, opt_state, current_fidelity = step(params, opt_state)
-        fidelities.append(current_fidelity)
-
-        if (
-            iter_idx > 0
-            and abs(fidelities[-1] - fidelities[-2]) < convergence_threshold
-        ):
-            break
-
-    final_fidelity = _fidelity(params)
-    # final_fidelity = fidelities[-1]
-    return params, final_fidelity, iter_idx + 1
-
-
-# TODO: L_bfgs ouputs error when params are complex amplitudes
-def _optimize_L_BFGS(
-    _fidelity,
-    control_amplitudes,
-    max_iter,
-    convergence_threshold,
-    learning_rate,
-):
-    """
-    Uses L-BFGS to optimize the control amplitudes.
-    Args:
-        _fidelity: Function to compute fidelity.
-        control_amplitudes: Initial control amplitudes.
-        max_iter: Maximum number of iterations.
-        convergence_threshold: Convergence threshold for optimization.
-    Returns:
-        control_amplitudes: Optimized control amplitudes.
-        fidelities: List of fidelity values during optimization.
-    """
-
-    def neg_fidelity(params, **kwargs):
-        return -_fidelity(params, **kwargs)
-
-    opt = optax.lbfgs(learning_rate)
-
-    value_and_grad_fn = optax.value_and_grad_from_state(neg_fidelity)
-
-    @jax.jit
-    def step(carry):
-        control_amplitudes, state, iter_idx = carry
-        value, grad = value_and_grad_fn(control_amplitudes, state=state)
-        updates, state = opt.update(
-            grad,
-            state,
-            control_amplitudes,
-            value=value,
-            grad=grad,
-            value_fn=neg_fidelity,
-        )
-        control_amplitudes = optax.apply_updates(control_amplitudes, updates)
-        return control_amplitudes, state, iter_idx + 1
-
-    def continuing_criterion(carry):
-        _, state, _ = carry
-        iter_num = otu.tree_get(state, 'count')
-        grad = otu.tree_get(state, 'grad')
-        err = otu.tree_l2_norm(grad)
-        return ((iter_num == 0) & (max_iter != 0)) | (iter_num < max_iter) & (
-            err >= convergence_threshold
-        )
-
-    init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
-    final_params, _, final_iter_idx = jax.lax.while_loop(
-        continuing_criterion, step, init_carry
-    )
-    final_fidelity = _fidelity(final_params)
-    return final_params, final_fidelity, final_iter_idx
-
-
 def _isket(a: jnp.ndarray) -> bool:
     """
     Check if the input is a ket (column vector).
@@ -468,7 +374,7 @@ def optimize_pulse(
         num_t_slots: Number of time slots.
         total_evo_time: Total evolution time.
         max_iter: Maximum number of iterations.
-        convergence_threshold: Convergence threshold for _fidelity change.
+        convergence_threshold: Convergence threshold.
         learning_rate: Learning rate for gradient ascent.
         type: Type of fidelity calculation ("unitary" or "state" or "density" or "superoperator").
             When to use each type:
@@ -490,7 +396,7 @@ def optimize_pulse(
 
     # Step 2: Gradient ascent loop
 
-    def _fidelity(control_amplitudes):
+    def _loss(control_amplitudes):
         if propcomp == "time-efficient":
             propagators = _compute_propagators(
                 H_drift, H_control_array, delta_t, control_amplitudes
@@ -507,7 +413,7 @@ def optimize_pulse(
                 U_0,
                 type,
             )
-        return fidelity(
+        return -1 * fidelity(
             C_target=C_target,
             U_final=U_final,
             type=type,
@@ -516,16 +422,16 @@ def optimize_pulse(
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
-        control_amplitudes, final_fidelity, iter_idx = _optimize_L_BFGS(
-            _fidelity,
+        control_amplitudes, iter_idx = _optimize_L_BFGS(
+            _loss,
             control_amplitudes,
             max_iter,
             convergence_threshold,
             learning_rate,
         )
     elif optimizer.upper() == "ADAM":
-        control_amplitudes, final_fidelity, iter_idx = _optimize_adam(
-            _fidelity,
+        control_amplitudes, iter_idx = _optimize_adam(
+            _loss,
             control_amplitudes,
             max_iter,
             learning_rate,
@@ -548,6 +454,11 @@ def optimize_pulse(
             H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
         )
 
+    final_fidelity = fidelity(
+        C_target=C_target,
+        U_final=rho_final,
+        type=type,
+    )
     final_res = result(
         control_amplitudes,
         final_fidelity,

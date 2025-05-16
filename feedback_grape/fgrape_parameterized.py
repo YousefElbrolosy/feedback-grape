@@ -1,7 +1,7 @@
 from typing import NamedTuple
 import jax.numpy as jnp
 import optax
-from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
+from feedback_grape.utils.optimizers import _optimize_adam, _optimize_L_BFGS
 import jax
 import flax.linen as nn
 import optax.tree_utils as otu  # type: ignore
@@ -148,7 +148,6 @@ class FeedbackRNN(nn.Module):
         # Output layer
         output = nn.Dense(features=self.output_size)(h.value)
         return output
-
 
 
 def povm(

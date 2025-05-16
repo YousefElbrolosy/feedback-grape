@@ -1,0 +1,279 @@
+from typing import NamedTuple
+import jax.numpy as jnp
+from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
+import jax
+import flax.linen as nn
+# ruff: noqa N8
+
+
+class FgResultPurity(NamedTuple):
+    """
+    result class to store the results of the optimization process.
+    """
+
+    optimized_parameters: jnp.ndarray
+    """
+    Optimized control amplitudes.
+    """
+    final_purity: float
+    """
+    Final fidelity of the optimized control.
+    """
+    iterations: int
+    """
+    Number of iterations taken for optimization.
+    """
+    final_state: jnp.ndarray
+    """
+    Final operator after applying the optimized control amplitudes.
+    """
+    arr_of_povm_params: jnp.ndarray
+
+
+def _probability_of_a_measurement_outcome_given_a_certain_state(
+    rho_cav, measurement_outcome, povm_measure_operator, initial_params
+):
+    """
+    Calculate the probability of a measurement outcome given a quantum state.
+
+    Args:
+        rho_cav: Density matrix of the cavity
+        measurement_outcome: The measurement outcome
+        povm_measure_operator: The POVM measurement operator
+        kwargs: Additional parameters for the POVM operator
+
+    Returns:
+        Probability of the measurement outcome
+    """
+    Em = povm_measure_operator(
+        measurement_outcome, *initial_params
+    ).conj().T @ povm_measure_operator(measurement_outcome, *initial_params)
+    # QUESTION: would jnp.real be useful here?
+    return jnp.real(jnp.trace(Em @ rho_cav))
+
+
+# TODO: should generalize if input is a state rather than a density matrix
+def _post_measurement_state(
+    rho_cav, measurement_outcome, povm_measure_operator, initial_params
+):
+    """
+    Returns the state after the measurement
+
+    Args:
+        rho_cav: Density matrix of the cavity
+        measurement_outcome: The measurement outcome
+        povm_measure_operator: The POVM measurement operator
+        params: Parameters for the POVM operator
+
+    Returns:
+        Post-measurement state
+    """
+    Mm_op = povm_measure_operator(measurement_outcome, *initial_params)
+    prob = _probability_of_a_measurement_outcome_given_a_certain_state(
+        rho_cav,
+        measurement_outcome,
+        povm_measure_operator,
+        initial_params,
+    )
+    # QUESTION: should we use jnp.clip here?
+    prob = jnp.maximum(prob, 1e-10)
+    # is denominator sqrted or not?
+    return Mm_op @ rho_cav @ Mm_op.conj().T / prob
+
+
+# TODO: need to handle the case where the
+def povm(
+    rho_cav: jnp.ndarray,
+    povm_measure_operator: callable,
+    initial_povm_params: jnp.ndarray,
+) -> tuple[jnp.ndarray, int, float]:
+    """
+    Perform a POVM measurement on the given state.
+
+    Args:
+        rho_cav (jnp.ndarray): The density matrix of the cavity.
+        measurement_outcome (int): The measurement outcome.
+        povm_measure_operator (callable): The POVM measurement operator.
+        initial_povm_params (jnp.ndarray): Initial parameters for the POVM measurement operator.
+
+    Returns:
+        tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
+    """
+    # TODO: this should be generalized to all possible measurement outcomes
+    prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
+        rho_cav, 1, povm_measure_operator, initial_povm_params
+    )
+    seed = 0
+    random_value = jax.random.PRNGKey(seed)
+    measurement = jnp.where(random_value < prob_plus, 1, -1)
+    rho_meas = _post_measurement_state(
+        rho_cav, measurement, povm_measure_operator, initial_povm_params
+    )
+    prob = jnp.where(
+        measurement == 1,
+        prob_plus,
+        1 - prob_plus,
+    )
+    log_prob = jnp.log(jnp.maximum(prob, 1e-10))
+    return rho_meas, log_prob
+
+
+# TODO + QUESTION: ask pavlo if purity of a superoperator is something important
+def purity(*, rho):
+    """
+    Computes the purity of a density matrix.
+
+    Args:
+        rho: Density matrix.
+        type: Type of density matrix ("density" or "superoperator").
+    Returns:
+        purity: Purity value.
+    """
+    return jnp.real(jnp.trace(rho @ rho))
+
+
+def _calculate_time_step(
+    *,
+    rho_cav,
+    povm_measure_operator,
+    initial_povm_params,
+):
+    """
+    Calculate the time step for the optimization process.
+
+    Args:
+        rho_cav: Density matrix of the cavity.
+        povm_measure_operator: POVM measurement operator.
+        initial_povm_params: Initial parameters for the POVM measurement operator.
+
+    Returns:
+
+    """
+
+    rho_meas, log_prob = povm(
+        rho_cav, povm_measure_operator, initial_povm_params
+    )
+
+    # TODO: feed the measurement outcome to the RNN and get the new params and the new hidden state
+    return rho_meas, log_prob, updated_params
+
+
+def calculate_trajectory(
+    *,
+    rho_cav,
+    povm_measure_operator,
+    initial_povm_params,
+    time_steps,
+):
+    """
+    Calculate a complete quantum trajectory with feedback.
+
+    Args:
+        rho_cav: Initial density matrix
+        povm_measure_operator: POVM measurement operator
+        initial_povm_params: Initial parameters for the POVM
+        time_steps: Number of time steps
+
+    Returns:
+        Final state, log probability, array of POVM parameters
+    """
+    # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
+    # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
+    rho_final = rho_cav
+    arr_of_povm_params = jnp.zeros((time_steps, len(initial_povm_params)))
+    new_params = initial_povm_params
+    for i in range(time_steps):
+        rho_final, log_prob, new_params = _calculate_time_step(
+            rho_cav=rho_final,
+            povm_measure_operator=povm_measure_operator,
+            initial_povm_params=new_params,
+        )
+        arr_of_povm_params = arr_of_povm_params.at[i].set(new_params)
+    return rho_final, log_prob, arr_of_povm_params
+
+
+def optimize_pulse_with_feedback(
+    U_0: jnp.ndarray,
+    C_target: jnp.ndarray,
+    parameterized_gates: list[callable],  # type: ignore
+    povm_measure_operator: callable,  # type: ignore
+    initial_params: jnp.ndarray,
+    goal: str,  # purity, fidelity, both
+    mode: str,  # nn, lookup
+    num_time_steps: int,
+    optimizer: str,  # adam, l-bfgs
+    max_iter: int,
+    convergence_threshold: float,
+    learning_rate: float,
+    type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
+    propcomp: str = "time-efficient",  # time-efficient, memory-efficient
+) -> FgResultPurity:
+    """
+    Optimizes pulse parameters for quantum systems based on the specified configuration.
+
+    Args:
+        U_0: Initial state or /unitary/density/super operator.
+        C_target: Target state or /unitary/density/super operator.
+        parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
+        povm_measure_operator (callable): The POVM measurement operator Mm.
+        initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
+        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
+        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
+        num_time_steps (int): The number of time steps for the optimization process.
+        optimizer (str): The optimization algorithm to use, such as 'adam' or 'l-bfgs'.
+        max_iter (int): The maximum number of iterations for the optimization process.
+        convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
+        learning_rate (float): The learning rate for the optimization algorithm.
+        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'superoperator'.
+                    This is primarily used for fidelity calculation.
+        propcomp (str): The method for propagator computation, either 'time-efficient' or 'memory-efficient'.
+                        This determines how the forward evolution is computed.
+    Returns:
+        result: Dictionary containing optimized pulse and convergence data.
+    """
+    if num_time_steps <= 0:
+        raise ValueError("Time steps must be greater than 0.")
+
+    if mode == "nn":
+        if goal == "purity":
+
+            def loss_fn(rnn_params):
+                """
+                Loss function for purity optimization.
+                Returns negative purity (we want to minimize this).
+                """
+                updated_rnn_params = rnn_params
+                povm_params = initial_params
+                rho_final, log_prob, _ = calculate_trajectory(
+                    rho_cav=U_0,
+                    povm_measure_operator=povm_measure_operator,
+                    initial_povm_params=povm_params,
+                    time_steps=num_time_steps,
+                )
+                purity_value = purity(rho=rho_final)
+                loss1 = -purity_value
+                loss2 = log_prob * jax.lax.stop_gradient(-purity_value)
+                return loss1 + loss2
+
+            # set up optimizer and training state
+            if optimizer.upper() == "ADAM":
+                best_model_params, best_purity, iter_idx = _optimize_adam(
+                    loss_fn,
+                    rnn_params,
+                    max_iter,
+                    learning_rate,
+                    convergence_threshold,
+                )
+
+            elif optimizer.upper() == "L-BFGS":
+                best_model_params, best_purity, iter_idx = _optimize_L_BFGS(
+                    loss_fn,
+                    rnn_params,
+                    max_iter,
+                    learning_rate,
+                    convergence_threshold,
+                )
+            else:
+                raise ValueError(
+                    "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
+                )
