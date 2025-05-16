@@ -86,7 +86,6 @@ def povm(
     rho_cav: jnp.ndarray,
     povm_measure_operator: callable,
     initial_povm_params: jnp.ndarray,
-    key: jnp.ndarray,
 ) -> tuple[jnp.ndarray, int, float]:
     """
     Perform a POVM measurement on the given state.
@@ -193,6 +192,7 @@ def calculate_trajectory(
     arr_of_povm_params = []
     new_params = initial_povm_params
     new_hidden_state = rnn_state
+    total_log_prob = 0.0
     for i in range(time_steps):
         rho_final, log_prob, new_params, new_hidden_state = (
             _calculate_time_step(
@@ -204,8 +204,9 @@ def calculate_trajectory(
                 rnn_state=new_hidden_state,
             )
         )
+        total_log_prob+= log_prob
         arr_of_povm_params.append(new_params)
-    return rho_final, log_prob, arr_of_povm_params
+    return rho_final, total_log_prob, arr_of_povm_params
 
 
 def optimize_pulse_with_feedback(

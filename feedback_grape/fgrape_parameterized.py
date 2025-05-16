@@ -195,7 +195,6 @@ def povm(
         operand=None,
     )
     log_prob = jnp.log(jnp.maximum(prob, 1e-10))
-    log_prob = jnp.clip(log_prob, -10, 10)
     return rho_meas, measurement, log_prob, key
 
 
@@ -339,10 +338,6 @@ def calculate_trajectory(
             )
         )
         total_log_prob += log_prob
-        gamma_delta_dict = {
-            'gamma': current_params['gamma'],
-            'delta': current_params['delta'],
-        }
         # print("current_povm_params: ", gamma_delta_dict)
         arr_of_povm_params = arr_of_povm_params.at[i].set(
             jnp.array([current_params['gamma'], current_params['delta']])
