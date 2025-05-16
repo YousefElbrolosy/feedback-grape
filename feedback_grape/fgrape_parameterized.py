@@ -396,7 +396,7 @@ def optimize_pulse_with_feedback(
     key = jax.random.PRNGKey(0)
     if mode == "nn":
         # print("input shape: ", initial_params.shape)
-        hidden_size = 30
+        hidden_size = 32
         output_size = initial_params.shape[0]
 
         rnn_model = FeedbackRNN(
@@ -475,9 +475,7 @@ def optimize_pulse_with_feedback(
                 rnn_params=best_model_params,
                 key=jax.random.PRNGKey(0),
             )
-            best_purity = purity(
-                rho=rho_meas_best, type=type
-            )
+            best_purity = purity(rho=rho_meas_best, type=type)
             final_result = fg_result_purity(
                 optimized_parameters=best_model_params,
                 final_purity=best_purity,

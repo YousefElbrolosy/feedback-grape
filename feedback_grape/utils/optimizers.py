@@ -3,6 +3,7 @@ import optax  # type: ignore
 import optax.tree_utils as otu  # type: ignore
 # ruff: noqa N8
 
+
 def _optimize_adam(
     loss_fn,
     control_amplitudes,

@@ -1,8 +1,5 @@
 # ruff: noqa N8
-from feedback_grape.grape import (
-    fidelity,
-    result
-)
+from feedback_grape.grape import fidelity, result
 from feedback_grape.utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,

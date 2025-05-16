@@ -46,8 +46,8 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
         Probability of the measurement outcome
     """
     Em = povm_measure_operator(
-        measurement_outcome, *initial_params
-    ).conj().T @ povm_measure_operator(measurement_outcome, *initial_params)
+        measurement_outcome, initial_params
+    ).conj().T @ povm_measure_operator(measurement_outcome, initial_params)
     # QUESTION: would jnp.real be useful here?
     return jnp.real(jnp.trace(Em @ rho_cav))
 
@@ -68,7 +68,7 @@ def _post_measurement_state(
     Returns:
         Post-measurement state
     """
-    Mm_op = povm_measure_operator(measurement_outcome, *initial_params)
+    Mm_op = povm_measure_operator(measurement_outcome, initial_params)
     prob = _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav,
         measurement_outcome,
@@ -86,6 +86,7 @@ def povm(
     rho_cav: jnp.ndarray,
     povm_measure_operator: callable,
     initial_povm_params: jnp.ndarray,
+    key: jnp.ndarray,
 ) -> tuple[jnp.ndarray, int, float]:
     """
     Perform a POVM measurement on the given state.
@@ -95,6 +96,7 @@ def povm(
         measurement_outcome (int): The measurement outcome.
         povm_measure_operator (callable): The POVM measurement operator.
         initial_povm_params (jnp.ndarray): Initial parameters for the POVM measurement operator.
+        key (jnp.ndarray): Random key for stochastic operations.
 
     Returns:
         tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
@@ -103,8 +105,7 @@ def povm(
     prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav, 1, povm_measure_operator, initial_povm_params
     )
-    seed = 0
-    random_value = jax.random.PRNGKey(seed)
+    random_value = jax.random.uniform(jax.random.PRNGKey(0), shape=())
     measurement = jnp.where(random_value < prob_plus, 1, -1)
     rho_meas = _post_measurement_state(
         rho_cav, measurement, povm_measure_operator, initial_povm_params
@@ -115,7 +116,7 @@ def povm(
         1 - prob_plus,
     )
     log_prob = jnp.log(jnp.maximum(prob, 1e-10))
-    return rho_meas, log_prob
+    return rho_meas, measurement, log_prob
 
 
 # TODO + QUESTION: ask pavlo if purity of a superoperator is something important
@@ -137,6 +138,9 @@ def _calculate_time_step(
     rho_cav,
     povm_measure_operator,
     initial_povm_params,
+    rnn_model,
+    rnn_params,
+    rnn_state,
 ):
     """
     Calculate the time step for the optimization process.
@@ -150,12 +154,15 @@ def _calculate_time_step(
 
     """
 
-    rho_meas, log_prob = povm(
+    rho_meas, measurement, log_prob = povm(
         rho_cav, povm_measure_operator, initial_povm_params
     )
 
     # TODO: feed the measurement outcome to the RNN and get the new params and the new hidden state
-    return rho_meas, log_prob, updated_params
+    updated_params, new_hidden_state = rnn_model.apply(
+        rnn_params, jnp.array([measurement]), rnn_state
+    )
+    return rho_meas, log_prob, updated_params, new_hidden_state
 
 
 def calculate_trajectory(
@@ -164,6 +171,9 @@ def calculate_trajectory(
     povm_measure_operator,
     initial_povm_params,
     time_steps,
+    rnn_model,
+    rnn_params,
+    rnn_state,
 ):
     """
     Calculate a complete quantum trajectory with feedback.
@@ -180,15 +190,21 @@ def calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
-    arr_of_povm_params = jnp.zeros((time_steps, len(initial_povm_params)))
+    arr_of_povm_params = []
     new_params = initial_povm_params
+    new_hidden_state = rnn_state
     for i in range(time_steps):
-        rho_final, log_prob, new_params = _calculate_time_step(
-            rho_cav=rho_final,
-            povm_measure_operator=povm_measure_operator,
-            initial_povm_params=new_params,
+        rho_final, log_prob, new_params, new_hidden_state = (
+            _calculate_time_step(
+                rho_cav=rho_final,
+                povm_measure_operator=povm_measure_operator,
+                initial_povm_params=new_params,
+                rnn_model=rnn_model,
+                rnn_params=rnn_params,
+                rnn_state=new_hidden_state,
+            )
         )
-        arr_of_povm_params = arr_of_povm_params.at[i].set(new_params)
+        arr_of_povm_params.append(new_params)
     return rho_final, log_prob, arr_of_povm_params
 
 
@@ -235,6 +251,17 @@ def optimize_pulse_with_feedback(
         raise ValueError("Time steps must be greater than 0.")
 
     if mode == "nn":
+        hidden_size = 32
+        batch_size = 1
+        output_size = initial_params.shape[0]
+
+        rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
+        h_initial_state = jnp.zeros((batch_size, hidden_size))
+
+        dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
+        rnn_params = rnn_model.init(
+            jax.random.PRNGKey(0), dummy_input, h_initial_state
+        )
         if goal == "purity":
 
             def loss_fn(rnn_params):
@@ -249,6 +276,9 @@ def optimize_pulse_with_feedback(
                     povm_measure_operator=povm_measure_operator,
                     initial_povm_params=povm_params,
                     time_steps=num_time_steps,
+                    rnn_model=rnn_model,
+                    rnn_params=updated_rnn_params,
+                    rnn_state=h_initial_state,
                 )
                 purity_value = purity(rho=rho_final)
                 loss1 = -purity_value
@@ -281,8 +311,11 @@ def optimize_pulse_with_feedback(
             rho_final, _, arr_of_povm_params = calculate_trajectory(
                 rho_cav=U_0,
                 povm_measure_operator=povm_measure_operator,
-                initial_povm_params=best_model_params,
+                initial_povm_params=initial_params,
                 time_steps=num_time_steps,
+                rnn_model=rnn_model,
+                rnn_params=best_model_params,
+                rnn_state=h_initial_state,
             )
             final_purity = purity(rho=rho_final)
             return FgResultPurity(
@@ -292,7 +325,7 @@ def optimize_pulse_with_feedback(
                 final_state=rho_final,
                 arr_of_povm_params=arr_of_povm_params,
             )
-        
+
         elif goal == "fidelity":
             # TODO: Implement fidelity optimization
             raise NotImplementedError(
@@ -318,3 +351,72 @@ def optimize_pulse_with_feedback(
 
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
+
+
+# RNN
+class GRUCell(nn.Module):
+    features: int
+
+    @nn.compact
+    def __call__(self, hidden_state, x_input):
+        r"""
+        The mathematical definition of the cell is as follows
+
+        .. math::
+
+            \begin{array}{ll}
+            r = \sigma(W_{ir} x + b_{ir} + W_{hr} h + b_{hr}) \\
+            z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) + b_{hz} \\
+            h~ = \tanh(W_{ih~} x + b_{i~} + r * (W_{h~} h + b_{h~})) \\
+            h_new = (1 - z) * h~ + z * h \\
+            \end{array}
+        """
+        # Dense is just a linear layer w x + b ( and it does this for input and for the hidden state)
+        # r = \sigma(W_{ir} x + b_{ir} + W_{hr} h + b_{hr}) \\
+        r = nn.sigmoid(
+            nn.Dense(features=self.features, name='reset_gate')(
+                jnp.concatenate([x_input, hidden_state], axis=-1)
+            )
+        )
+        # z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) + b_{hz} \\
+        z = nn.sigmoid(
+            nn.Dense(features=self.features, name='update_gate')(
+                jnp.concatenate([x_input, hidden_state], axis=-1)
+            )
+        )
+        # n = \tanh(W_{in} x + b_{in} + r * (W_{hn} h + b_{hn})) \\
+        h_telda = nn.tanh(
+            nn.Dense(features=self.features, name='candidate_gate')(
+                jnp.concatenate([x_input, r * hidden_state], axis=-1)
+            )
+        )
+        # note that this h_new, just tells us how much we should update the hidden state according to the update gate to the new candidate
+        h_new = (1 - z) * h_telda + z * hidden_state
+        return h_new, h_new
+
+
+class RNN(nn.Module):
+    hidden_size: int  # number of features in the hidden state
+    output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
+
+    @nn.compact
+    def __call__(self, measurement, hidden_state):
+        """
+        If your GRU has a hidden state increasing number of features in the hidden stateH means:
+
+        - You're allowing the model to store more information across time steps
+
+        - Each time step can represent more complex features, patterns, or dependencies
+
+        - You're giving the GRU more representational capacity
+        """
+        gru_cell = GRUCell(features=self.hidden_size)
+
+        if measurement.ndim == 1:
+            measurement = measurement.reshape(1, -1)
+        new_hidden_state, _ = gru_cell(hidden_state, measurement)
+        # this returns the povm_params after linear regression through the hidden state which contains
+        # the information of the previous time steps and this is optimized to output best povm_params
+        output = nn.Dense(features=self.output_size)(new_hidden_state)
+        # output = jnp.asarray(output)
+        return output, new_hidden_state
