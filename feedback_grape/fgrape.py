@@ -85,7 +85,7 @@ def _post_measurement_state(
 def povm(
     rho_cav: jnp.ndarray,
     povm_measure_operator: callable,
-    initial_povm_params: jnp.ndarray,
+    initial_povm_params: list,
 ) -> tuple[jnp.ndarray, int, float]:
     """
     Perform a POVM measurement on the given state.
@@ -221,7 +221,7 @@ def optimize_pulse_with_feedback(
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
     povm_measure_operator: callable,  # type: ignore
-    initial_params: jnp.ndarray,
+    initial_params: list,
     goal: str,  # purity, fidelity, both
     mode: str,  # nn, lookup
     num_time_steps: int,
@@ -261,7 +261,7 @@ def optimize_pulse_with_feedback(
     if mode == "nn":
         hidden_size = 32
         batch_size = 1
-        output_size = initial_params.shape[0]
+        output_size = len(initial_params)
 
         rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
         h_initial_state = jnp.zeros((batch_size, hidden_size))
@@ -432,4 +432,5 @@ class RNN(nn.Module):
         # the information of the previous time steps and this is optimized to output best povm_params
         output = nn.Dense(features=self.output_size)(new_hidden_state)
         # output = jnp.asarray(output)
-        return output, new_hidden_state
+        jax.debug.print("RNN output: {}", output[0])
+        return output[0], new_hidden_state
