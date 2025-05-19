@@ -10,6 +10,8 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 
+# TODO: Check if the handling of complex numbers is correct, I know l-bfgs outputs error
+
 # here the time_step is important, because we do an intialization to all
 # parameters in all time steps, since we don't have feedback from one
 # time step to the next, and then all paramaters are updated

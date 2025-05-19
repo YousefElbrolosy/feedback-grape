@@ -114,6 +114,7 @@ def povm(
         prob_plus,
         1 - prob_plus,
     )
+    # QUESTION: If prob is 0 though then the log prob is -inf ( and 1e-10 will be a very huge number)
     log_prob = jnp.log(jnp.maximum(prob, 1e-10))
     return rho_meas, measurement, log_prob
 
@@ -189,7 +190,7 @@ def calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
-    arr_of_povm_params = []
+    arr_of_povm_params = [initial_povm_params]
     new_params = initial_povm_params
     new_hidden_state = rnn_state
     total_log_prob = 0.0
@@ -204,8 +205,14 @@ def calculate_trajectory(
                 rnn_state=new_hidden_state,
             )
         )
-        total_log_prob+= log_prob
-        arr_of_povm_params.append(new_params)
+        # Thus, during - Refer to Eq(3) in fgrape paper
+        # the individual time-evolution trajectory, this term may
+        # be easily accumulated step by step, since the conditional
+        # probabilities are known (these are just the POVM mea-
+        # surement probabilities)
+        total_log_prob += log_prob
+        if i < time_steps - 1:
+            arr_of_povm_params.append(new_params)
     return rho_final, total_log_prob, arr_of_povm_params
 
 
@@ -281,6 +288,10 @@ def optimize_pulse_with_feedback(
                     rnn_params=updated_rnn_params,
                     rnn_state=h_initial_state,
                 )
+                # TODO: see if we need the log prob term
+                # TODO: see if we need to implement stochastic sampling instead
+                # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
+                # the log prob or not? ( like in porroti's implementation )?
                 purity_value = purity(rho=rho_final)
                 loss1 = -purity_value
                 loss2 = log_prob * jax.lax.stop_gradient(-purity_value)
@@ -319,6 +330,7 @@ def optimize_pulse_with_feedback(
                 rnn_state=h_initial_state,
             )
             final_purity = purity(rho=rho_final)
+            
             return FgResultPurity(
                 optimized_rnn_parameters=best_model_params,
                 final_purity=final_purity,
