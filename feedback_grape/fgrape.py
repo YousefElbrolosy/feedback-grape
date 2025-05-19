@@ -136,7 +136,8 @@ def purity(*, rho):
 def _calculate_time_step(
     *,
     rho_cav,
-    povm_measure_operator,
+    parameterized_gates,
+    measurement_indices,
     initial_povm_params,
     rnn_model,
     rnn_params,
@@ -153,12 +154,11 @@ def _calculate_time_step(
     Returns:
 
     """
-
-    rho_meas, measurement, log_prob = povm(
-        rho_cav, povm_measure_operator, initial_povm_params
-    )
-
-    # TODO: feed the measurement outcome to the RNN and get the new params and the new hidden state
+    for i, gate in enumerate(parameterized_gates):
+        if i in measurement_indices:
+            rho_meas, measurement, log_prob = povm(
+                rho_cav, gate, initial_povm_params
+            )
     updated_params, new_hidden_state = rnn_model.apply(
         rnn_params, jnp.array([measurement]), rnn_state
     )
@@ -168,7 +168,8 @@ def _calculate_time_step(
 def calculate_trajectory(
     *,
     rho_cav,
-    povm_measure_operator,
+    parameterized_gates,
+    measurement_indices,
     initial_povm_params,
     time_steps,
     rnn_model,
@@ -198,7 +199,8 @@ def calculate_trajectory(
         rho_final, log_prob, new_params, new_hidden_state = (
             _calculate_time_step(
                 rho_cav=rho_final,
-                povm_measure_operator=povm_measure_operator,
+                parameterized_gates=parameterized_gates,
+                measurement_indices=measurement_indices,
                 initial_povm_params=new_params,
                 rnn_model=rnn_model,
                 rnn_params=rnn_params,
@@ -220,7 +222,7 @@ def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
-    povm_measure_operator: callable,  # type: ignore
+    measurement_indices: list[int],
     initial_params: list,
     goal: str,  # purity, fidelity, both
     mode: str,  # nn, lookup
@@ -281,7 +283,8 @@ def optimize_pulse_with_feedback(
                 povm_params = initial_params
                 rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
-                    povm_measure_operator=povm_measure_operator,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
                     initial_povm_params=povm_params,
                     time_steps=num_time_steps,
                     rnn_model=rnn_model,
@@ -322,7 +325,8 @@ def optimize_pulse_with_feedback(
             # Calculate final state and purity
             rho_final, _, arr_of_povm_params = calculate_trajectory(
                 rho_cav=U_0,
-                povm_measure_operator=povm_measure_operator,
+                parameterized_gates=parameterized_gates,
+                measurement_indices=measurement_indices,
                 initial_povm_params=initial_params,
                 time_steps=num_time_steps,
                 rnn_model=rnn_model,
@@ -330,7 +334,7 @@ def optimize_pulse_with_feedback(
                 rnn_state=h_initial_state,
             )
             final_purity = purity(rho=rho_final)
-            
+
             return FgResultPurity(
                 optimized_rnn_parameters=best_model_params,
                 final_purity=final_purity,

@@ -1,5 +1,6 @@
 # ruff: noqa N8
-from feedback_grape.grape import fidelity, result
+from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.grape import result
 from feedback_grape.utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,
@@ -11,6 +12,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 # TODO: Check if the handling of complex numbers is correct, I know l-bfgs outputs error
+
 
 # here the time_step is important, because we do an intialization to all
 # parameters in all time steps, since we don't have feedback from one

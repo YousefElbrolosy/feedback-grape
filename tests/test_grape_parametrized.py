@@ -1,4 +1,4 @@
-from feedback_grape.grape import fidelity
+from feedback_grape.utils.fidelity import fidelity
 
 
 # TODO + NOTE: Currently L-bfgs with the same learning rate donverges at a local minimum of 0.5

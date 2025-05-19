@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import pytest
 import qutip as qt
 
-from feedback_grape.grape import fidelity
+from feedback_grape.utils.fidelity import fidelity
 from tests.helper_for_tests import (
     get_finals,
     get_results_for_cnot_problem,
