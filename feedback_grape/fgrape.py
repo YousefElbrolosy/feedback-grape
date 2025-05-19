@@ -92,10 +92,8 @@ def povm(
 
     Args:
         rho_cav (jnp.ndarray): The density matrix of the cavity.
-        measurement_outcome (int): The measurement outcome.
         povm_measure_operator (callable): The POVM measurement operator.
         initial_povm_params (jnp.ndarray): Initial parameters for the POVM measurement operator.
-        key (jnp.ndarray): Random key for stochastic operations.
 
     Returns:
         tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
@@ -138,7 +136,7 @@ def _calculate_time_step(
     rho_cav,
     parameterized_gates,
     measurement_indices,
-    initial_povm_params,
+    initial_params,
     rnn_model,
     rnn_params,
     rnn_state,
@@ -157,7 +155,7 @@ def _calculate_time_step(
     for i, gate in enumerate(parameterized_gates):
         if i in measurement_indices:
             rho_meas, measurement, log_prob = povm(
-                rho_cav, gate, initial_povm_params
+                rho_cav, gate, initial_params
             )
     updated_params, new_hidden_state = rnn_model.apply(
         rnn_params, jnp.array([measurement]), rnn_state
@@ -170,7 +168,7 @@ def calculate_trajectory(
     rho_cav,
     parameterized_gates,
     measurement_indices,
-    initial_povm_params,
+    initial_params,
     time_steps,
     rnn_model,
     rnn_params,
@@ -180,10 +178,14 @@ def calculate_trajectory(
     Calculate a complete quantum trajectory with feedback.
 
     Args:
-        rho_cav: Initial density matrix
-        povm_measure_operator: POVM measurement operator
-        initial_povm_params: Initial parameters for the POVM
-        time_steps: Number of time steps
+        rho_cav: Initial density matrix of the cavity.
+        parameterized_gates: List of parameterized gates.
+        measurement_indices: Indices of the parameterized gates that are used for measurements.
+        initial_params: Initial parameters for the parameterized gates.
+        time_steps: Number of time steps within a trajectory.
+        rnn_model: RNN model for feedback.
+        rnn_params: Parameters of the RNN model.
+        rnn_state: Initial state of the RNN model.
 
     Returns:
         Final state, log probability, array of POVM parameters
@@ -191,8 +193,8 @@ def calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
-    arr_of_povm_params = [initial_povm_params]
-    new_params = initial_povm_params
+    arr_of_povm_params = [initial_params]
+    new_params = initial_params
     new_hidden_state = rnn_state
     total_log_prob = 0.0
     for i in range(time_steps):
@@ -201,7 +203,7 @@ def calculate_trajectory(
                 rho_cav=rho_final,
                 parameterized_gates=parameterized_gates,
                 measurement_indices=measurement_indices,
-                initial_povm_params=new_params,
+                initial_params=new_params,
                 rnn_model=rnn_model,
                 rnn_params=rnn_params,
                 rnn_state=new_hidden_state,
@@ -241,7 +243,7 @@ def optimize_pulse_with_feedback(
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
         parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        povm_measure_operator (callable): The POVM measurement operator Mm.
+        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
@@ -285,7 +287,7 @@ def optimize_pulse_with_feedback(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
-                    initial_povm_params=povm_params,
+                    initial_params=povm_params,
                     time_steps=num_time_steps,
                     rnn_model=rnn_model,
                     rnn_params=updated_rnn_params,
@@ -327,7 +329,7 @@ def optimize_pulse_with_feedback(
                 rho_cav=U_0,
                 parameterized_gates=parameterized_gates,
                 measurement_indices=measurement_indices,
-                initial_povm_params=initial_params,
+                initial_params=initial_params,
                 time_steps=num_time_steps,
                 rnn_model=rnn_model,
                 rnn_params=best_model_params,
