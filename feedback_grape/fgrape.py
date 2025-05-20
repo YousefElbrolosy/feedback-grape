@@ -281,6 +281,11 @@ def optimize_pulse_with_feedback(
                 Loss function for purity optimization.
                 Returns negative purity (we want to minimize this).
                 """
+
+                # reseting hidden state at end of every trajectory ( does not really change the purity tho)
+                h_initial_state = jnp.zeros((batch_size, hidden_size))
+
+
                 updated_rnn_params = rnn_params
                 povm_params = initial_params
                 rho_final, log_prob, _ = calculate_trajectory(
@@ -438,5 +443,4 @@ class RNN(nn.Module):
         # the information of the previous time steps and this is optimized to output best povm_params
         output = nn.Dense(features=self.output_size)(new_hidden_state)
         # output = jnp.asarray(output)
-        jax.debug.print("RNN output: {}", output[0])
         return output[0], new_hidden_state
