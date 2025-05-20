@@ -220,6 +220,15 @@ def calculate_trajectory(
     return rho_final, total_log_prob, arr_of_povm_params
 
 
+def dict_to_nested_list(d):
+    if isinstance(d, dict):
+        return jnp.array([dict_to_nested_list(v) for v in d.values()]).tolist()
+    else:
+        return d
+
+
+
+
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
@@ -263,6 +272,9 @@ def optimize_pulse_with_feedback(
         raise ValueError("Time steps must be greater than 0.")
 
     if mode == "nn":
+        # 
+        initial_params = dict_to_nested_list(initial_params)
+        initial_params = jnp.array(initial_params).flatten().tolist()
         hidden_size = 32
         batch_size = 1
         output_size = len(initial_params)
