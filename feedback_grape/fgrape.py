@@ -4,10 +4,12 @@ import numpy as np
 from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
 import jax
 import flax.linen as nn
+
+from feedback_grape.utils.fidelity import fidelity
 # ruff: noqa N8
 
 
-class FgResultPurity(NamedTuple):
+class FgResult(NamedTuple):
     """
     result class to store the results of the optimization process.
     """
@@ -15,10 +17,6 @@ class FgResultPurity(NamedTuple):
     optimized_rnn_parameters: jnp.ndarray
     """
     Optimized control amplitudes.
-    """
-    final_purity: float
-    """
-    Final fidelity of the optimized control.
     """
     iterations: int
     """
@@ -29,6 +27,17 @@ class FgResultPurity(NamedTuple):
     Final operator after applying the optimized control amplitudes.
     """
     arr_of_povm_params: List[List]
+    """
+    Array of finalsPOVM parameters for each time step.
+    """
+    final_purity: float | None
+    """
+    Final purity of the optimized control.
+    """
+    final_fidelity: float | None
+    """
+    Final fidelity of the optimized control.
+    """
 
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
@@ -331,7 +340,7 @@ def optimize_pulse_with_feedback(
     learning_rate: float,
     type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
     propcomp: str = "time-efficient",  # time-efficient, memory-efficient
-) -> FgResultPurity:
+) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration.
 
@@ -406,70 +415,148 @@ def optimize_pulse_with_feedback(
                 # the log prob or not? ( like in porroti's implementation )?
                 purity_value = purity(rho=rho_final)
                 loss1 = -purity_value
-                loss2 = log_prob * jax.lax.stop_gradient(-purity_value)
+                loss2 = log_prob * jax.lax.stop_gradient(loss1)
                 return loss1 + loss2
 
-            # set up optimizer and training state
-            if optimizer.upper() == "ADAM":
-                best_model_params, iter_idx = _optimize_adam(
-                    loss_fn,
-                    rnn_params,
-                    max_iter,
-                    learning_rate,
-                    convergence_threshold,
-                )
-
-            elif optimizer.upper() == "L-BFGS":
-                best_model_params, iter_idx = _optimize_L_BFGS(
-                    loss_fn,
-                    rnn_params,
-                    max_iter,
-                    learning_rate,
-                    convergence_threshold,
-                )
-            else:
-                raise ValueError(
-                    "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
-                )
-            # Calculate final state and purity
-            rho_final, _, arr_of_povm_params = calculate_trajectory(
-                rho_cav=U_0,
-                parameterized_gates=parameterized_gates,
-                measurement_indices=measurement_indices,
-                initial_params=flat_params,
-                param_shapes=param_shapes,
-                time_steps=num_time_steps,
-                rnn_model=rnn_model,
-                rnn_params=best_model_params,
-                rnn_state=h_initial_state,
-                type=type,
-            )
-            final_purity = purity(rho=rho_final)
-
-            return FgResultPurity(
-                optimized_rnn_parameters=best_model_params,
-                final_purity=final_purity,
-                iterations=iter_idx,
-                final_state=rho_final,
-                arr_of_povm_params=arr_of_povm_params,
-            )
-
         elif goal == "fidelity":
-            # TODO: Implement fidelity optimization
-            raise NotImplementedError(
-                "Fidelity optimization not implemented yet."
-            )
+            def loss_fn(rnn_params):
+                """
+                Loss function for purity optimization.
+                Returns negative purity (we want to minimize this).
+                """
+
+                # reseting hidden state at end of every trajectory ( does not really change the purity tho)
+                h_initial_state = jnp.zeros((batch_size, hidden_size))
+
+                updated_rnn_params = rnn_params
+
+                rho_final, log_prob, _ = calculate_trajectory(
+                    rho_cav=U_0,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=flat_params,
+                    param_shapes=param_shapes,
+                    time_steps=num_time_steps,
+                    rnn_model=rnn_model,
+                    rnn_params=updated_rnn_params,
+                    rnn_state=h_initial_state,
+                    type=type,
+                )
+                fidelity_value = fidelity(C_target=C_target, U_final=rho_final, type=type)
+                loss1 = -fidelity_value
+                loss2 = log_prob * jax.lax.stop_gradient(loss1)
+                return loss1 + loss2
 
         elif goal == "both":
-            # TODO: Implement combined optimization
-            raise NotImplementedError(
-                "Combined optimization not implemented yet."
-            )
+            def loss_fn(rnn_params):
+                """
+                Loss function for purity optimization.
+                Returns negative purity (we want to minimize this).
+                """
+
+                # reseting hidden state at end of every trajectory ( does not really change the purity tho)
+                h_initial_state = jnp.zeros((batch_size, hidden_size))
+
+                updated_rnn_params = rnn_params
+
+                rho_final, log_prob, _ = calculate_trajectory(
+                    rho_cav=U_0,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=flat_params,
+                    param_shapes=param_shapes,
+                    time_steps=num_time_steps,
+                    rnn_model=rnn_model,
+                    rnn_params=updated_rnn_params,
+                    rnn_state=h_initial_state,
+                    type=type,
+                )
+                fidelity_value = fidelity(C_target=C_target, U_final=rho_final, type=type)
+                purity_value = purity(rho=rho_final)
+                loss1 = -(fidelity_value + purity_value)
+                loss2 = log_prob * jax.lax.stop_gradient(loss1)
+                return loss1 + loss2
 
         else:
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
+        
+        # set up optimizer and training state
+        if optimizer.upper() == "ADAM":
+            best_model_params, iter_idx = _optimize_adam(
+                loss_fn,
+                rnn_params,
+                max_iter,
+                learning_rate,
+                convergence_threshold,
+            )
+
+        elif optimizer.upper() == "L-BFGS":
+            best_model_params, iter_idx = _optimize_L_BFGS(
+                loss_fn,
+                rnn_params,
+                max_iter,
+                learning_rate,
+                convergence_threshold,
+            )
+        else:
+            raise ValueError(
+                "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
+            )
+        final_fidelity = None
+        final_purity = None
+        # Calculate final state and purity
+        rho_final, _, arr_of_povm_params = calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            initial_params=flat_params,
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            rnn_model=rnn_model,
+            rnn_params=best_model_params,
+            rnn_state=h_initial_state,
+            type=type,
+        )
+        if(goal == "fidelity"):
+            final_fidelity = fidelity(
+                C_target=C_target,
+                U_final=rho_final,
+                type=type,
+            )
+        elif goal == "purity":
+            final_purity = purity(rho=rho_final)
+
+        elif goal == "both":
+            final_fidelity = fidelity(
+                C_target=C_target,
+                U_final=rho_final,
+                type=type,
+            )
+            final_purity = purity(rho=rho_final)
+        else:
+            raise ValueError(
+                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+            )
+        
+
+        # TODO: know why even, does it have array types in the all but first entries?
+        # Ensure every param in arr_of_povm_params is a list
+        arr_of_povm_params = [
+            param if isinstance(param, list) else param.tolist()
+            for param in arr_of_povm_params
+        ]
+        
+        return FgResult(
+            optimized_rnn_parameters=best_model_params,
+            final_purity=final_purity,
+            final_fidelity=final_fidelity,
+            iterations=iter_idx,
+            final_state=rho_final,
+            arr_of_povm_params=arr_of_povm_params,
+        )
+
 
     elif mode == "lookup":
         # TODO: Implement look-up table approach
