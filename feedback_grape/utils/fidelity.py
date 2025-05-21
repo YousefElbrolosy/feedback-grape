@@ -106,9 +106,10 @@ def _state_density_fidelity(A, B):
     # of its square root, so let's just get its eigenenergies instead.
     # We also truncate negative eigenvalues to avoid nan propagation;
     # even for positive semidefinite matrices, small negative eigenvalues
-    # can be reported.
+    # can be reported. This REALLY HAPPENED!! In example c
     eig_vals = jnp.linalg.eigvals(sqrtmA @ B @ sqrtmA)
-    return jnp.real(jnp.sum(jnp.sqrt(eig_vals)))
+    eig_vals_non_neg = jnp.where(eig_vals > 0, eig_vals, 0)
+    return jnp.real(jnp.sum(jnp.sqrt(eig_vals_non_neg)))
 
 
 def fidelity(*, C_target, U_final, type="unitary"):

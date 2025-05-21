@@ -4,8 +4,8 @@ import numpy as np
 from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
 import jax
 import flax.linen as nn
-
 from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.purity import purity
 # ruff: noqa N8
 
 
@@ -128,20 +128,6 @@ def povm(
     return rho_meas, measurement, log_prob
 
 
-# TODO + QUESTION: ask pavlo if purity of a superoperator is something important
-def purity(*, rho):
-    """
-    Computes the purity of a density matrix.
-
-    Args:
-        rho: Density matrix.
-        type: Type of density matrix ("density" or "superoperator").
-    Returns:
-        purity: Purity value.
-    """
-    return jnp.real(jnp.trace(rho @ rho))
-
-
 def apply_gate(rho_cav, gate, params, type):
     """
     Apply a gate to the given state, with measurement if needed.
@@ -155,11 +141,11 @@ def apply_gate(rho_cav, gate, params, type):
         tuple: Updated state, measurement result (or None), log probability (or 0.0).
     """
     # For non-measurement gates, apply the gate without measurement
+    operator = gate(*params)
     if type == "density":
-        operator = gate(*params)
         rho_meas = operator @ rho_cav @ operator.conj().T
     else:
-        pass  # TODO: see if other cases need to be handled
+        rho_meas = operator @ rho_cav
     return rho_meas
 
 
@@ -240,7 +226,7 @@ def calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
-    arr_of_povm_params = [initial_params[0]]
+    arr_of_povm_params = [initial_params]
     new_params = initial_params
     new_hidden_state = rnn_state
     total_log_prob = 0.0
@@ -281,7 +267,7 @@ def calculate_trajectory(
         new_params = reshaped_params
 
         if i < time_steps - 1:
-            arr_of_povm_params.extend(new_params)
+            arr_of_povm_params.append(new_params)
     return rho_final, total_log_prob, arr_of_povm_params
 
 
@@ -316,7 +302,9 @@ def prepare_parameters_from_dict(params_dict):
         else:
             # If already a flat array
             gate_flat_params = gate_params
+        # this is checking if use can enter sth like {'gate1': 1} instead of {"gate1": {"param1": 1}}
         if not (isinstance(gate_flat_params, list)):
+            flat_params.append([gate_flat_params])
             param_shapes.append(1)
         else:
             flat_params.append(gate_flat_params)
@@ -419,6 +407,7 @@ def optimize_pulse_with_feedback(
                 return loss1 + loss2
 
         elif goal == "fidelity":
+
             def loss_fn(rnn_params):
                 """
                 Loss function for purity optimization.
@@ -442,12 +431,15 @@ def optimize_pulse_with_feedback(
                     rnn_state=h_initial_state,
                     type=type,
                 )
-                fidelity_value = fidelity(C_target=C_target, U_final=rho_final, type=type)
+                fidelity_value = fidelity(
+                    C_target=C_target, U_final=rho_final, type=type
+                )
                 loss1 = -fidelity_value
                 loss2 = log_prob * jax.lax.stop_gradient(loss1)
                 return loss1 + loss2
 
         elif goal == "both":
+
             def loss_fn(rnn_params):
                 """
                 Loss function for purity optimization.
@@ -471,7 +463,9 @@ def optimize_pulse_with_feedback(
                     rnn_state=h_initial_state,
                     type=type,
                 )
-                fidelity_value = fidelity(C_target=C_target, U_final=rho_final, type=type)
+                fidelity_value = fidelity(
+                    C_target=C_target, U_final=rho_final, type=type
+                )
                 purity_value = purity(rho=rho_final)
                 loss1 = -(fidelity_value + purity_value)
                 loss2 = log_prob * jax.lax.stop_gradient(loss1)
@@ -481,7 +475,7 @@ def optimize_pulse_with_feedback(
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
-        
+
         # set up optimizer and training state
         if optimizer.upper() == "ADAM":
             best_model_params, iter_idx = _optimize_adam(
@@ -501,9 +495,7 @@ def optimize_pulse_with_feedback(
                 convergence_threshold,
             )
         else:
-            raise ValueError(
-                "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
-            )
+            raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
         final_fidelity = None
         final_purity = None
         # Calculate final state and purity
@@ -519,12 +511,13 @@ def optimize_pulse_with_feedback(
             rnn_state=h_initial_state,
             type=type,
         )
-        if(goal == "fidelity"):
+        if goal == "fidelity":
             final_fidelity = fidelity(
                 C_target=C_target,
                 U_final=rho_final,
                 type=type,
             )
+
         elif goal == "purity":
             final_purity = purity(rho=rho_final)
 
@@ -539,15 +532,14 @@ def optimize_pulse_with_feedback(
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
-        
 
         # TODO: know why even, does it have array types in the all but first entries?
         # Ensure every param in arr_of_povm_params is a list
         arr_of_povm_params = [
-            param if isinstance(param, list) else param.tolist()
-            for param in arr_of_povm_params
+            [p if isinstance(p, list) else p.tolist() for p in params]
+            for params in arr_of_povm_params
         ]
-        
+
         return FgResult(
             optimized_rnn_parameters=best_model_params,
             final_purity=final_purity,
@@ -556,7 +548,6 @@ def optimize_pulse_with_feedback(
             final_state=rho_final,
             arr_of_povm_params=arr_of_povm_params,
         )
-
 
     elif mode == "lookup":
         # TODO: Implement look-up table approach

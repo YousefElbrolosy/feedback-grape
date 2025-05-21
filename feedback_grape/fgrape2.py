@@ -308,11 +308,9 @@ def prepare_parameters_from_dict(params_dict):
         else:
             # If already a flat array
             gate_flat_params = gate_params
-        if not (isinstance(gate_flat_params, list)):
-            param_shapes.append(1)
-        else:
-            flat_params.append(gate_flat_params)
-            param_shapes.append(len(gate_flat_params))
+
+        flat_params.append(gate_flat_params)
+        param_shapes.append(len(gate_flat_params))
 
     return flat_params, param_shapes
 
