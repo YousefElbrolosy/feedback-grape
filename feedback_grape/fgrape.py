@@ -132,6 +132,7 @@ def purity(*, rho):
     """
     return jnp.real(jnp.trace(rho @ rho))
 
+
 def apply_gate(rho_cav, gate, params, type):
     """
     Apply a gate to the given state, with measurement if needed.
@@ -148,9 +149,10 @@ def apply_gate(rho_cav, gate, params, type):
     if type == "density":
         operator = gate(params)
         rho_meas = operator @ rho_cav @ operator.conj().T
-    else: 
-        pass # TODO: see if other cases need to be handled
+    else:
+        pass  # TODO: see if other cases need to be handled
     return rho_meas
+
 
 def _calculate_time_step(
     *,
@@ -161,7 +163,7 @@ def _calculate_time_step(
     rnn_model,
     rnn_params,
     rnn_state,
-    type
+    type,
 ):
     """
     Calculate the time step for the optimization process.
@@ -176,23 +178,22 @@ def _calculate_time_step(
     """
     rho_final = rho_cav
     total_log_prob = 0.0
-    
+
     # Apply each gate in sequence
     for i, gate in enumerate(parameterized_gates):
         gate_params = initial_params[i]
         # TODO: handle more carefully when there are multiple measurements
         if i in measurement_indices:
-            rho_final, measurement, log_prob = povm(rho_final, gate, gate_params)
+            rho_final, measurement, log_prob = povm(
+                rho_final, gate, gate_params
+            )
             updated_params, new_hidden_state = rnn_model.apply(
                 rnn_params, jnp.array([measurement]), rnn_state
             )
             total_log_prob += log_prob
         else:
-            rho_final = apply_gate(
-                rho_final, gate, gate_params, type
-            )
-    
-    
+            rho_final = apply_gate(rho_final, gate, gate_params, type)
+
     return rho_final, total_log_prob, updated_params, new_hidden_state
 
 
@@ -207,7 +208,7 @@ def calculate_trajectory(
     rnn_model,
     rnn_params,
     rnn_state,
-    type
+    type,
 ):
     """
     Calculate a complete quantum trajectory with feedback.
@@ -255,7 +256,6 @@ def calculate_trajectory(
         # surement probabilities)
         total_log_prob += log_prob
 
-
         # Reshape the flattened parameters from RNN output according
         # to each gate corressponding params
         reshaped_params = []
@@ -263,12 +263,13 @@ def calculate_trajectory(
         for shape in param_shapes:
             num_params = int(np.prod(shape))
             # rnn outputs a flat list, this takes each and assigns according to the shape
-            gate_params = new_params[param_idx:param_idx + num_params].reshape(shape)
+            gate_params = new_params[
+                param_idx : param_idx + num_params
+            ].reshape(shape)
             reshaped_params.append(gate_params)
             param_idx += num_params
-            
-        new_params = reshaped_params
 
+        new_params = reshaped_params
 
         if i < time_steps - 1:
             arr_of_povm_params.extend(new_params)
@@ -278,26 +279,26 @@ def calculate_trajectory(
 def prepare_parameters_from_dict(params_dict):
     """
     Convert a nested dictionary of parameters to a flat list and record shapes.
-    
+
     Args:
         params_dict: Nested dictionary of parameters.
-        
+
     Returns:
         tuple: Flattened parameters list and list of shapes.
     """
     flat_params = []
     param_shapes = []
-    
+
     # returns a flat list of the leaves
     def flatten_dict(d):
         result = []
-        for key, value in d.items(): 
+        for key, value in d.items():
             if isinstance(value, dict):
                 result.extend(flatten_dict(value))
             else:
                 result.append(value)
         return result
-    
+
     # flatten each top-level gate
     for gate_name, gate_params in params_dict.items():
         if isinstance(gate_params, dict):
@@ -311,7 +312,7 @@ def prepare_parameters_from_dict(params_dict):
         else:
             flat_params.append(gate_flat_params)
             param_shapes.append(len(gate_flat_params))
-    
+
     return flat_params, param_shapes
 
 
@@ -356,7 +357,7 @@ def optimize_pulse_with_feedback(
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
-    
+
     # Convert dictionary parameters to list[list] structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
     # Calculate total number of parameters
@@ -384,7 +385,6 @@ def optimize_pulse_with_feedback(
 
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
-
 
                 updated_rnn_params = rnn_params
 

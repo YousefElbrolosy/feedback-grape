@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 
+
 # ruff: noqa N8
 def _isket(a: jnp.ndarray) -> bool:
     """

@@ -7,6 +7,7 @@ import numpy as np
 # ruff: noqa N8
 # TODO: need to fix problem where dict leaves are reversed
 
+
 class FgResultPurity(NamedTuple):
     """
     result class to store the results of the optimization process.
@@ -141,7 +142,7 @@ def apply_gate(rho_cav, gate, params, gate_idx, measurement_indices):
     if gate_idx in measurement_indices:
         rho_meas, measurement, log_prob = povm(rho_cav, gate, params)
         return rho_meas, measurement, log_prob
-    
+
     # For non-measurement gates, apply the gate without measurement
     operator = gate(params)
     rho_meas = operator @ rho_cav @ operator.conj().T
@@ -174,11 +175,11 @@ def _calculate_time_step(
         tuple: Updated state, log probability, updated parameters, new RNN state.
     """
     # Split the flattened parameters into chunks for each gate
-    
+
     rho_final = rho_cav
     total_log_prob = 0.0
     measurement_results = []
-    
+
     # Apply each gate in sequence
     for i, gate in enumerate(parameterized_gates):
         gate_params = all_params[i]
@@ -188,20 +189,20 @@ def _calculate_time_step(
         total_log_prob += log_prob
         if measurement is not None:
             measurement_results.append(measurement)
-    
+
     # If no measurements were made, use a dummy value
     if not measurement_results:
         measurement_results = [0]
-    
+
     # Get updated parameters from RNN based on measurements
     measurement_array = jnp.array(measurement_results)
     updated_params, new_hidden_state = rnn_model.apply(
         rnn_params, measurement_array, rnn_state
     )
-    
+
     # The RNN now outputs all parameters in a flat array
     # We'll reshape them during calculate_trajectory
-    
+
     return rho_final, total_log_prob, updated_params, new_hidden_state
 
 
@@ -239,20 +240,21 @@ def calculate_trajectory(
     current_params = initial_params
     current_hidden_state = rnn_state
     total_log_prob = 0.0
-    
-    for i in range(time_steps):
-        rho_final, log_prob, new_params, current_hidden_state = _calculate_time_step(
-            rho_cav=rho_final,
-            parameterized_gates=parameterized_gates,
-            measurement_indices=measurement_indices,
-            all_params=current_params,
-            rnn_model=rnn_model,
-            rnn_params=rnn_params,
-            rnn_state=current_hidden_state,
-        )
-        
-        total_log_prob += log_prob
 
+    for i in range(time_steps):
+        rho_final, log_prob, new_params, current_hidden_state = (
+            _calculate_time_step(
+                rho_cav=rho_final,
+                parameterized_gates=parameterized_gates,
+                measurement_indices=measurement_indices,
+                all_params=current_params,
+                rnn_model=rnn_model,
+                rnn_params=rnn_params,
+                rnn_state=current_hidden_state,
+            )
+        )
+
+        total_log_prob += log_prob
 
         # Reshape the flattened parameters from RNN output according
         # to each gate corressponding params
@@ -261,40 +263,43 @@ def calculate_trajectory(
         for shape in param_shapes:
             num_params = int(np.prod(shape))
             # rnn outputs a flat list, this takes each and assigns according to the shape
-            gate_params = new_params[param_idx:param_idx + num_params].reshape(shape)
+            gate_params = new_params[
+                param_idx : param_idx + num_params
+            ].reshape(shape)
             reshaped_params.append(gate_params)
             param_idx += num_params
-            
+
         current_params = reshaped_params
-        
+
         if i < time_steps - 1:
             all_params_history.extend(current_params)
-    
+
     return rho_final, total_log_prob, all_params_history
+
 
 def prepare_parameters_from_dict(params_dict):
     """
     Convert a nested dictionary of parameters to a flat list and record shapes.
-    
+
     Args:
         params_dict: Nested dictionary of parameters.
-        
+
     Returns:
         tuple: Flattened parameters list and list of shapes.
     """
     flat_params = []
     param_shapes = []
-    
+
     # returns a flat list of the leaves
     def flatten_dict(d):
         result = []
-        for key, value in d.items(): 
+        for key, value in d.items():
             if isinstance(value, dict):
                 result.extend(flatten_dict(value))
             else:
                 result.append(value)
         return result
-    
+
     # flatten each top-level gate
     for gate_name, gate_params in params_dict.items():
         if isinstance(gate_params, dict):
@@ -308,7 +313,7 @@ def prepare_parameters_from_dict(params_dict):
         else:
             flat_params.append(gate_flat_params)
             param_shapes.append(len(gate_flat_params))
-    
+
     return flat_params, param_shapes
 
 
@@ -346,39 +351,40 @@ def optimize_pulse_with_feedback(
         learning_rate: The learning rate for the optimization algorithm.
         type: The type of quantum system representation.
         propcomp: The method for propagator computation.
-        
+
     Returns:
         result: FgResultPurity containing optimized pulse and convergence data.
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
-    
+
     # Convert dictionary parameters to flat structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
     # Calculate total number of parameters
     total_params = len(jax.tree_util.tree_leaves(initial_params))
-    
+
     if mode == "nn":
         hidden_size = 32
         batch_size = 1
         output_size = total_params  # RNN outputs all parameters for all gates
-        
+
         rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
         h_initial_state = jnp.zeros((batch_size, hidden_size))
-        
+
         dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
         rnn_params = rnn_model.init(
             jax.random.PRNGKey(0), dummy_input, h_initial_state
         )
-        
+
         if goal == "purity":
+
             def loss_fn(rnn_params):
                 """
                 Loss function for purity optimization.
                 Returns negative purity (we want to minimize this).
                 """
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
-                
+
                 updated_rnn_params = rnn_params
                 rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
@@ -391,12 +397,12 @@ def optimize_pulse_with_feedback(
                     rnn_state=h_initial_state,
                     param_shapes=param_shapes,
                 )
-                
+
                 purity_value = purity(rho=rho_final)
                 loss1 = -purity_value
                 loss2 = log_prob * jax.lax.stop_gradient(-purity_value)
                 return loss1 + loss2
-            
+
             # Set up optimizer and training state
             if optimizer.upper() == "ADAM":
                 best_model_params, iter_idx = _optimize_adam(
@@ -406,7 +412,7 @@ def optimize_pulse_with_feedback(
                     learning_rate,
                     convergence_threshold,
                 )
-            
+
             elif optimizer.upper() == "L-BFGS":
                 best_model_params, iter_idx = _optimize_L_BFGS(
                     loss_fn,
@@ -419,7 +425,7 @@ def optimize_pulse_with_feedback(
                 raise ValueError(
                     "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
                 )
-                
+
             # Calculate final state and purity
             rho_final, _, arr_of_povm_params = calculate_trajectory(
                 rho_cav=U_0,
@@ -433,7 +439,7 @@ def optimize_pulse_with_feedback(
                 param_shapes=param_shapes,
             )
             final_purity = purity(rho=rho_final)
-            
+
             return FgResultPurity(
                 optimized_rnn_parameters=best_model_params,
                 final_purity=final_purity,
@@ -441,30 +447,30 @@ def optimize_pulse_with_feedback(
                 final_state=rho_final,
                 arr_of_povm_params=arr_of_povm_params,
             )
-            
+
         elif goal == "fidelity":
             # TODO: Implement fidelity optimization
             raise NotImplementedError(
                 "Fidelity optimization not implemented yet."
             )
-            
+
         elif goal == "both":
             # TODO: Implement combined optimization
             raise NotImplementedError(
                 "Combined optimization not implemented yet."
             )
-            
+
         else:
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
-            
+
     elif mode == "lookup":
         # TODO: Implement look-up table approach
         raise NotImplementedError(
             "Look-up table approach not implemented yet."
         )
-        
+
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
 
@@ -493,19 +499,19 @@ class GRUCell(nn.Module):
                 jnp.concatenate([x_input, hidden_state], axis=-1)
             )
         )
-        
+
         z = nn.sigmoid(
             nn.Dense(features=self.features, name='update_gate')(
                 jnp.concatenate([x_input, hidden_state], axis=-1)
             )
         )
-        
+
         h_telda = nn.tanh(
             nn.Dense(features=self.features, name='candidate_gate')(
                 jnp.concatenate([x_input, r * hidden_state], axis=-1)
             )
         )
-        
+
         h_new = (1 - z) * h_telda + z * hidden_state
         return h_new, h_new
 
@@ -523,10 +529,10 @@ class RNN(nn.Module):
 
         if measurement.ndim == 1:
             measurement = measurement.reshape(1, -1)
-        
+
         new_hidden_state, _ = gru_cell(hidden_state, measurement)
-        
+
         # Output all gate parameters at once
         output = nn.Dense(features=self.output_size)(new_hidden_state)
-        
+
         return output[0], new_hidden_state
