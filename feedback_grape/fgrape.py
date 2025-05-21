@@ -1,5 +1,6 @@
-from typing import NamedTuple
+from typing import List, NamedTuple
 import jax.numpy as jnp
+import numpy as np
 from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
 import jax
 import flax.linen as nn
@@ -27,7 +28,7 @@ class FgResultPurity(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    arr_of_povm_params: jnp.ndarray
+    arr_of_povm_params: List[List]
 
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
@@ -40,7 +41,7 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav: Density matrix of the cavity
         measurement_outcome: The measurement outcome
         povm_measure_operator: The POVM measurement operator
-        kwargs: Additional parameters for the POVM operator
+        params: Parameters for the POVM operator
 
     Returns:
         Probability of the measurement outcome
@@ -81,11 +82,11 @@ def _post_measurement_state(
     return Mm_op @ rho_cav @ Mm_op.conj().T / prob
 
 
-# TODO: need to handle the case where the
+# TODO: need to handle the case where the rho_cav is not a density matrix
 def povm(
     rho_cav: jnp.ndarray,
     povm_measure_operator: callable,
-    initial_povm_params: list,
+    initial_povm_params: jnp.ndarray,
 ) -> tuple[jnp.ndarray, int, float]:
     """
     Perform a POVM measurement on the given state.
@@ -107,6 +108,7 @@ def povm(
     rho_meas = _post_measurement_state(
         rho_cav, measurement, povm_measure_operator, initial_povm_params
     )
+    # TODO: handle if there are more than 2 possibilities
     prob = jnp.where(
         measurement == 1,
         prob_plus,
@@ -130,8 +132,7 @@ def purity(*, rho):
     """
     return jnp.real(jnp.trace(rho @ rho))
 
-
-def apply_gate(rho_cav, gate, params, gate_idx, measurement_indices, type):
+def apply_gate(rho_cav, gate, params, type):
     """
     Apply a gate to the given state, with measurement if needed.
 
@@ -139,28 +140,17 @@ def apply_gate(rho_cav, gate, params, gate_idx, measurement_indices, type):
         rho_cav: Density matrix of the cavity.
         gate: The gate function to apply.
         params: Parameters for the gate.
-        gate_idx: Index of the gate in the list of gates.
-        measurement_indices: Indices of gates that should perform measurements.
 
     Returns:
         tuple: Updated state, measurement result (or None), log probability (or 0.0).
     """
-    # Check if this gate should perform a measurement
-    if gate_idx in measurement_indices:
-        rho_meas, measurement, log_prob = povm(rho_cav, gate, params)
-        return rho_meas, measurement, log_prob
-    
     # For non-measurement gates, apply the gate without measurement
-    # (This would need to be implemented based on gate semantics)
-    # For now, assuming gates return an operator that acts on the state:
-    operator = gate(params)
     if type == "density":
+        operator = gate(params)
         rho_meas = operator @ rho_cav @ operator.conj().T
-    else:
-        pass # TODO
-
-    return rho_meas, None, 0.0
-
+    else: 
+        pass # TODO: see if other cases need to be handled
+    return rho_meas
 
 def _calculate_time_step(
     *,
@@ -171,6 +161,7 @@ def _calculate_time_step(
     rnn_model,
     rnn_params,
     rnn_state,
+    type
 ):
     """
     Calculate the time step for the optimization process.
@@ -183,15 +174,26 @@ def _calculate_time_step(
     Returns:
 
     """
+    rho_final = rho_cav
+    total_log_prob = 0.0
+    
+    # Apply each gate in sequence
     for i, gate in enumerate(parameterized_gates):
+        gate_params = initial_params[i]
+        # TODO: handle more carefully when there are multiple measurements
         if i in measurement_indices:
-            rho_meas, measurement, log_prob = povm(
-                rho_cav, gate, initial_params
+            rho_final, measurement, log_prob = povm(rho_final, gate, gate_params)
+            updated_params, new_hidden_state = rnn_model.apply(
+                rnn_params, jnp.array([measurement]), rnn_state
             )
-    updated_params, new_hidden_state = rnn_model.apply(
-        rnn_params, jnp.array([measurement]), rnn_state
-    )
-    return rho_meas, log_prob, updated_params, new_hidden_state
+            total_log_prob += log_prob
+        else:
+            rho_final = apply_gate(
+                rho_final, gate, gate_params, type
+            )
+    
+    
+    return rho_final, total_log_prob, updated_params, new_hidden_state
 
 
 def calculate_trajectory(
@@ -200,10 +202,12 @@ def calculate_trajectory(
     parameterized_gates,
     measurement_indices,
     initial_params,
+    param_shapes,
     time_steps,
     rnn_model,
     rnn_params,
     rnn_state,
+    type
 ):
     """
     Calculate a complete quantum trajectory with feedback.
@@ -211,12 +215,14 @@ def calculate_trajectory(
     Args:
         rho_cav: Initial density matrix of the cavity.
         parameterized_gates: List of parameterized gates.
-        measurement_indices: Indices of the parameterized gates that are used for measurements.
-        initial_params: Initial parameters for the parameterized gates.
+        measurement_indices: Indices of gates used for measurements.
+        initial_params: Initial parameters for all gates.
+        param_shapes: List of shapes for each gate's parameters.
         time_steps: Number of time steps within a trajectory.
         rnn_model: RNN model for feedback.
         rnn_params: Parameters of the RNN model.
         rnn_state: Initial state of the RNN model.
+        type: Type of quantum system representation (e.g., "density").
 
     Returns:
         Final state, log probability, array of POVM parameters
@@ -224,10 +230,11 @@ def calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
-    arr_of_povm_params = [initial_params]
+    arr_of_povm_params = [initial_params[0]]
     new_params = initial_params
     new_hidden_state = rnn_state
     total_log_prob = 0.0
+
     for i in range(time_steps):
         rho_final, log_prob, new_params, new_hidden_state = (
             _calculate_time_step(
@@ -238,6 +245,7 @@ def calculate_trajectory(
                 rnn_model=rnn_model,
                 rnn_params=rnn_params,
                 rnn_state=new_hidden_state,
+                type=type,
             )
         )
         # Thus, during - Refer to Eq(3) in fgrape paper
@@ -246,18 +254,65 @@ def calculate_trajectory(
         # probabilities are known (these are just the POVM mea-
         # surement probabilities)
         total_log_prob += log_prob
+
+
+        # Reshape the flattened parameters from RNN output according
+        # to each gate corressponding params
+        reshaped_params = []
+        param_idx = 0
+        for shape in param_shapes:
+            num_params = int(np.prod(shape))
+            # rnn outputs a flat list, this takes each and assigns according to the shape
+            gate_params = new_params[param_idx:param_idx + num_params].reshape(shape)
+            reshaped_params.append(gate_params)
+            param_idx += num_params
+            
+        new_params = reshaped_params
+
+
         if i < time_steps - 1:
-            arr_of_povm_params.append(new_params)
+            arr_of_povm_params.extend(new_params)
     return rho_final, total_log_prob, arr_of_povm_params
 
 
-def dict_to_nested_list(d):
-    if isinstance(d, dict):
-        return jnp.array([dict_to_nested_list(v) for v in d.values()]).tolist()
-    else:
-        return d
-
-
+def prepare_parameters_from_dict(params_dict):
+    """
+    Convert a nested dictionary of parameters to a flat list and record shapes.
+    
+    Args:
+        params_dict: Nested dictionary of parameters.
+        
+    Returns:
+        tuple: Flattened parameters list and list of shapes.
+    """
+    flat_params = []
+    param_shapes = []
+    
+    # returns a flat list of the leaves
+    def flatten_dict(d):
+        result = []
+        for key, value in d.items(): 
+            if isinstance(value, dict):
+                result.extend(flatten_dict(value))
+            else:
+                result.append(value)
+        return result
+    
+    # flatten each top-level gate
+    for gate_name, gate_params in params_dict.items():
+        if isinstance(gate_params, dict):
+            # Extract parameters for this gate
+            gate_flat_params = flatten_dict(gate_params)
+        else:
+            # If already a flat array
+            gate_flat_params = gate_params
+        if not (isinstance(gate_flat_params, list)):
+            param_shapes.append(1)
+        else:
+            flat_params.append(gate_flat_params)
+            param_shapes.append(len(gate_flat_params))
+    
+    return flat_params, param_shapes
 
 
 def optimize_pulse_with_feedback(
@@ -301,14 +356,16 @@ def optimize_pulse_with_feedback(
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
+    
+    # Convert dictionary parameters to list[list] structure
+    flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
+    # Calculate total number of parameters
+    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
 
     if mode == "nn":
-        num_of_leaves = jax.tree_util.tree_leaves(initial_params)
         hidden_size = 32
         batch_size = 1
-        output_size = len(num_of_leaves)
-        initial_params = dict_to_nested_list(initial_params)
-        initial_params = jnp.array(initial_params).flatten().tolist()
+        output_size = num_of_params
 
         rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
         h_initial_state = jnp.zeros((batch_size, hidden_size))
@@ -330,16 +387,18 @@ def optimize_pulse_with_feedback(
 
 
                 updated_rnn_params = rnn_params
-                povm_params = initial_params
+
                 rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
-                    initial_params=povm_params,
+                    initial_params=flat_params,
+                    param_shapes=param_shapes,
                     time_steps=num_time_steps,
                     rnn_model=rnn_model,
                     rnn_params=updated_rnn_params,
                     rnn_state=h_initial_state,
+                    type=type,
                 )
                 # TODO: see if we need the log prob term
                 # TODO: see if we need to implement stochastic sampling instead
@@ -377,11 +436,13 @@ def optimize_pulse_with_feedback(
                 rho_cav=U_0,
                 parameterized_gates=parameterized_gates,
                 measurement_indices=measurement_indices,
-                initial_params=initial_params,
+                initial_params=flat_params,
+                param_shapes=param_shapes,
                 time_steps=num_time_steps,
                 rnn_model=rnn_model,
                 rnn_params=best_model_params,
                 rnn_state=h_initial_state,
+                type=type,
             )
             final_purity = purity(rho=rho_final)
 

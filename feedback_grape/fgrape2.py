@@ -28,7 +28,7 @@ class FgResultPurity(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    arr_of_povm_params: List[jnp.ndarray]
+    arr_of_povm_params: List[List]
 
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
@@ -143,8 +143,6 @@ def apply_gate(rho_cav, gate, params, gate_idx, measurement_indices):
         return rho_meas, measurement, log_prob
     
     # For non-measurement gates, apply the gate without measurement
-    # (This would need to be implemented based on your gate semantics)
-    # For now, assuming gates return an operator that acts on the state:
     operator = gate(params)
     rho_meas = operator @ rho_cav @ operator.conj().T
     return rho_meas, None, 0.0
@@ -176,7 +174,6 @@ def _calculate_time_step(
         tuple: Updated state, log probability, updated parameters, new RNN state.
     """
     # Split the flattened parameters into chunks for each gate
-    param_lists = [all_params[i] for i in range(len(all_params))]
     
     rho_final = rho_cav
     total_log_prob = 0.0
@@ -184,7 +181,7 @@ def _calculate_time_step(
     
     # Apply each gate in sequence
     for i, gate in enumerate(parameterized_gates):
-        gate_params = param_lists[i]
+        gate_params = all_params[i]
         rho_final, measurement, log_prob = apply_gate(
             rho_final, gate, gate_params, i, measurement_indices
         )
@@ -288,20 +285,21 @@ def prepare_parameters_from_dict(params_dict):
     flat_params = []
     param_shapes = []
     
-    def process_dict(d):
+    # returns a flat list of the leaves
+    def flatten_dict(d):
         result = []
         for key, value in d.items(): 
             if isinstance(value, dict):
-                result.extend(process_dict(value))
+                result.extend(flatten_dict(value))
             else:
                 result.append(value)
         return result
     
-    # Process each top-level gate
+    # flatten each top-level gate
     for gate_name, gate_params in params_dict.items():
         if isinstance(gate_params, dict):
             # Extract parameters for this gate
-            gate_flat_params = process_dict(gate_params)
+            gate_flat_params = flatten_dict(gate_params)
         else:
             # If already a flat array
             gate_flat_params = gate_params
@@ -357,8 +355,6 @@ def optimize_pulse_with_feedback(
     
     # Convert dictionary parameters to flat structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
-    print("Flat params:", flat_params)
-    print("Param shapes:", param_shapes)
     # Calculate total number of parameters
     total_params = len(jax.tree_util.tree_leaves(initial_params))
     
