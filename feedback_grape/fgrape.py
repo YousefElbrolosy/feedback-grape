@@ -56,8 +56,8 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
         Probability of the measurement outcome
     """
     Em = povm_measure_operator(
-        measurement_outcome, initial_params
-    ).conj().T @ povm_measure_operator(measurement_outcome, initial_params)
+        measurement_outcome, *initial_params
+    ).conj().T @ povm_measure_operator(measurement_outcome, *initial_params)
     # QUESTION: would jnp.real be useful here?
     return jnp.real(jnp.trace(Em @ rho_cav))
 
@@ -78,7 +78,7 @@ def _post_measurement_state(
     Returns:
         Post-measurement state
     """
-    Mm_op = povm_measure_operator(measurement_outcome, initial_params)
+    Mm_op = povm_measure_operator(measurement_outcome, *initial_params)
     prob = _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav,
         measurement_outcome,
@@ -156,7 +156,7 @@ def apply_gate(rho_cav, gate, params, type):
     """
     # For non-measurement gates, apply the gate without measurement
     if type == "density":
-        operator = gate(params)
+        operator = gate(*params)
         rho_meas = operator @ rho_cav @ operator.conj().T
     else:
         pass  # TODO: see if other cases need to be handled
