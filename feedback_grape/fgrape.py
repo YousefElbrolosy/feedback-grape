@@ -155,6 +155,7 @@ def _calculate_time_step(
     parameterized_gates,
     measurement_indices,
     initial_params,
+    param_shapes,
     rnn_model,
     rnn_params,
     rnn_state,
@@ -174,10 +175,15 @@ def _calculate_time_step(
     rho_final = rho_cav
     total_log_prob = 0.0
 
+    # TODO: IMP - See which is the more correct, should new params be propagated 
+    # directly within the same time step
+    # or new parameters are together within the same time step
+    
+    updated_params = initial_params
     # Apply each gate in sequence
     for i, gate in enumerate(parameterized_gates):
-        gate_params = initial_params[i]
         # TODO: handle more carefully when there are multiple measurements
+        gate_params = updated_params[i]
         if i in measurement_indices:
             rho_final, measurement, log_prob = povm(
                 rho_final, gate, gate_params
@@ -185,12 +191,51 @@ def _calculate_time_step(
             updated_params, new_hidden_state = rnn_model.apply(
                 rnn_params, jnp.array([measurement]), rnn_state
             )
+            updated_params = reshape_params(param_shapes, updated_params)
             total_log_prob += log_prob
         else:
-            rho_final = apply_gate(rho_final, gate, gate_params, type)
+            rho_final = apply_gate(rho_final, gate, updated_params[i], type)
 
     return rho_final, total_log_prob, updated_params, new_hidden_state
 
+    # # Apply each gate in sequence
+    # for i, gate in enumerate(parameterized_gates):
+    #     gate_params = initial_params[i]
+    #     # TODO: handle more carefully when there are multiple measurements
+    #     if i in measurement_indices:
+    #         rho_final, measurement, log_prob = povm(
+    #             rho_final, gate, gate_params
+    #         )
+    #         updated_params, new_hidden_state = rnn_model.apply(
+    #             rnn_params, jnp.array([measurement]), rnn_state
+    #         )
+    #         reshaped_rnn_params = reshape_params(param_shapes, updated_params)
+    #         total_log_prob += log_prob
+    #     else:
+    #         rho_final = apply_gate(rho_final, gate, gate_params, type)
+
+    # return rho_final, total_log_prob, reshaped_rnn_params, new_hidden_state
+
+
+def reshape_params(param_shapes, rnn_flattened_params):
+    """
+    Reshape the parameters for the gates.
+    """
+    # Reshape the flattened parameters from RNN output according
+    # to each gate corressponding params
+    reshaped_params = []
+    param_idx = 0
+    for shape in param_shapes:
+        num_params = int(np.prod(shape))
+        # rnn outputs a flat list, this takes each and assigns according to the shape
+        gate_params = rnn_flattened_params[
+            param_idx : param_idx + num_params
+        ].reshape(shape)
+        reshaped_params.append(gate_params)
+        param_idx += num_params
+
+    new_params = reshaped_params
+    return new_params
 
 def calculate_trajectory(
     *,
@@ -238,6 +283,7 @@ def calculate_trajectory(
                 parameterized_gates=parameterized_gates,
                 measurement_indices=measurement_indices,
                 initial_params=new_params,
+                param_shapes=param_shapes,
                 rnn_model=rnn_model,
                 rnn_params=rnn_params,
                 rnn_state=new_hidden_state,
@@ -250,21 +296,6 @@ def calculate_trajectory(
         # probabilities are known (these are just the POVM mea-
         # surement probabilities)
         total_log_prob += log_prob
-
-        # Reshape the flattened parameters from RNN output according
-        # to each gate corressponding params
-        reshaped_params = []
-        param_idx = 0
-        for shape in param_shapes:
-            num_params = int(np.prod(shape))
-            # rnn outputs a flat list, this takes each and assigns according to the shape
-            gate_params = new_params[
-                param_idx : param_idx + num_params
-            ].reshape(shape)
-            reshaped_params.append(gate_params)
-            param_idx += num_params
-
-        new_params = reshaped_params
 
         if i < time_steps - 1:
             arr_of_povm_params.append(new_params)

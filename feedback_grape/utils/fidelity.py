@@ -97,6 +97,8 @@ def _state_density_fidelity(A, B):
         # we have to take the sqrtm of one of them.
         A = A / jnp.linalg.trace(A)
         B = B / jnp.linalg.trace(B)
+        # TODO: need to implement own sqrtm function that doesn't depend on jax.scipy.schur since it causes
+        # inability to run on gpu's
         sqrtmA = jax.scipy.linalg.sqrtm(A)
 
     if sqrtmA.shape != B.shape:
