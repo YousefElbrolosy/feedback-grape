@@ -6,7 +6,10 @@ import jax
 import flax.linen as nn
 from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.purity import purity
+from feedback_grape.utils.povm import povm
+
 # ruff: noqa N8
+jax.config.update("jax_enable_x64", True)
 
 
 class FgResult(NamedTuple):
@@ -38,94 +41,6 @@ class FgResult(NamedTuple):
     """
     Final fidelity of the optimized control.
     """
-
-
-def _probability_of_a_measurement_outcome_given_a_certain_state(
-    rho_cav, measurement_outcome, povm_measure_operator, initial_params
-):
-    """
-    Calculate the probability of a measurement outcome given a quantum state.
-
-    Args:
-        rho_cav: Density matrix of the cavity
-        measurement_outcome: The measurement outcome
-        povm_measure_operator: The POVM measurement operator
-        params: Parameters for the POVM operator
-
-    Returns:
-        Probability of the measurement outcome
-    """
-    Em = povm_measure_operator(
-        measurement_outcome, *initial_params
-    ).conj().T @ povm_measure_operator(measurement_outcome, *initial_params)
-    # QUESTION: would jnp.real be useful here?
-    return jnp.real(jnp.trace(Em @ rho_cav))
-
-
-# TODO: should generalize if input is a state rather than a density matrix
-def _post_measurement_state(
-    rho_cav, measurement_outcome, povm_measure_operator, initial_params
-):
-    """
-    Returns the state after the measurement
-
-    Args:
-        rho_cav: Density matrix of the cavity
-        measurement_outcome: The measurement outcome
-        povm_measure_operator: The POVM measurement operator
-        params: Parameters for the POVM operator
-
-    Returns:
-        Post-measurement state
-    """
-    Mm_op = povm_measure_operator(measurement_outcome, *initial_params)
-    prob = _probability_of_a_measurement_outcome_given_a_certain_state(
-        rho_cav,
-        measurement_outcome,
-        povm_measure_operator,
-        initial_params,
-    )
-    # QUESTION: should we use jnp.clip here?
-    prob = jnp.maximum(prob, 1e-10)
-    # is denominator sqrted or not?
-    return Mm_op @ rho_cav @ Mm_op.conj().T / prob
-
-
-# TODO: need to handle the case where the rho_cav is not a density matrix
-def povm(
-    rho_cav: jnp.ndarray,
-    povm_measure_operator: callable,
-    initial_povm_params: jnp.ndarray,
-) -> tuple[jnp.ndarray, int, float]:
-    """
-    Perform a POVM measurement on the given state.
-
-    Args:
-        rho_cav (jnp.ndarray): The density matrix of the cavity.
-        povm_measure_operator (callable): The POVM measurement operator.
-        initial_povm_params (jnp.ndarray): Initial parameters for the POVM measurement operator.
-
-    Returns:
-        tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
-    """
-    # TODO: this should be generalized to all possible measurement outcomes
-    prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
-        rho_cav, 1, povm_measure_operator, initial_povm_params
-    )
-    random_value = jax.random.uniform(jax.random.PRNGKey(0), shape=())
-    measurement = jnp.where(random_value < prob_plus, 1, -1)
-    rho_meas = _post_measurement_state(
-        rho_cav, measurement, povm_measure_operator, initial_povm_params
-    )
-    # TODO: handle if there are more than 2 possibilities
-    prob = jnp.where(
-        measurement == 1,
-        prob_plus,
-        1 - prob_plus,
-    )
-    # QUESTION: If prob is 0 though then the log prob is -inf ( and 1e-10 will be a very huge number)
-    log_prob = jnp.log(jnp.maximum(prob, 1e-10))
-    return rho_meas, measurement, log_prob
 
 
 def apply_gate(rho_cav, gate, params, type):
@@ -175,10 +90,10 @@ def _calculate_time_step(
     rho_final = rho_cav
     total_log_prob = 0.0
 
-    # TODO: IMP - See which is the more correct, should new params be propagated 
+    # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
-    
+
     updated_params = initial_params
     # Apply each gate in sequence
     for i, gate in enumerate(parameterized_gates):
@@ -236,6 +151,7 @@ def reshape_params(param_shapes, rnn_flattened_params):
 
     new_params = reshaped_params
     return new_params
+
 
 def calculate_trajectory(
     *,
@@ -302,6 +218,7 @@ def calculate_trajectory(
     return rho_final, total_log_prob, arr_of_povm_params
 
 
+# TODO: figure out why using jnp.array leads to lower fidelity
 def prepare_parameters_from_dict(params_dict):
     """
     Convert a nested dictionary of parameters to a flat list and record shapes.
@@ -342,6 +259,19 @@ def prepare_parameters_from_dict(params_dict):
             param_shapes.append(len(gate_flat_params))
 
     return flat_params, param_shapes
+
+
+def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
+    res = []
+    for i in range(num_of_rows):
+        flattened = jax.random.uniform(
+            jax.random.PRNGKey(0 + i),
+            shape=(num_of_columns,),
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        )
+        res.append(reshape_params(param_shapes, flattened))
+    return res
 
 
 def optimize_pulse_with_feedback(
@@ -390,7 +320,7 @@ def optimize_pulse_with_feedback(
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
     # Calculate total number of parameters
     num_of_params = len(jax.tree_util.tree_leaves(initial_params))
-
+    trainable_params = None
     if mode == "nn":
         hidden_size = 32
         batch_size = 1
@@ -506,88 +436,103 @@ def optimize_pulse_with_feedback(
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
-
-        # set up optimizer and training state
-        if optimizer.upper() == "ADAM":
-            best_model_params, iter_idx = _optimize_adam(
-                loss_fn,
-                rnn_params,
-                max_iter,
-                learning_rate,
-                convergence_threshold,
-            )
-
-        elif optimizer.upper() == "L-BFGS":
-            best_model_params, iter_idx = _optimize_L_BFGS(
-                loss_fn,
-                rnn_params,
-                max_iter,
-                learning_rate,
-                convergence_threshold,
-            )
-        else:
-            raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
-        final_fidelity = None
-        final_purity = None
-        # Calculate final state and purity
-        rho_final, _, arr_of_povm_params = calculate_trajectory(
-            rho_cav=U_0,
-            parameterized_gates=parameterized_gates,
-            measurement_indices=measurement_indices,
-            initial_params=flat_params,
-            param_shapes=param_shapes,
-            time_steps=num_time_steps,
-            rnn_model=rnn_model,
-            rnn_params=best_model_params,
-            rnn_state=h_initial_state,
-            type=type,
-        )
-        if goal == "fidelity":
-            final_fidelity = fidelity(
-                C_target=C_target,
-                U_final=rho_final,
-                type=type,
-            )
-
-        elif goal == "purity":
-            final_purity = purity(rho=rho_final)
-
-        elif goal == "both":
-            final_fidelity = fidelity(
-                C_target=C_target,
-                U_final=rho_final,
-                type=type,
-            )
-            final_purity = purity(rho=rho_final)
-        else:
-            raise ValueError(
-                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-            )
-
-        # TODO: know why even, does it have array types in the all but first entries?
-        # Ensure every param in arr_of_povm_params is a list
-        arr_of_povm_params = [
-            [p if isinstance(p, list) else p.tolist() for p in params]
-            for params in arr_of_povm_params
-        ]
-
-        return FgResult(
-            optimized_rnn_parameters=best_model_params,
-            final_purity=final_purity,
-            final_fidelity=final_fidelity,
-            iterations=iter_idx,
-            final_state=rho_final,
-            arr_of_povm_params=arr_of_povm_params,
-        )
+        trainable_params = rnn_params
 
     elif mode == "lookup":
-        # TODO: Implement look-up table approach
-        raise NotImplementedError(
-            "Look-up table approach not implemented yet."
-        )
+        # step 1: initialize the parameters
+        num_of_columns = num_of_params
+        num_of_sub_lists = num_time_steps
+        F = []
+        F.append(initial_params)
+        for i in range(1, num_of_sub_lists + 1):
+            F.append(
+                construct_ragged_row(
+                    num_of_rows=2**i,
+                    num_of_columns=num_of_columns,
+                    param_shapes=param_shapes,
+                )
+            )
+        # TODO: implement optimization for lookup table
 
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
+
+    # Optimization
+    # set up optimizer and training state
+    if optimizer.upper() == "ADAM":
+        best_model_params, iter_idx = _optimize_adam(
+            loss_fn,
+            trainable_params,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+        )
+
+    elif optimizer.upper() == "L-BFGS":
+        best_model_params, iter_idx = _optimize_L_BFGS(
+            loss_fn,
+            trainable_params,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+        )
+    else:
+        raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
+    final_fidelity = None
+    final_purity = None
+    # Calculate final state and purity
+    rho_final, _, arr_of_povm_params = calculate_trajectory(
+        rho_cav=U_0,
+        parameterized_gates=parameterized_gates,
+        measurement_indices=measurement_indices,
+        initial_params=flat_params,
+        param_shapes=param_shapes,
+        time_steps=num_time_steps,
+        rnn_model=rnn_model,
+        rnn_params=best_model_params,
+        rnn_state=h_initial_state,
+        type=type,
+    )
+    if goal == "fidelity":
+        final_fidelity = fidelity(
+            C_target=C_target,
+            U_final=rho_final,
+            type=type,
+        )
+
+    elif goal == "purity":
+        final_purity = purity(rho=rho_final)
+
+    elif goal == "both":
+        final_fidelity = fidelity(
+            C_target=C_target,
+            U_final=rho_final,
+            type=type,
+        )
+        final_purity = purity(rho=rho_final)
+    else:
+        raise ValueError(
+            "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+        )
+
+    # Answer: know why even, does it have array types in the all but first entries?
+    # --> Because the first entry is the initial params, given by user, but the rest are
+    # are generated by the RNN which outputs a jnp array, and cannot change them in the middle
+    # because this leads to doing actions on tracer values
+    # Ensure every param in arr_of_povm_params is a list
+    arr_of_povm_params = [
+        [p if isinstance(p, list) else p.tolist() for p in params]
+        for params in arr_of_povm_params
+    ]
+
+    return FgResult(
+        optimized_rnn_parameters=best_model_params,
+        final_purity=final_purity,
+        final_fidelity=final_fidelity,
+        iterations=iter_idx,
+        final_state=rho_final,
+        arr_of_povm_params=arr_of_povm_params,
+    )
 
 
 # RNN
