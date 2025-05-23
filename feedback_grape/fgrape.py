@@ -63,6 +63,29 @@ def apply_gate(rho_cav, gate, params, type):
         rho_meas = operator @ rho_cav
     return rho_meas
 
+def convert_to_index(measurement_history):
+    # Convert measurement history from [1, -1, ...] to [0, 1, ...] and then to an integer index
+    binary_history = jnp.where(jnp.array(measurement_history) == 1, 0, 1)
+    # Convert binary list to integer index (e.g., [0,1] -> 1)
+    reversed_binary = binary_history[::-1]
+    int_index = sum((2**i) * reversed_binary[i] for i in range(len(reversed_binary)))
+    return int_index
+
+def extract_from_lut(lut, measurement_history):
+    """
+    Extract parameters from the lookup table based on the measurement history.
+
+    Args:
+        lut: Lookup table for parameters.
+        measurement_history: History of measurements.
+        time_step: Current time step.
+
+    Returns:
+        Extracted parameters.
+    """
+    sub_array_idx = len(measurement_history) - 1
+    sub_array_param_idx = convert_to_index(measurement_history)
+    return jnp.array(lut)[sub_array_idx][sub_array_param_idx]
 
 def _calculate_time_step(
     *,
@@ -71,9 +94,11 @@ def _calculate_time_step(
     measurement_indices,
     initial_params,
     param_shapes,
-    rnn_model,
-    rnn_params,
-    rnn_state,
+    rnn_model=None,
+    rnn_params=None,
+    rnn_state=None,
+    lut=None,
+    measurement_history=None,
     type,
 ):
     """
@@ -94,24 +119,42 @@ def _calculate_time_step(
     # directly within the same time step
     # or new parameters are together within the same time step
 
-    updated_params = initial_params
-    # Apply each gate in sequence
-    for i, gate in enumerate(parameterized_gates):
-        # TODO: handle more carefully when there are multiple measurements
-        gate_params = updated_params[i]
-        if i in measurement_indices:
-            rho_final, measurement, log_prob = povm(
-                rho_final, gate, gate_params
-            )
-            updated_params, new_hidden_state = rnn_model.apply(
-                rnn_params, jnp.array([measurement]), rnn_state
-            )
-            updated_params = reshape_params(param_shapes, updated_params)
-            total_log_prob += log_prob
-        else:
-            rho_final = apply_gate(rho_final, gate, updated_params[i], type)
+    if lut is not None:
+        extracted_lut_params = initial_params
+        # Apply each gate in sequence
+        for i, gate in enumerate(parameterized_gates):
+            # TODO: handle more carefully when there are multiple measurements
+            gate_params = extracted_lut_params[i]
+            if i in measurement_indices:
+                rho_final, measurement, log_prob = povm(
+                    rho_final, gate, gate_params
+                )
+                measurement_history.append(measurement)
+                extracted_lut_params = extract_from_lut(lut, measurement_history)
+                total_log_prob += log_prob
+            else:
+                rho_final = apply_gate(rho_final, gate, extracted_lut_params[i], type)
 
-    return rho_final, total_log_prob, updated_params, new_hidden_state
+        return rho_final, total_log_prob, extracted_lut_params, measurement_history
+    else:
+        updated_params = initial_params
+        # Apply each gate in sequence
+        for i, gate in enumerate(parameterized_gates):
+            # TODO: handle more carefully when there are multiple measurements
+            gate_params = updated_params[i]
+            if i in measurement_indices:
+                rho_final, measurement, log_prob = povm(
+                    rho_final, gate, gate_params
+                )
+                updated_params, new_hidden_state = rnn_model.apply(
+                    rnn_params, jnp.array([measurement]), rnn_state
+                )
+                updated_params = reshape_params(param_shapes, updated_params)
+                total_log_prob += log_prob
+            else:
+                rho_final = apply_gate(rho_final, gate, updated_params[i], type)
+
+        return rho_final, total_log_prob, updated_params, new_hidden_state
 
     # # Apply each gate in sequence
     # for i, gate in enumerate(parameterized_gates):
@@ -153,7 +196,7 @@ def reshape_params(param_shapes, rnn_flattened_params):
     return new_params
 
 
-def calculate_trajectory(
+def _calculate_trajectory(
     *,
     rho_cav,
     parameterized_gates,
@@ -161,9 +204,10 @@ def calculate_trajectory(
     initial_params,
     param_shapes,
     time_steps,
-    rnn_model,
-    rnn_params,
-    rnn_state,
+    rnn_model=None,
+    rnn_params=None,
+    rnn_state=None,
+    lut=None,
     type,
 ):
     """
@@ -190,32 +234,59 @@ def calculate_trajectory(
     arr_of_povm_params = [initial_params]
     new_params = initial_params
     new_hidden_state = rnn_state
+    measurement_history = []
     total_log_prob = 0.0
 
-    for i in range(time_steps):
-        rho_final, log_prob, new_params, new_hidden_state = (
-            _calculate_time_step(
-                rho_cav=rho_final,
-                parameterized_gates=parameterized_gates,
-                measurement_indices=measurement_indices,
-                initial_params=new_params,
-                param_shapes=param_shapes,
-                rnn_model=rnn_model,
-                rnn_params=rnn_params,
-                rnn_state=new_hidden_state,
-                type=type,
+    if lut is not None:
+        for i in range(time_steps):
+            rho_final, log_prob, new_params, new_hidden_state = (
+                _calculate_time_step(
+                    rho_cav=rho_final,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=new_params,
+                    param_shapes=param_shapes,
+                    lut=lut,
+                    measurement_history=measurement_history,
+                    type=type,
+                )
             )
-        )
-        # Thus, during - Refer to Eq(3) in fgrape paper
-        # the individual time-evolution trajectory, this term may
-        # be easily accumulated step by step, since the conditional
-        # probabilities are known (these are just the POVM mea-
-        # surement probabilities)
-        total_log_prob += log_prob
+            # Thus, during - Refer to Eq(3) in fgrape paper
+            # the individual time-evolution trajectory, this term may
+            # be easily accumulated step by step, since the conditional
+            # probabilities are known (these are just the POVM mea-
+            # surement probabilities)
+            total_log_prob += log_prob
 
-        if i < time_steps - 1:
-            arr_of_povm_params.append(new_params)
-    return rho_final, total_log_prob, arr_of_povm_params
+            if i < time_steps - 1:
+                arr_of_povm_params.append(new_params)
+        return rho_final, total_log_prob, arr_of_povm_params
+
+    else:   
+        for i in range(time_steps):
+            rho_final, log_prob, new_params, new_hidden_state = (
+                _calculate_time_step(
+                    rho_cav=rho_final,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=new_params,
+                    param_shapes=param_shapes,
+                    rnn_model=rnn_model,
+                    rnn_params=rnn_params,
+                    rnn_state=new_hidden_state,
+                    type=type,
+                )
+            )
+            # Thus, during - Refer to Eq(3) in fgrape paper
+            # the individual time-evolution trajectory, this term may
+            # be easily accumulated step by step, since the conditional
+            # probabilities are known (these are just the POVM mea-
+            # surement probabilities)
+            total_log_prob += log_prob
+
+            if i < time_steps - 1:
+                arr_of_povm_params.append(new_params)
+        return rho_final, total_log_prob, arr_of_povm_params
 
 
 # TODO: figure out why using jnp.array leads to lower fidelity
@@ -299,6 +370,7 @@ def optimize_pulse_with_feedback(
     # Calculate total number of parameters
     num_of_params = len(jax.tree_util.tree_leaves(initial_params))
     trainable_params = None
+    
     if mode == "nn":
         hidden_size = 32
         batch_size = 1
@@ -308,7 +380,7 @@ def optimize_pulse_with_feedback(
         h_initial_state = jnp.zeros((batch_size, hidden_size))
 
         dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
-        rnn_params = rnn_model.init(
+        trainable_params = rnn_model.init(
             jax.random.PRNGKey(0), dummy_input, h_initial_state
         )
         if goal == "purity":
@@ -322,9 +394,7 @@ def optimize_pulse_with_feedback(
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
 
-                updated_rnn_params = rnn_params
-
-                rho_final, log_prob, _ = calculate_trajectory(
+                rho_final, log_prob, _ = _calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -332,7 +402,7 @@ def optimize_pulse_with_feedback(
                     param_shapes=param_shapes,
                     time_steps=num_time_steps,
                     rnn_model=rnn_model,
-                    rnn_params=updated_rnn_params,
+                    rnn_params=rnn_params,
                     rnn_state=h_initial_state,
                     type=type,
                 )
@@ -356,9 +426,7 @@ def optimize_pulse_with_feedback(
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
 
-                updated_rnn_params = rnn_params
-
-                rho_final, log_prob, _ = calculate_trajectory(
+                rho_final, log_prob, _ = _calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -366,7 +434,7 @@ def optimize_pulse_with_feedback(
                     param_shapes=param_shapes,
                     time_steps=num_time_steps,
                     rnn_model=rnn_model,
-                    rnn_params=updated_rnn_params,
+                    rnn_params=rnn_params,
                     rnn_state=h_initial_state,
                     type=type,
                 )
@@ -388,9 +456,7 @@ def optimize_pulse_with_feedback(
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
 
-                updated_rnn_params = rnn_params
-
-                rho_final, log_prob, _ = calculate_trajectory(
+                rho_final, log_prob, _ = _calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -398,7 +464,7 @@ def optimize_pulse_with_feedback(
                     param_shapes=param_shapes,
                     time_steps=num_time_steps,
                     rnn_model=rnn_model,
-                    rnn_params=updated_rnn_params,
+                    rnn_params=rnn_params,
                     rnn_state=h_initial_state,
                     type=type,
                 )
@@ -414,14 +480,15 @@ def optimize_pulse_with_feedback(
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
-        trainable_params = rnn_params
 
     elif mode == "lookup":
         # step 1: initialize the parameters
         num_of_columns = num_of_params
-        num_of_sub_lists = num_time_steps
+        num_of_sub_lists = num_time_steps - 1
         F = []
-        F.append(initial_params)
+        # TODO: check if including initial params to be optimized is correct
+        # F.append([flat_params])
+        # construct ragged lookup table
         for i in range(1, num_of_sub_lists + 1):
             F.append(
                 construct_ragged_row(
@@ -430,7 +497,80 @@ def optimize_pulse_with_feedback(
                     param_shapes=param_shapes,
                 )
             )
-        # TODO: implement optimization for lookup table
+        # TODO: Padd the lookup table with zeros
+        min_num_of_rows = 2**len(F)
+        for i in range(len(F)):
+            if len(F[i]) < min_num_of_rows:
+                zeros_arrays = [reshape_params(param_shapes, jnp.zeros((num_of_columns,), dtype=jnp.float32)) for _ in range(min_num_of_rows - len(F[i]))]
+                F[i] = F[i] + zeros_arrays
+        trainable_params = F
+        if goal == "purity":
+            def loss_fn(lookup_table_params):
+                """
+                loss function
+                """
+                rho_final, log_prob, _ = _calculate_trajectory(
+                    rho_cav=U_0,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=flat_params,
+                    param_shapes=param_shapes,
+                    time_steps=num_time_steps,
+                    lut=lookup_table_params,
+                    type=type,
+                )
+                purity_value = purity(rho=rho_final)
+                loss1 = -purity_value
+                loss2 = log_prob * jax.lax.stop_gradient(loss1)
+                return loss1 + loss2
+
+        elif goal == "fidelity":
+            def loss_fn(lookup_table_params):
+                """
+                loss function
+                """
+                rho_final, log_prob, _ = _calculate_trajectory(
+                    rho_cav=U_0,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=flat_params,
+                    param_shapes=param_shapes,
+                    time_steps=num_time_steps,
+                    lut=lookup_table_params,
+                    type=type,
+                )
+                fidelity_value = fidelity(
+                    C_target=C_target, U_final=rho_final, type=type
+                )
+                loss1 = -fidelity_value
+                loss2 = log_prob * jax.lax.stop_gradient(loss1)
+                return loss1 + loss2
+        elif goal == "both":
+            def loss_fn(lookup_table_params):
+                """
+                loss function
+                """
+                rho_final, log_prob, _ = _calculate_trajectory(
+                    rho_cav=U_0,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    initial_params=flat_params,
+                    param_shapes=param_shapes,
+                    time_steps=num_time_steps,
+                    lut=lookup_table_params,
+                    type=type,
+                )
+                fidelity_value = fidelity(
+                    C_target=C_target, U_final=rho_final, type=type
+                )
+                purity_value = purity(rho=rho_final)
+                loss1 = -(fidelity_value + purity_value)
+                loss2 = log_prob * jax.lax.stop_gradient(loss1)
+                return loss1 + loss2
+        else:
+            raise ValueError(
+                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+            )
 
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
@@ -459,18 +599,32 @@ def optimize_pulse_with_feedback(
     final_fidelity = None
     final_purity = None
     # Calculate final state and purity
-    rho_final, _, arr_of_povm_params = calculate_trajectory(
-        rho_cav=U_0,
-        parameterized_gates=parameterized_gates,
-        measurement_indices=measurement_indices,
-        initial_params=flat_params,
-        param_shapes=param_shapes,
-        time_steps=num_time_steps,
-        rnn_model=rnn_model,
-        rnn_params=best_model_params,
-        rnn_state=h_initial_state,
-        type=type,
-    )
+    if mode == "nn":
+        rho_final, _, arr_of_povm_params = _calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            initial_params=flat_params,
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            rnn_model=rnn_model,
+            rnn_params=best_model_params,
+            rnn_state=h_initial_state,
+            type=type,
+        )
+    elif mode == "lookup":
+        rho_final, _, arr_of_povm_params = _calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            initial_params=flat_params,
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            lut=best_model_params,
+            type=type,
+        )
+    else:
+        raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
     if goal == "fidelity":
         final_fidelity = fidelity(
             C_target=C_target,
@@ -498,10 +652,10 @@ def optimize_pulse_with_feedback(
     # are generated by the RNN which outputs a jnp array, and cannot change them in the middle
     # because this leads to doing actions on tracer values
     # Ensure every param in arr_of_povm_params is a list
-    # arr_of_povm_params = [
-    #     [p if isinstance(p, list) else p.tolist() for p in params]
-    #     for params in arr_of_povm_params
-    # ]
+    arr_of_povm_params = [
+        [p if isinstance(p, list) else p.tolist() for p in params]
+        for params in arr_of_povm_params
+    ]
 
     return FgResult(
         optimized_rnn_parameters=best_model_params,
