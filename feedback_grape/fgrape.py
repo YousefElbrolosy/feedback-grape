@@ -233,8 +233,8 @@ def prepare_parameters_from_dict(params_dict):
     shapes = []
     for value in params_dict.values():
         flat_params = jax.tree_util.tree_leaves(value)
-        res.append(jnp.array(flat_params))
-        shapes.append(jnp.array(flat_params).shape[0])
+        res.append(flat_params)
+        shapes.append(len(flat_params))
     return res, shapes
 
 
