@@ -152,16 +152,16 @@ def _calculate_time_step(
         )
     else:
         updated_params = initial_params
+        new_hidden_state = rnn_state
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
             # TODO: handle more carefully when there are multiple measurements
-            gate_params = updated_params[i]
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, gate_params
+                    rho_final, gate, updated_params[i]
                 )
                 updated_params, new_hidden_state = rnn_model.apply(
-                    rnn_params, jnp.array([measurement]), rnn_state
+                    rnn_params, jnp.array([measurement]), new_hidden_state
                 )
                 updated_params = reshape_params(param_shapes, updated_params)
                 total_log_prob += log_prob
@@ -247,6 +247,7 @@ def _calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
+    # TODO: fix arr_povm_params behavior now that we use eager initialization
     arr_of_povm_params = [initial_params]
     new_params = initial_params
     new_hidden_state = rnn_state
@@ -320,8 +321,8 @@ def prepare_parameters_from_dict(params_dict):
     shapes = []
     for value in params_dict.values():
         flat_params = jax.tree_util.tree_leaves(value)
-        res.append(flat_params)
-        shapes.append(len(flat_params))
+        res.append(jnp.array(flat_params))
+        shapes.append(jnp.array(flat_params).shape[0])
     return res, shapes
 
 
