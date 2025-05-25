@@ -63,14 +63,18 @@ def apply_gate(rho_cav, gate, params, type):
         rho_meas = operator @ rho_cav
     return rho_meas
 
+
 def convert_to_index(measurement_history):
     # Convert measurement history from [1, -1, ...] to [0, 1, ...] and then to an integer index
     binary_history = jnp.where(jnp.array(measurement_history) == 1, 0, 1)
     # Convert binary list to integer index (e.g., [0,1] -> 1)
     reversed_binary = binary_history[::-1]
-    int_index = sum((2**i) * reversed_binary[i] for i in range(len(reversed_binary)))
+    int_index = sum(
+        (2**i) * reversed_binary[i] for i in range(len(reversed_binary))
+    )
     return int_index
 
+@jax.jit
 def extract_from_lut(lut, measurement_history):
     """
     Extract parameters from the lookup table based on the measurement history.
@@ -86,6 +90,7 @@ def extract_from_lut(lut, measurement_history):
     sub_array_idx = len(measurement_history) - 1
     sub_array_param_idx = convert_to_index(measurement_history)
     return jnp.array(lut)[sub_array_idx][sub_array_param_idx]
+
 
 def _calculate_time_step(
     *,
@@ -124,18 +129,27 @@ def _calculate_time_step(
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
             # TODO: handle more carefully when there are multiple measurements
-            gate_params = extracted_lut_params[i]
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, gate_params
+                    rho_final, gate, extracted_lut_params[i]
                 )
                 measurement_history.append(measurement)
-                extracted_lut_params = extract_from_lut(lut, measurement_history)
+                extracted_lut_params = extract_from_lut(
+                    lut, measurement_history
+                )
+                extracted_lut_params = reshape_params(
+                    param_shapes, extracted_lut_params
+                )
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(rho_final, gate, extracted_lut_params[i], type)
 
-        return rho_final, total_log_prob, extracted_lut_params, measurement_history
+        return (
+            rho_final,
+            total_log_prob,
+            extracted_lut_params,
+            measurement_history,
+        )
     else:
         updated_params = initial_params
         # Apply each gate in sequence
@@ -152,7 +166,9 @@ def _calculate_time_step(
                 updated_params = reshape_params(param_shapes, updated_params)
                 total_log_prob += log_prob
             else:
-                rho_final = apply_gate(rho_final, gate, updated_params[i], type)
+                rho_final = apply_gate(
+                    rho_final, gate, updated_params[i], type
+                )
 
         return rho_final, total_log_prob, updated_params, new_hidden_state
 
@@ -239,7 +255,7 @@ def _calculate_trajectory(
 
     if lut is not None:
         for i in range(time_steps):
-            rho_final, log_prob, new_params, new_hidden_state = (
+            rho_final, log_prob, new_params, measurement_history = (
                 _calculate_time_step(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
@@ -262,7 +278,7 @@ def _calculate_trajectory(
                 arr_of_povm_params.append(new_params)
         return rho_final, total_log_prob, arr_of_povm_params
 
-    else:   
+    else:
         for i in range(time_steps):
             rho_final, log_prob, new_params, new_hidden_state = (
                 _calculate_time_step(
@@ -309,7 +325,6 @@ def prepare_parameters_from_dict(params_dict):
     return res, shapes
 
 
-
 def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
     res = []
     for i in range(num_of_rows):
@@ -319,7 +334,7 @@ def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
             minval=-jnp.pi,
             maxval=jnp.pi,
         )
-        res.append(reshape_params(param_shapes, flattened))
+        res.append(flattened)
     return res
 
 
@@ -370,7 +385,7 @@ def optimize_pulse_with_feedback(
     # Calculate total number of parameters
     num_of_params = len(jax.tree_util.tree_leaves(initial_params))
     trainable_params = None
-    
+
     if mode == "nn":
         hidden_size = 32
         batch_size = 1
@@ -498,13 +513,17 @@ def optimize_pulse_with_feedback(
                 )
             )
         # TODO: Padd the lookup table with zeros
-        min_num_of_rows = 2**len(F)
+        min_num_of_rows = 2 ** len(F)
         for i in range(len(F)):
             if len(F[i]) < min_num_of_rows:
-                zeros_arrays = [reshape_params(param_shapes, jnp.zeros((num_of_columns,), dtype=jnp.float32)) for _ in range(min_num_of_rows - len(F[i]))]
+                zeros_arrays = [
+                        jnp.zeros((num_of_columns,), dtype=jnp.float32)
+                    for _ in range(min_num_of_rows - len(F[i]))
+                ]
                 F[i] = F[i] + zeros_arrays
         trainable_params = F
         if goal == "purity":
+
             def loss_fn(lookup_table_params):
                 """
                 loss function
@@ -525,6 +544,7 @@ def optimize_pulse_with_feedback(
                 return loss1 + loss2
 
         elif goal == "fidelity":
+
             def loss_fn(lookup_table_params):
                 """
                 loss function
@@ -546,6 +566,7 @@ def optimize_pulse_with_feedback(
                 loss2 = log_prob * jax.lax.stop_gradient(loss1)
                 return loss1 + loss2
         elif goal == "both":
+
             def loss_fn(lookup_table_params):
                 """
                 loss function
