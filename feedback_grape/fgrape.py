@@ -496,7 +496,7 @@ def optimize_pulse_with_feedback(
             raise ValueError(
                 "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
             )
-
+    # TODO: see why this doesn't improve performance
     elif mode == "lookup":
         # step 1: initialize the parameters
         num_of_columns = num_of_params
