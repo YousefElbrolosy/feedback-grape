@@ -68,8 +68,8 @@ def convert_to_index(measurement_history):
     binary_history = jnp.where(jnp.array(measurement_history) == 1, 0, 1)
     # Convert binary list to integer index (e.g., [0,1] -> 1)
     reversed_binary = binary_history[::-1]
-    int_index = sum(
-        (2**i) * reversed_binary[i] for i in range(len(reversed_binary))
+    int_index = jnp.sum(
+        (2 ** jnp.arange(len(reversed_binary))) * reversed_binary
     )
     return int_index
 
