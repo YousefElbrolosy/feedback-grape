@@ -28,7 +28,7 @@ class fg_result_purity(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    arr_of_povm_params: jnp.ndarray
+    returned_params: jnp.ndarray
 
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
@@ -313,7 +313,7 @@ def calculate_trajectory(
     rho_meas = rho_cav
     current_params = initial_params
     total_log_prob = 0.0
-    arr_of_povm_params = jnp.zeros((time_steps, len(initial_params)))
+    returned_params = jnp.zeros((time_steps, len(initial_params)))
     # Initialize RNN state if using RNN
     rnn_state = None
     if rnn_model is not None:
@@ -337,11 +337,11 @@ def calculate_trajectory(
         )
         total_log_prob += log_prob
         # print("current_povm_params: ", gamma_delta_dict)
-        arr_of_povm_params = arr_of_povm_params.at[i].set(
+        returned_params = returned_params.at[i].set(
             jnp.array([current_params['gamma'], current_params['delta']])
         )
 
-    return rho_meas, measurement, total_log_prob, arr_of_povm_params
+    return rho_meas, measurement, total_log_prob, returned_params
 
 
 def optimize_pulse_with_feedback(
@@ -459,7 +459,7 @@ def optimize_pulse_with_feedback(
                 'delta': initial_params[0][1],
             }
 
-            rho_meas_best, _, _, arr_of_povm_params = calculate_trajectory(
+            rho_meas_best, _, _, returned_params = calculate_trajectory(
                 rho_cav=U_0,
                 time_steps=num_time_steps,
                 povm_measure_operator=povm_measure_operator,
@@ -474,7 +474,7 @@ def optimize_pulse_with_feedback(
                 final_purity=best_purity,
                 iterations=iter_idx,
                 final_state=rho_meas_best,
-                arr_of_povm_params=arr_of_povm_params,
+                returned_params=returned_params,
             )
 
             return final_result

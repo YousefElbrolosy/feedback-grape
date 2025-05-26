@@ -28,7 +28,7 @@ class FgResult(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    arr_of_povm_params: List[List]
+    returned_params: List[List]
     """
     Array of finalsPOVM parameters for each time step.
     """
@@ -118,7 +118,7 @@ def _calculate_time_step(
     """
     rho_final = rho_cav
     total_log_prob = 0.0
-
+    applied_params = []
     # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
@@ -133,6 +133,7 @@ def _calculate_time_step(
                     rho_final, gate, extracted_lut_params[i]
                 )
                 measurement_history.append(measurement)
+                applied_params.append(extracted_lut_params[i])
                 extracted_lut_params = extract_from_lut(
                     lut, measurement_history
                 )
@@ -142,11 +143,13 @@ def _calculate_time_step(
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(rho_final, gate, extracted_lut_params[i], type)
+                applied_params.append(extracted_lut_params[i])
 
         return (
             rho_final,
             total_log_prob,
             extracted_lut_params,
+            applied_params,
             measurement_history,
         )
     else:
@@ -159,17 +162,20 @@ def _calculate_time_step(
                 rho_final, measurement, log_prob = povm(
                     rho_final, gate, updated_params[i]
                 )
+                applied_params.append(updated_params[i])
                 updated_params, new_hidden_state = rnn_model.apply(
                     rnn_params, jnp.array([measurement]), new_hidden_state
                 )
+
                 updated_params = reshape_params(param_shapes, updated_params)
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
                     rho_final, gate, updated_params[i], type
                 )
+                applied_params.append(updated_params[i])
 
-        return rho_final, total_log_prob, updated_params, new_hidden_state
+        return rho_final, total_log_prob, updated_params, applied_params, new_hidden_state
 
     # # Apply each gate in sequence
     # for i, gate in enumerate(parameterized_gates):
@@ -247,7 +253,7 @@ def _calculate_trajectory(
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
     # TODO: fix arr_povm_params behavior now that we use eager initialization
-    arr_of_povm_params = [initial_params]
+    resulting_params = []
     new_params = initial_params
     new_hidden_state = rnn_state
     measurement_history = []
@@ -255,7 +261,7 @@ def _calculate_trajectory(
 
     if lut is not None:
         for i in range(time_steps):
-            rho_final, log_prob, new_params, measurement_history = (
+            rho_final, log_prob, new_params, applied_params, measurement_history = (
                 _calculate_time_step(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
@@ -274,13 +280,12 @@ def _calculate_trajectory(
             # surement probabilities)
             total_log_prob += log_prob
 
-            if i < time_steps - 1:
-                arr_of_povm_params.append(new_params)
-        return rho_final, total_log_prob, arr_of_povm_params
+            resulting_params.append(applied_params)
+        return rho_final, total_log_prob, resulting_params
 
     else:
         for i in range(time_steps):
-            rho_final, log_prob, new_params, new_hidden_state = (
+            rho_final, log_prob, new_params, applied_params, new_hidden_state = (
                 _calculate_time_step(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
@@ -300,9 +305,9 @@ def _calculate_trajectory(
             # surement probabilities)
             total_log_prob += log_prob
 
-            if i < time_steps - 1:
-                arr_of_povm_params.append(new_params)
-        return rho_final, total_log_prob, arr_of_povm_params
+
+            resulting_params.append(applied_params)
+        return rho_final, total_log_prob, resulting_params
 
 
 # TODO: figure out why using jnp.array leads to lower fidelity
@@ -621,7 +626,7 @@ def optimize_pulse_with_feedback(
     final_purity = None
     # Calculate final state and purity
     if mode == "nn":
-        rho_final, _, arr_of_povm_params = _calculate_trajectory(
+        rho_final, _, returned_params = _calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
@@ -634,7 +639,7 @@ def optimize_pulse_with_feedback(
             type=type,
         )
     elif mode == "lookup":
-        rho_final, _, arr_of_povm_params = _calculate_trajectory(
+        rho_final, _, returned_params = _calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
@@ -672,10 +677,10 @@ def optimize_pulse_with_feedback(
     # --> Because the first entry is the initial params, given by user, but the rest are
     # are generated by the RNN which outputs a jnp array, and cannot change them in the middle
     # because this leads to doing actions on tracer values
-    # Ensure every param in arr_of_povm_params is a list
-    arr_of_povm_params = [
+    # Ensure every param in returned_params is a list
+    returned_params = [
         [p if isinstance(p, list) else p.tolist() for p in params]
-        for params in arr_of_povm_params
+        for params in returned_params
     ]
 
     return FgResult(
@@ -684,7 +689,7 @@ def optimize_pulse_with_feedback(
         final_fidelity=final_fidelity,
         iterations=iter_idx,
         final_state=rho_final,
-        arr_of_povm_params=arr_of_povm_params,
+        returned_params=returned_params,
     )
 
 

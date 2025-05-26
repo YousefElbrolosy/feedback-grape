@@ -29,7 +29,7 @@ class FgResultPurity(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    arr_of_povm_params: List[List]
+    returned_params: List[List]
 
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
@@ -425,7 +425,7 @@ def optimize_pulse_with_feedback(
                 )
 
             # Calculate final state and purity
-            rho_final, _, arr_of_povm_params = calculate_trajectory(
+            rho_final, _, returned_params = calculate_trajectory(
                 rho_cav=U_0,
                 parameterized_gates=parameterized_gates,
                 measurement_indices=measurement_indices,
@@ -443,7 +443,7 @@ def optimize_pulse_with_feedback(
                 final_purity=final_purity,
                 iterations=iter_idx,
                 final_state=rho_final,
-                arr_of_povm_params=arr_of_povm_params,
+                returned_params=returned_params,
             )
 
         elif goal == "fidelity":
