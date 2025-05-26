@@ -11,7 +11,6 @@ from feedback_grape.utils.povm import povm
 # ruff: noqa N8
 jax.config.update("jax_enable_x64", True)
 
-
 class FgResult(NamedTuple):
     """
     result class to store the results of the optimization process.
@@ -518,7 +517,7 @@ def optimize_pulse_with_feedback(
         for i in range(len(F)):
             if len(F[i]) < min_num_of_rows:
                 zeros_arrays = [
-                        jnp.zeros((num_of_columns,), dtype=jnp.float32)
+                        jnp.zeros((num_of_columns,), dtype=jnp.float64)
                     for _ in range(min_num_of_rows - len(F[i]))
                 ]
                 F[i] = F[i] + zeros_arrays
