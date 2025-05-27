@@ -162,7 +162,7 @@ def _calculate_time_step(
     # return rho_final, total_log_prob, reshaped_rnn_params, new_hidden_state
 
 
-def _calculate_trajectory(
+def calculate_trajectory(
     *,
     rho_cav,
     parameterized_gates,
@@ -276,7 +276,7 @@ def optimize_pulse_with_feedback(
     convergence_threshold: float,
     learning_rate: float,
     type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
-    propcomp: str = "time-efficient",  # time-efficient, memory-efficient
+    RNN: callable = RNN,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration.
@@ -296,8 +296,7 @@ def optimize_pulse_with_feedback(
         learning_rate (float): The learning rate for the optimization algorithm.
         type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'superoperator'.
                     This is primarily used for fidelity calculation.
-        propcomp (str): The method for propagator computation, either 'time-efficient' or 'memory-efficient'.
-                        This determines how the forward evolution is computed.
+        RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
@@ -333,7 +332,7 @@ def optimize_pulse_with_feedback(
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
 
-                rho_final, log_prob, _ = _calculate_trajectory(
+                rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -365,7 +364,7 @@ def optimize_pulse_with_feedback(
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
 
-                rho_final, log_prob, _ = _calculate_trajectory(
+                rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -395,7 +394,7 @@ def optimize_pulse_with_feedback(
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
                 h_initial_state = jnp.zeros((batch_size, hidden_size))
 
-                rho_final, log_prob, _ = _calculate_trajectory(
+                rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -452,7 +451,7 @@ def optimize_pulse_with_feedback(
                 """
                 loss function
                 """
-                rho_final, log_prob, _ = _calculate_trajectory(
+                rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -473,7 +472,7 @@ def optimize_pulse_with_feedback(
                 """
                 loss function
                 """
-                rho_final, log_prob, _ = _calculate_trajectory(
+                rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -495,7 +494,7 @@ def optimize_pulse_with_feedback(
                 """
                 loss function
                 """
-                rho_final, log_prob, _ = _calculate_trajectory(
+                rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
@@ -545,7 +544,7 @@ def optimize_pulse_with_feedback(
     final_purity = None
     # Calculate final state and purity
     if mode == "nn":
-        rho_final, _, returned_params = _calculate_trajectory(
+        rho_final, _, returned_params = calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
@@ -558,7 +557,7 @@ def optimize_pulse_with_feedback(
             type=type,
         )
     elif mode == "lookup":
-        rho_final, _, returned_params = _calculate_trajectory(
+        rho_final, _, returned_params = calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
