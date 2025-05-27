@@ -197,7 +197,6 @@ def calculate_trajectory(
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
     rho_final = rho_cav
-    # TODO: fix arr_povm_params behavior now that we use eager initialization
     resulting_params = []
     new_params = initial_params
     new_hidden_state = rnn_state

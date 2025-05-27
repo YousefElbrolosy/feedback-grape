@@ -76,7 +76,6 @@ def reshape_params(param_shapes, rnn_flattened_params):
     return new_params
 
 
-# TODO: figure out why using jnp.array leads to lower fidelity
 def prepare_parameters_from_dict(params_dict):
     """
     Convert a nested dictionary of parameters to a flat list and record shapes.
@@ -108,7 +107,7 @@ def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
         res.append(flattened)
     return res
 
-
+# TODO: add in docs an example of how they can construct their own `Network to use it.`
 # RNN
 class GRUCell(nn.Module):
     features: int
