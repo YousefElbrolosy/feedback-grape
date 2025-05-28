@@ -60,6 +60,7 @@ def povm(
     rho_cav: jnp.ndarray,
     povm_measure_operator: callable,
     initial_povm_params: list,
+    rng_key,
 ) -> tuple[jnp.ndarray, int, float]:
     """
     Perform a POVM measurement on the given state.
@@ -76,7 +77,7 @@ def povm(
     prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav, 1, povm_measure_operator, initial_povm_params
     )
-    random_value = jax.random.uniform(jax.random.PRNGKey(0), shape=())
+    random_value = jax.random.uniform(rng_key, shape=())
     measurement = jnp.where(random_value < prob_plus, 1, -1)
     rho_meas = _post_measurement_state(
         rho_cav, measurement, povm_measure_operator, initial_povm_params

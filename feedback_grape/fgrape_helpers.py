@@ -107,6 +107,7 @@ def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
         res.append(flattened)
     return res
 
+
 # TODO: add in docs an example of how they can construct their own `Network to use it.`
 # RNN
 class GRUCell(nn.Module):
@@ -172,6 +173,7 @@ class RNN(nn.Module):
         new_hidden_state, _ = gru_cell(hidden_state, measurement)
         # this returns the povm_params after linear regression through the hidden state which contains
         # the information of the previous time steps and this is optimized to output best povm_params
+        # new_hidden_state = nn.Dense(features=self.hidden_size)(new_hidden_state)
         output = nn.Dense(features=self.output_size)(new_hidden_state)
         # output = jnp.asarray(output)
         return output[0], new_hidden_state

@@ -17,7 +17,7 @@ def _optimize_adam(
 
     @jax.jit
     def step(params, state):
-        loss = loss_fn(params)  # Minimize -loss_fn
+        loss = loss_fn(params)
         grads = jax.grad(lambda x: loss_fn(x))(params)
         updates, new_state = optimizer.update(grads, state, params)
         new_params = optax.apply_updates(params, updates)
@@ -28,6 +28,7 @@ def _optimize_adam(
     iter_idx = -1
     for iter_idx in range(max_iter):
         params, opt_state, loss = step(params, opt_state)
+
         losses.append(loss)
 
         if (
@@ -35,6 +36,43 @@ def _optimize_adam(
             and abs(losses[-1] - losses[-2]) < convergence_threshold
         ):
             break
+
+    return params, iter_idx + 1
+
+
+def _optimize_adam_feedback(
+    loss_fn,
+    control_amplitudes,
+    max_iter,
+    learning_rate,
+    convergence_threshold,
+    key
+):
+    optimizer = optax.adam(learning_rate)
+    opt_state = optimizer.init(control_amplitudes)
+    losses = []
+    @jax.jit
+    def step(params, state, key):
+        loss = loss_fn(params, key)  # Minimize -loss_fn
+        grads = jax.grad(lambda x, k: loss_fn(x, k))(params, key)
+        updates, new_state = optimizer.update(grads, state, params)
+        new_params = optax.apply_updates(params, updates)
+        new_key, _ = jax.random.split(key)
+        return new_params, new_state, loss, new_key
+
+    params = control_amplitudes
+    # setting it to -1 in the beginning in case the max_iter is 0
+    iter_idx = -1
+    for iter_idx in range(max_iter):
+        params, opt_state, loss, key = step(params, opt_state, key)
+        losses.append(loss)
+        if (
+            iter_idx > 0
+            and abs(losses[-1] - losses[-2]) < convergence_threshold
+        ):
+            break
+        if(iter_idx % 10 == 0):
+            print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
 
     return params, iter_idx + 1
 
