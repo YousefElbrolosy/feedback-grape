@@ -439,7 +439,6 @@ def optimize_pulse_with_feedback(
         else:
             h_initial_state = None
             rnn_params = None
-            rnn_model = None
             lookup_table_params = trainable_params
 
         rho_final, log_prob, _ = calculate_trajectory(
