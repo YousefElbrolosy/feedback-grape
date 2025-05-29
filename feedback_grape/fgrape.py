@@ -207,7 +207,6 @@ def calculate_trajectory(
         jnp.expand_dims(rho_cav, 0), batch_size, axis=0
     )
 
-    measurement_history = []
     # Split rng_key into batch_size keys for independent trajectories
     rng_keys = jax.random.split(rng_key, batch_size)
 
@@ -221,7 +220,6 @@ def calculate_trajectory(
         rnn_params,
         hidden_state,
         lut,
-        measurement_history,
         type,
         rng_key,
     ):
@@ -229,18 +227,20 @@ def calculate_trajectory(
         resulting_params = []
 
         if lut is not None:
+            measurement_history = []
+            new_params = initial_params
             for i in range(time_steps):
                 (
                     rho_final,
                     total_log_prob,
-                    initial_params,
+                    new_params,
                     applied_params,
                     measurement_history,
                 ) = _calculate_time_step(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
-                    initial_params=initial_params,
+                    initial_params=new_params,
                     param_shapes=param_shapes,
                     lut=lut,
                     measurement_history=measurement_history,
@@ -306,7 +306,6 @@ def calculate_trajectory(
             None,
             None,
             None,
-            None,
             0,
         ),
     )
@@ -320,7 +319,6 @@ def calculate_trajectory(
         rnn_params,
         rnn_state,
         lut,
-        measurement_history,
         type,
         rng_keys,
     )
@@ -469,7 +467,7 @@ def optimize_pulse_with_feedback(
                 """
 
                 # reseting hidden state at end of every trajectory ( does not really change the purity tho)
-                h_initial_state = jnp.zeros((batch_size, hidden_size))
+                h_initial_state = jnp.zeros((1, hidden_size))
 
                 rho_final, log_prob, _ = calculate_trajectory(
                     rho_cav=U_0,
@@ -628,7 +626,7 @@ def optimize_pulse_with_feedback(
         mode=mode,
         num_time_steps=num_time_steps,
         type=type,
-        batch_size=batch_size,
+        batch_size=1000,
         prng_key=sub_key,
         h_initial_state=h_initial_state if mode == "nn" else None,
         rnn_model=rnn_model if mode == "nn" else None,
@@ -682,7 +680,7 @@ def evaluate(
             time_steps=num_time_steps,
             lut=best_model_params,
             type=type,
-            batch_size=1,
+            batch_size=batch_size,
             rng_key=prng_key,
         )
     else:
