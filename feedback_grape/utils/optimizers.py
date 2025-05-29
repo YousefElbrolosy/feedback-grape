@@ -46,11 +46,12 @@ def _optimize_adam_feedback(
     max_iter,
     learning_rate,
     convergence_threshold,
-    key
+    key,
 ):
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(control_amplitudes)
     losses = []
+
     @jax.jit
     def step(params, state, key):
         loss = loss_fn(params, key)  # Minimize -loss_fn
@@ -71,7 +72,7 @@ def _optimize_adam_feedback(
             and abs(losses[-1] - losses[-2]) < convergence_threshold
         ):
             break
-        if(iter_idx % 10 == 0):
+        if iter_idx % 10 == 0:
             print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
 
     return params, iter_idx + 1

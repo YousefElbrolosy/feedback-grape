@@ -17,6 +17,7 @@ from feedback_grape.fgrape_helpers import (
     RNN,
 )
 
+# TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
 # ruff: noqa N8
 jax.config.update("jax_enable_x64", True)
 
@@ -87,12 +88,13 @@ def _calculate_time_step(
 
     if lut is not None:
         extracted_lut_params = initial_params
+
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
             # TODO: handle more carefully when there are multiple measurements
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, extracted_lut_params[i]
+                    rho_final, gate, extracted_lut_params[i], rng_key
                 )
                 measurement_history.append(measurement)
                 applied_params.append(extracted_lut_params[i])
@@ -225,10 +227,11 @@ def calculate_trajectory(
     ):
         time_step_keys = jax.random.split(rng_key, time_steps)
         resulting_params = []
-
+        rho_final = rho_cav
+        total_log_prob = 0.0
+        new_params = initial_params
         if lut is not None:
             measurement_history = []
-            new_params = initial_params
             for i in range(time_steps):
                 (
                     rho_final,
@@ -255,14 +258,9 @@ def calculate_trajectory(
                 total_log_prob += total_log_prob
 
                 resulting_params.append(applied_params)
-            return rho_final, total_log_prob, resulting_params
 
         else:
             new_hidden_state = hidden_state
-            new_params = initial_params
-            rho_final = rho_cav
-            total_log_prob = 0.0
-
             for i in range(time_steps):
                 (
                     rho_final,
@@ -290,7 +288,8 @@ def calculate_trajectory(
                 total_log_prob += log_prob
 
                 resulting_params.append(applied_params)
-            return rho_final, total_log_prob, resulting_params
+
+        return rho_final, total_log_prob, resulting_params
 
     # Use jax.vmap to vectorize the trajectory calculation for batch_size
     batched_trajectory_fn = jax.vmap(
@@ -385,119 +384,10 @@ def optimize_pulse_with_feedback(
         trainable_params = rnn_model.init(
             parent_rng_key, dummy_input, h_initial_state
         )
-
-        if goal == "purity":
-
-            def loss_fn(rnn_params, rng_key):
-                """
-                Loss function for purity optimization.
-                Returns negative purity (we want to minimize this).
-                """
-
-                # reseting hidden state at end of every trajectory ( does not really change the purity tho)
-                h_initial_state = jnp.zeros((1, hidden_size))
-
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    parameterized_gates=parameterized_gates,
-                    measurement_indices=measurement_indices,
-                    initial_params=flat_params,
-                    param_shapes=param_shapes,
-                    time_steps=num_time_steps,
-                    rnn_model=rnn_model,
-                    rnn_params=rnn_params,
-                    rnn_state=h_initial_state,
-                    type=type,
-                    batch_size=batch_size,
-                    rng_key=rng_key,
-                )
-                # TODO: see if we need the log prob term
-                # TODO: see if we need to implement stochastic sampling instead
-                # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
-                # the log prob or not? ( like in porroti's implementation )?
-                purity_values = jax.vmap(purity)(rho=rho_final)
-                loss1 = jnp.mean(-purity_values)
-                loss2 = jnp.mean(
-                    log_prob * jax.lax.stop_gradient(-purity_values)
-                )
-                return loss1 + loss2
-
-        elif goal == "fidelity":
-
-            def loss_fn(rnn_params, rng_key):
-                """
-                Loss function for fidelity optimization.
-                Returns negative fidelity (we want to minimize this).
-                """
-
-                # reseting hidden state at end of every trajectory ( does not really change the purity tho)
-                h_initial_state = jnp.zeros((1, hidden_size))
-
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    parameterized_gates=parameterized_gates,
-                    measurement_indices=measurement_indices,
-                    initial_params=flat_params,
-                    param_shapes=param_shapes,
-                    time_steps=num_time_steps,
-                    rnn_model=rnn_model,
-                    rnn_params=rnn_params,
-                    rnn_state=h_initial_state,
-                    type=type,
-                    batch_size=batch_size,
-                    rng_key=rng_key,
-                )
-                fidelity_value = jax.vmap(
-                    lambda rf: fidelity(
-                        C_target=C_target, U_final=rf, type=type
-                    )
-                )(rho_final)
-                loss1 = jnp.mean(-fidelity_value)
-                loss2 = jnp.mean(
-                    log_prob * jax.lax.stop_gradient(-fidelity_value)
-                )
-                return loss1 + loss2
-
-        elif goal == "both":
-
-            def loss_fn(rnn_params, rng_key):
-                """
-                Loss function for purity optimization.
-                Returns negative purity (we want to minimize this).
-                """
-
-                # reseting hidden state at end of every trajectory ( does not really change the purity tho)
-                h_initial_state = jnp.zeros((1, hidden_size))
-
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    parameterized_gates=parameterized_gates,
-                    measurement_indices=measurement_indices,
-                    initial_params=flat_params,
-                    param_shapes=param_shapes,
-                    time_steps=num_time_steps,
-                    rnn_model=rnn_model,
-                    rnn_params=rnn_params,
-                    rnn_state=h_initial_state,
-                    type=type,
-                    batch_size=batch_size,
-                    rng_key=rng_key,
-                )
-                fidelity_value = jax.vmap(
-                    lambda rf: fidelity(
-                        C_target=C_target, U_final=rf, type=type
-                    ))
-                purity_values = jax.vmap(purity)(rho=rho_final)
-                loss1 = jnp.mean(-(fidelity_value + purity_values))
-                loss2 = jnp.mean(log_prob * jax.lax.stop_gradient(-(fidelity_value + purity_values)))
-                return loss1 + loss2
-
-        else:
-            raise ValueError(
-                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-            )
     # TODO: see why this doesn't improve performance
     elif mode == "lookup":
+        h_initial_state = None
+        rnn_model = None
         # step 1: initialize the parameters
         num_of_columns = num_of_params
         num_of_sub_lists = num_time_steps - 1
@@ -523,85 +413,78 @@ def optimize_pulse_with_feedback(
                 ]
                 F[i] = F[i] + zeros_arrays
         trainable_params = F
-        if goal == "purity":
-
-            def loss_fn(lookup_table_params):
-                """
-                loss function
-                """
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    parameterized_gates=parameterized_gates,
-                    measurement_indices=measurement_indices,
-                    initial_params=flat_params,
-                    param_shapes=param_shapes,
-                    time_steps=num_time_steps,
-                    lut=lookup_table_params,
-                    type=type,
-                    batch_size=batch_size,
-                    rng_key=parent_rng_key,
-                )
-                purity_value = purity(rho=rho_final)
-                loss1 = -purity_value
-                loss2 = log_prob * jax.lax.stop_gradient(loss1)
-                return loss1 + loss2
-
-        elif goal == "fidelity":
-
-            def loss_fn(lookup_table_params):
-                """
-                loss function
-                """
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    parameterized_gates=parameterized_gates,
-                    measurement_indices=measurement_indices,
-                    initial_params=flat_params,
-                    param_shapes=param_shapes,
-                    time_steps=num_time_steps,
-                    lut=lookup_table_params,
-                    type=type,
-                    batch_size=batch_size,
-                    rng_key=parent_rng_key,
-                )
-                fidelity_value = fidelity(
-                    C_target=C_target, U_final=rho_final, type=type
-                )
-                loss1 = -fidelity_value
-                loss2 = log_prob * jax.lax.stop_gradient(loss1)
-                return loss1 + loss2
-        elif goal == "both":
-
-            def loss_fn(lookup_table_params):
-                """
-                loss function
-                """
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    parameterized_gates=parameterized_gates,
-                    measurement_indices=measurement_indices,
-                    initial_params=flat_params,
-                    param_shapes=param_shapes,
-                    time_steps=num_time_steps,
-                    lut=lookup_table_params,
-                    type=type,
-                    batch_size=batch_size,
-                    rng_key=parent_rng_key,
-                )
-                fidelity_value = fidelity(
-                    C_target=C_target, U_final=rho_final, type=type
-                )
-                purity_value = purity(rho=rho_final)
-                loss1 = -(fidelity_value + purity_value)
-                loss2 = log_prob * jax.lax.stop_gradient(loss1)
-                return loss1 + loss2
-        else:
-            raise ValueError(
-                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-            )
-
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
+
+    # TODO: see if we need the log prob term
+    # TODO: see if we need to implement stochastic sampling instead
+    # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
+    # the log prob or not? ( like in porroti's implementation )?
+    def loss_fn(trainable_params, rng_key):
+        """
+        Loss function for the optimization process.
+        This function calculates the loss based on the specified goal (purity, fidelity, or both).
+        Args:
+            rnn_params: Parameters of the RNN model or lookup table.
+            rng_key: Random key for stochastic operations.
+        Returns:
+            Loss value to be minimized.
+        """
+
+        if mode == "nn":
+            # reseting hidden state at end of every trajectory ( does not really change the purity tho)
+            h_initial_state = jnp.zeros((1, hidden_size))
+            rnn_params = trainable_params
+            lookup_table_params = None
+        else:
+            h_initial_state = None
+            rnn_params = None
+            rnn_model = None
+            lookup_table_params = trainable_params
+
+        rho_final, log_prob, _ = calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            initial_params=flat_params,
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            rnn_model=rnn_model,
+            rnn_params=rnn_params,
+            rnn_state=h_initial_state,
+            lut=lookup_table_params,
+            type=type,
+            batch_size=batch_size,
+            rng_key=rng_key,
+        )
+        if goal == "purity":
+            purity_values = jax.vmap(purity)(rho=rho_final)
+            loss1 = jnp.mean(-purity_values)
+            loss2 = jnp.mean(log_prob * jax.lax.stop_gradient(-purity_values))
+
+        elif goal == "fidelity":
+            if C_target == None:
+                raise ValueError(
+                    "C_target must be provided for fidelity calculation."
+                )
+            fidelity_value = jax.vmap(
+                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+            )(rho_final)
+            loss1 = jnp.mean(-fidelity_value)
+            loss2 = jnp.mean(log_prob * jax.lax.stop_gradient(-fidelity_value))
+
+        elif goal == "both":
+            fidelity_value = jax.vmap(
+                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+            )(rho_final)
+            purity_values = jax.vmap(purity)(rho=rho_final)
+            loss1 = jnp.mean(-(fidelity_value + purity_values))
+            loss2 = jnp.mean(
+                log_prob
+                * jax.lax.stop_gradient(-(fidelity_value + purity_values))
+            )
+
+        return loss1 + loss2
 
     key, sub_key = jax.random.split(parent_rng_key)
 
@@ -612,7 +495,7 @@ def optimize_pulse_with_feedback(
         max_iter=max_iter,
         learning_rate=learning_rate,
         convergence_threshold=convergence_threshold,
-        prng_key=key
+        prng_key=key,
     )
 
     result = evaluate(
@@ -626,15 +509,48 @@ def optimize_pulse_with_feedback(
         mode=mode,
         num_time_steps=num_time_steps,
         type=type,
-        batch_size=1000,
+        batch_size=batch_size,
         prng_key=sub_key,
-        h_initial_state=h_initial_state if mode == "nn" else None,
-        rnn_model=rnn_model if mode == "nn" else None,
+        h_initial_state=h_initial_state,
+        rnn_model=rnn_model,
         goal=goal,
         num_iterations=iter_idx,
     )
 
     return result
+
+
+def train(
+    optimizer: str,  # adam, l-bfgs
+    loss_fn,
+    trainable_params,
+    prng_key,
+    max_iter: int,
+    learning_rate: float = 0.01,
+    convergence_threshold: float = 1e-6,
+):
+    """
+    Train the model using the specified optimizer.
+    """
+    # Optimization
+    # set up optimizer and training state
+    if optimizer.upper() == "ADAM":
+        best_model_params, iter_idx = _optimize_adam_feedback(
+            loss_fn,
+            trainable_params,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+            prng_key,
+        )
+    elif optimizer.upper() == "L-BFGS":
+        # TODO: implement L-BFGS for feedback version
+        raise NotImplementedError(
+            "L-BFGS optimizer is not implemented for feedback version yet."
+        )
+    else:
+        raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
+    return best_model_params, iter_idx
 
 
 def evaluate(
@@ -685,7 +601,7 @@ def evaluate(
         )
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
-    
+
     final_fidelity = None
     final_purity = None
 
@@ -712,36 +628,3 @@ def evaluate(
         final_state=rho_final,
         returned_params=returned_params,
     )
-
-
-def train(
-    optimizer: str,  # adam, l-bfgs
-    loss_fn,
-    trainable_params,
-    prng_key,
-    max_iter: int,
-    learning_rate: float = 0.01,
-    convergence_threshold: float = 1e-6,
-):
-    """
-    Train the model using the specified optimizer.
-    """
-    # Optimization
-    # set up optimizer and training state
-    if optimizer.upper() == "ADAM":
-        best_model_params, iter_idx = _optimize_adam_feedback(
-            loss_fn,
-            trainable_params,
-            max_iter,
-            learning_rate,
-            convergence_threshold,
-            prng_key
-        )
-    elif optimizer.upper() == "L-BFGS":
-        # TODO: implement L-BFGS for feedback version
-        raise NotImplementedError(
-            "L-BFGS optimizer is not implemented for feedback version yet."
-        )
-    else:
-        raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
-    return best_model_params, iter_idx
