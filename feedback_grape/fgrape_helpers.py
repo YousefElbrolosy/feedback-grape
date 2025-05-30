@@ -101,8 +101,9 @@ def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
         flattened = jax.random.uniform(
             jax.random.PRNGKey(0 + i),
             shape=(num_of_columns,),
-            minval=-jnp.pi,
+            minval=0.0,
             maxval=jnp.pi,
+            dtype=jnp.float64,
         )
         res.append(flattened)
     return res

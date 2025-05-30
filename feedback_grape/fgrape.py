@@ -27,7 +27,7 @@ class FgResult(NamedTuple):
     result class to store the results of the optimization process.
     """
 
-    optimized_rnn_parameters: jnp.ndarray
+    optimized_trainable_parameters: jnp.ndarray
     """
     Optimized control amplitudes.
     """
@@ -235,7 +235,7 @@ def calculate_trajectory(
             for i in range(time_steps):
                 (
                     rho_final,
-                    total_log_prob,
+                    log_prob,
                     new_params,
                     applied_params,
                     measurement_history,
@@ -255,7 +255,7 @@ def calculate_trajectory(
                 # be easily accumulated step by step, since the conditional
                 # probabilities are known (these are just the POVM mea-
                 # surement probabilities)
-                total_log_prob += total_log_prob
+                total_log_prob += log_prob
 
                 resulting_params.append(applied_params)
 
@@ -374,7 +374,7 @@ def optimize_pulse_with_feedback(
     parent_rng_key = jax.random.PRNGKey(0)
 
     if mode == "nn":
-        hidden_size = 32
+        hidden_size = 30
         output_size = num_of_params
 
         rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
@@ -620,7 +620,7 @@ def evaluate(
         )
 
     return FgResult(
-        optimized_rnn_parameters=best_model_params,
+        optimized_trainable_parameters=best_model_params,
         final_purity=final_purity,
         final_fidelity=final_fidelity,
         iterations=num_iterations,
