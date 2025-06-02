@@ -16,8 +16,6 @@ from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.solver import mesolve
 
 jax.config.update("jax_enable_x64", True)
-# Implemented adam/L-BFGS optimizers
-
 
 class result(NamedTuple):
     """
@@ -247,8 +245,10 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
+        # TODO: add support for supplying the liouvillian like the dissipative example
+        # Or just normal hamiltonians
         # if type == "superoperator":
-        #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_t)
+        #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_ts)
         # else:
         if propcomp == "time-efficient":
             U_final = _compute_forward_evolution_time_efficient(
@@ -309,6 +309,11 @@ def evaluate(
     type,
     propcomp,
 ):
+    # TODO: add support for supplying the liouvillian like the dissipative example
+    # Or just normal hamiltonians
+    # if type == "superoperator":
+    #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_ts)
+    # else:
     if propcomp == "time-efficient":
         rho_final = _compute_forward_evolution_time_efficient(
             H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
