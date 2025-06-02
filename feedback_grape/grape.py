@@ -13,6 +13,7 @@ from feedback_grape.utils.optimizers import (
     _optimize_L_BFGS,
 )
 from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.solver import mesolve
 
 jax.config.update("jax_enable_x64", True)
 # Implemented adam/L-BFGS optimizers
@@ -80,7 +81,9 @@ def _compute_propagators(
     return propagators
 
 
-def _compute_forward_evolution_time_efficient(propagators, U_0, type):
+def _compute_forward_evolution_time_efficient(
+    H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+):
     """
     Compute the forward evolution states (ρⱼ) according to the paper's definition.
     ρⱼ = Uⱼ···U₁ρ₀U₁†···Uⱼ†
@@ -91,12 +94,12 @@ def _compute_forward_evolution_time_efficient(propagators, U_0, type):
     Returns:
         U_final: final operator after evolution.
     """
-
+    propagators = _compute_propagators(
+        H_drift, H_control_array, delta_t, control_amplitudes
+    )
     if type == "density":
         rho_final = U_0
         for U_j in propagators:
-            # Forward evolution
-            # Use below if density operator is used
             rho_final = U_j @ rho_final @ U_j.conj().T
         return rho_final
 
@@ -104,9 +107,6 @@ def _compute_forward_evolution_time_efficient(propagators, U_0, type):
         U_final = U_0
 
         for U_j in propagators:
-            # Forward evolution
-            # Use below if density operator is used
-            # rho_final = U_j @ rho_final @ U_j.conj().T
             U_final = U_j @ U_final
 
         return U_final
@@ -204,6 +204,7 @@ def optimize_pulse(
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
+    c_ops: list[jnp.ndarray] = None,  # optional
     max_iter: int = 1000,
     convergence_threshold: float = 1e-6,
     learning_rate: float = 0.01,
@@ -221,6 +222,7 @@ def optimize_pulse(
         C_target: Target state or /unitary/density/super operator.
         num_t_slots: Number of time slots.
         total_evo_time: Total evolution time.
+        c_ops: List of collapse operators (optional, used for superoperator evolution).
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold.
         learning_rate: Learning rate for gradient ascent.
@@ -245,12 +247,17 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
+        # if type == "superoperator":
+        #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_t)
+        # else:
         if propcomp == "time-efficient":
-            propagators = _compute_propagators(
-                H_drift, H_control_array, delta_t, control_amplitudes
-            )
             U_final = _compute_forward_evolution_time_efficient(
-                propagators, U_0, type
+                H_drift,
+                H_control_array,
+                delta_t,
+                control_amplitudes,
+                U_0,
+                type,
             )
         else:
             U_final = _compute_forward_evolution_memory_efficient(
@@ -267,6 +274,77 @@ def optimize_pulse(
             type=type,
         )
 
+    control_amplitudes, iter_idx = train(
+        _loss,
+        control_amplitudes,
+        max_iter,
+        convergence_threshold,
+        learning_rate,
+        optimizer,
+    )
+
+    final_res = evaluate(
+        H_drift=H_drift,
+        H_control_array=H_control_array,
+        U_0=U_0,
+        C_target=C_target,
+        control_amplitudes=control_amplitudes,
+        delta_t=delta_t,
+        iter_idx=iter_idx,
+        type=type,
+        propcomp=propcomp,
+    )
+
+    return final_res
+
+
+def evaluate(
+    H_drift,
+    H_control_array,
+    U_0,
+    C_target,
+    control_amplitudes,
+    delta_t,
+    iter_idx,
+    type,
+    propcomp,
+):
+    if propcomp == "time-efficient":
+        rho_final = _compute_forward_evolution_time_efficient(
+            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+        )
+    elif propcomp == "memory-efficient":
+        rho_final = _compute_forward_evolution_memory_efficient(
+            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+        )
+    else:
+        raise ValueError(
+            f"Propagator computation method {propcomp} not supported. Use 'time-efficient' or 'memory-efficient'."
+        )
+
+    final_fidelity = fidelity(
+        C_target=C_target,
+        U_final=rho_final,
+        type=type,
+    )
+    final_res = result(
+        control_amplitudes,
+        final_fidelity,
+        iter_idx,
+        rho_final,
+    )
+
+    return final_res
+
+
+def train(
+    _loss,
+    control_amplitudes,
+    max_iter,
+    convergence_threshold,
+    learning_rate,
+    optimizer,
+):
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
@@ -289,32 +367,7 @@ def optimize_pulse(
         raise ValueError(
             f"Optimizer {optimizer} not supported. Use 'adam' or 'l-bfgs'."
         )
-
-    if propcomp == "time-efficient":
-        propagators = _compute_propagators(
-            H_drift, H_control_array, delta_t, control_amplitudes
-        )
-        rho_final = _compute_forward_evolution_time_efficient(
-            propagators, U_0, type
-        )
-    else:
-        rho_final = _compute_forward_evolution_memory_efficient(
-            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
-        )
-
-    final_fidelity = fidelity(
-        C_target=C_target,
-        U_final=rho_final,
-        type=type,
-    )
-    final_res = result(
-        control_amplitudes,
-        final_fidelity,
-        iter_idx,
-        rho_final,
-    )
-
-    return final_res
+    return control_amplitudes, iter_idx
 
 
 def plot_control_amplitudes(times, final_amps, labels):

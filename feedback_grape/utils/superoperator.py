@@ -54,6 +54,7 @@ def liouvillian(H, c_ops=None):
 
     return L
 
+
 # TODO: test
 def lindblad(H, c_ops=None, rho=None):
     """
@@ -88,15 +89,15 @@ def lindblad(H, c_ops=None, rho=None):
 
             # Term -{L†L,ρ} = -(L†L)ρ - ρ(L†L)
             # In superoperator form: -(L†L⊗I + I⊗(L†L)^T)
-            dissipator_term2 = - (
-                jnp.matmul(c_dag_c, rho)
-                + jnp.matmul(rho, c_dag_c)
+            dissipator_term2 = -(
+                jnp.matmul(c_dag_c, rho) + jnp.matmul(rho, c_dag_c)
             )
 
             # Add the dissipator terms to the Liouvillian
             drho_dt += dissipator_term1 + dissipator_term2
 
     return drho_dt
+
 
 def sprepost(a, b):
     """
