@@ -6,7 +6,7 @@ import qutip_qip.operations.gates as qip
 import jax.numpy as jnp
 import jax
 from feedback_grape.grape import optimize_pulse
-from feedback_grape.utils.solver import sesolve, mesolve
+from feedback_grape.utils.solver import sesolve
 from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     identity,
@@ -77,9 +77,7 @@ def get_targets_for_qubit_in_cavity_problem(type="state"):
     psi0 = tensor(basis(2), basis(N_cav))
     if type == "density":
         psi0 = psi0 @ psi0.conj().T
-        psi_fg = mesolve(H0 + H_ctrl, psi0, delta_ts)
-    else:
-        psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts)
+    psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts, type=type)
     # Using qutip QTRL
 
     def build_ham_qt(e_qub, e_cav):

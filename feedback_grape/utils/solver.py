@@ -11,7 +11,7 @@ from feedback_grape.utils.fidelity import _isket
 
 
 # TODO: make it more efficient (using ODE methods maybe?)
-def sesolve(Hs, initial_state, delta_ts):
+def sesolve(Hs, initial_state, delta_ts, type="density"):
     """
     Find evolution operator for piecewise Hs on time intervals delta_ts
 
@@ -26,10 +26,14 @@ def sesolve(Hs, initial_state, delta_ts):
     """
 
     U_final = initial_state
-    for _, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
-        U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final
-    return U_final
-
+    if(type == "density"):
+        for _, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
+            U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final @ jax.scipy.linalg.expm(-1j * delta_t * (H)).conj().T
+        return U_final
+    else:
+        for _, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
+            U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final
+        return U_final
 
 # TODO: Add functionality for Liouvillian
 def mesolve(Hs, rho_0, delta_ts):

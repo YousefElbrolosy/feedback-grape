@@ -577,7 +577,7 @@ def evaluate(
             measurement_indices=measurement_indices,
             initial_params=flat_params,
             param_shapes=param_shapes,
-            time_steps=num_time_steps,
+            time_steps=20,
             rnn_model=rnn_model,
             rnn_params=best_model_params,
             rnn_state=h_initial_state,
