@@ -13,9 +13,10 @@ from feedback_grape.utils.optimizers import (
     _optimize_L_BFGS,
 )
 from feedback_grape.utils.fidelity import fidelity
-from feedback_grape.utils.solver import mesolve_1, mesolve_2, sesolve
+from feedback_grape.utils.solver import mesolve, mesolve_1, sesolve
 
 jax.config.update("jax_enable_x64", True)
+
 
 class result(NamedTuple):
     """
@@ -111,7 +112,7 @@ def _compute_forward_evolution_time_efficient(
 
 
 def _compute_forward_evolution_memory_efficient(
-    H_drift, H_control_array, c_ops, delta_t, control_amplitudes, U_0, type
+    H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
 ):
     """
     Computes the forward evolution using a memory-efficient method,
@@ -127,6 +128,15 @@ def _compute_forward_evolution_memory_efficient(
     Returns:
         U_final: Final operator after evolution.
     """
+    Hs, delta_ts = build_parameterized_hamiltonian(
+        control_amplitudes, H_drift, H_control_array, delta_t
+    )
+    return sesolve(Hs, U_0, delta_ts, type=type)
+
+
+def build_parameterized_hamiltonian(
+    control_amplitudes, H_drift, H_control_array, delta_t
+):
     num_t_slots = control_amplitudes.shape[0]
     # Build the list of Hamiltonians for each time slot
     Hs = []
@@ -136,16 +146,7 @@ def _compute_forward_evolution_memory_efficient(
             H_total += control_amplitudes[j, k] * H_control_array[k]
         Hs.append(H_total)
     delta_ts = [delta_t] * num_t_slots
-
-    # Use sesolve to evolve the state/operator
-    if c_ops is not None:
-        return mesolve_1(Hs, c_ops, U_0, delta_ts)
-    if type == "superoperator":
-        # For superoperator evolution, we need to use mesolve
-        # which is designed for Liouvillian evolution
-        return mesolve_2(Hs, U_0, delta_ts)
-    else:
-        return sesolve(Hs, U_0, delta_ts, type=type)
+    return Hs, delta_ts
 
 
 # TODO: Why is this controlled by an amplitude
@@ -180,7 +181,7 @@ def optimize_pulse(
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
-    c_ops: list[jnp.ndarray] = None,  # optional
+    c_ops: list[jnp.ndarray]=None,
     max_iter: int = 1000,
     convergence_threshold: float = 1e-6,
     learning_rate: float = 0.01,
@@ -198,18 +199,19 @@ def optimize_pulse(
         C_target: Target state or /unitary/density/super operator.
         num_t_slots: Number of time slots.
         total_evo_time: Total evolution time.
-        c_ops: List of collapse operators (optional, used for superoperator evolution).
+        c_ops: List of collapse operators (optional, used for liouvillian evolution).
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold.
         learning_rate: Learning rate for gradient ascent.
-        type: Type of fidelity calculation ("unitary" or "state" or "density" or "superoperator").
+        # TODO: automate detection of type based on U_0 and C_target IMPORTANT
+        type: Type of fidelity calculation ("unitary" or "state" or "density" or "liouvillian").
             When to use each type:
             - "unitary": For unitary evolution.
             - "state": For state evolution.
             - "density": For density matrix evolution.
-            - "superoperator": For superoperator evolution (using tracediff method).
+            - "liouvillian": For liouvillian evolution (using tracediff method).
         optimizer: Optimizer to use ("adam" or "L-BFGS").
-        propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
+        propcomp: Propagator computation method ("time-efficient" or "memory-efficient") - for non-liouvillian dynamics.
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
@@ -223,10 +225,14 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
-        # TODO: add support for supplying the liouvillian like the dissipative example
-        # Or just normal hamiltonians
-        # if type == "superoperator":
-        #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_ts)
+        # if type == "liouvillian":
+        #     Hs, delta_ts = build_parameterized_hamiltonian(
+        #         control_amplitudes, H_drift, H_control_array, delta_t
+        #     )
+        #     if c_ops is None:
+        #         U_final = mesolve(Hs, U_0, delta_ts)
+        #     else:
+        #         U_final = mesolve_1(Hs, c_ops, U_0, delta_ts)
         # else:
         if propcomp == "time-efficient":
             U_final = _compute_forward_evolution_time_efficient(
@@ -241,7 +247,6 @@ def optimize_pulse(
             U_final = _compute_forward_evolution_memory_efficient(
                 H_drift,
                 H_control_array,
-                c_ops,
                 delta_t,
                 control_amplitudes,
                 U_0,
@@ -292,8 +297,17 @@ def evaluate(
 ):
     # TODO: add support for supplying the liouvillian like the dissipative example
     # Or just normal hamiltonians
-    # if type == "superoperator":
+    # if type == "liouvillian":
     #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_ts)
+    # else:
+    # if type == "liouvillian":
+    #     Hs, delta_ts = build_parameterized_hamiltonian(
+    #         control_amplitudes, H_drift, H_control_array, delta_t
+    #     )
+    #     if c_ops is None:
+    #         rho_final = mesolve(Hs, U_0, delta_ts)
+    #     else:
+    #         rho_final = mesolve_1(Hs, c_ops, U_0, delta_ts)
     # else:
     if propcomp == "time-efficient":
         rho_final = _compute_forward_evolution_time_efficient(
@@ -301,7 +315,7 @@ def evaluate(
         )
     elif propcomp == "memory-efficient":
         rho_final = _compute_forward_evolution_memory_efficient(
-            H_drift, H_control_array, c_ops, delta_t, control_amplitudes, U_0, type
+            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
         )
     else:
         raise ValueError(

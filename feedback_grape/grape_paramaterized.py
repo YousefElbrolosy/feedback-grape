@@ -67,7 +67,7 @@ def optimize_pulse_parameterized(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
+    type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     propcomp: str = "time-efficient",  # time-efficient, memory-efficient
 ) -> result | None:
     """
@@ -86,7 +86,7 @@ def optimize_pulse_parameterized(
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
-        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'superoperator'.
+        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
         propcomp (str): The method for propagator computation, either 'time-efficient' or 'memory-efficient'.
                         This determines how the forward evolution is computed.

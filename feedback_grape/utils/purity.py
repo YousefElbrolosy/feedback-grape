@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 
 
-# TODO + QUESTION: ask pavlo if purity of a superoperator is something
+# TODO + QUESTION: ask pavlo if purity of a liouvillian is something
 # important
 def purity(*, rho):
     """
@@ -9,7 +9,7 @@ def purity(*, rho):
 
     Args:
         rho: Density matrix.
-        type: Type of density matrix ("density" or "superoperator").
+        type: Type of density matrix ("density" or "liouvillian").
     Returns:
         purity: Purity value.
     """

@@ -116,24 +116,24 @@ def _state_density_fidelity(A, B):
 
 def fidelity(*, C_target, U_final, type="unitary"):
     """
-    Computes the fidelity of the final state/operator/density matrix/superoperator
-    with respect to the target state/operator/density matrix/superoperator.
+    Computes the fidelity of the final state/operator/density matrix/liouvillian
+    with respect to the target state/operator/density matrix/liouvillian.
 
-    For calculating the fidelity of superoperators, the tracediff method is used.
+    For calculating the fidelity of liouvillians, the tracediff method is used.
     The fidelity is calculated as:
     - For unitary: ``Tr(C_target^† U_final) / dim``
     - For state: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
     - For density: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
-    - For superoperator: ``1 - (0.5 * Tr(|C_target - U_final|)) / C_target.dim``
+    - For liouvillian: ``1 - (0.5 * Tr(|C_target - U_final|)) / C_target.dim``
 
     Args:
         C_target: Target operator.
         U_final: Final operator after evolution.
-        type: Type of fidelity calculation ("unitary", "state", "density", or "superoperator (using tracediff method)")
+        type: Type of fidelity calculation ("unitary", "state", "density", or "liouvillian (using tracediff method)")
     Returns:
         fidelity: Fidelity value.
     """
-    if type == "superoperator":
+    if type == "liouvillian":
         # TRACEDIFF fidelity: 1 - 0.5*Tr(|C_target - U_final|)
         # Where |A| is the matrix absolute value (element-wise)
         diff = C_target - U_final
@@ -154,6 +154,6 @@ def fidelity(*, C_target, U_final, type="unitary"):
         )
     else:
         raise ValueError(
-            "Invalid type. Choose 'unitary', 'state', 'density', 'superoperator'."
+            "Invalid type. Choose 'unitary', 'state', 'density', 'liouvillian'."
         )
     return jnp.abs(overlap) ** 2

@@ -592,7 +592,7 @@ def get_results_for_dissipation_problem(optimizer, propcomp):
         C_target_fg,
         n_ts,
         evo_time,
-        type="superoperator",
+        type="liouvillian",
         optimizer=optimizer,
         convergence_threshold=1e-16,
         max_iter=1000,

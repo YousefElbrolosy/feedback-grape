@@ -40,7 +40,7 @@ def sesolve(Hs, initial_state, delta_ts, type="density"):
         return U_final
 
 
-# TODO: Add functionality for Liouvillian
+# TODO: Add functionality for supplying H and c_ops and then doing the evolution
 def mesolve_1(Hs, c_ops, rho_0, delta_ts):
     """
     Master equation evolution of a density matrix for a given Hamiltonian and
@@ -73,7 +73,7 @@ def mesolve_1(Hs, c_ops, rho_0, delta_ts):
     return rho
 
 
-def mesolve_2(L, rho_0, delta_ts):
+def mesolve(L, rho_0, delta_ts):
     """
     Master equation evolution of a density matrix for a given Liouvillian.
 

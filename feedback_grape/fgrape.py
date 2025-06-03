@@ -336,7 +336,7 @@ def optimize_pulse_with_feedback(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
+    type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     batch_size: int,
     RNN: callable = RNN,
 ) -> FgResult:
@@ -356,7 +356,7 @@ def optimize_pulse_with_feedback(
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
-        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'superoperator'.
+        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
         RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
     Returns:
@@ -577,7 +577,7 @@ def evaluate(
             measurement_indices=measurement_indices,
             initial_params=flat_params,
             param_shapes=param_shapes,
-            time_steps=20,
+            time_steps=num_time_steps,
             rnn_model=rnn_model,
             rnn_params=best_model_params,
             rnn_state=h_initial_state,
