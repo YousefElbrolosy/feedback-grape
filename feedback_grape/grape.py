@@ -13,7 +13,7 @@ from feedback_grape.utils.optimizers import (
     _optimize_L_BFGS,
 )
 from feedback_grape.utils.fidelity import fidelity
-from feedback_grape.utils.solver import mesolve
+from feedback_grape.utils.solver import mesolve_1, mesolve_2, sesolve
 
 jax.config.update("jax_enable_x64", True)
 
@@ -111,12 +111,11 @@ def _compute_forward_evolution_time_efficient(
 
 
 def _compute_forward_evolution_memory_efficient(
-    H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+    H_drift, H_control_array, c_ops, delta_t, control_amplitudes, U_0, type
 ):
     """
-    Computes the forward evolution using a memory-efficient method.
-    Where we donot precompute all propagators, but rather compute them
-    on the fly.
+    Computes the forward evolution using a memory-efficient method,
+    leveraging the sesolve function to evolve the state/operator.
 
     Args:
         H_drift: Drift Hamiltonian.
@@ -128,46 +127,25 @@ def _compute_forward_evolution_memory_efficient(
     Returns:
         U_final: Final operator after evolution.
     """
-
     num_t_slots = control_amplitudes.shape[0]
+    # Build the list of Hamiltonians for each time slot
+    Hs = []
+    for j in range(num_t_slots):
+        H_total = H_drift
+        for k in range(len(H_control_array)):
+            H_total += control_amplitudes[j, k] * H_control_array[k]
+        Hs.append(H_total)
+    delta_ts = [delta_t] * num_t_slots
 
-    if type == "density":
-        rho_final = U_0
-        for j in range(num_t_slots):
-            # Calculate total Hamiltonian for time step j
-            H_0 = H_drift
-            H_control = 0
-            for k in range(len(H_control_array)):
-                H_control += control_amplitudes[j, k] * H_control_array[k]
-
-            # Compute U_j and immediately update rho_final to discard U_j from memory
-            rho_final = (
-                jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control))
-                @ rho_final
-                @ jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control))
-                .conj()
-                .T
-            )
-
-        return rho_final
-
+    # Use sesolve to evolve the state/operator
+    if c_ops is not None:
+        return mesolve_1(Hs, c_ops, U_0, delta_ts)
+    if type == "superoperator":
+        # For superoperator evolution, we need to use mesolve
+        # which is designed for Liouvillian evolution
+        return mesolve_2(Hs, U_0, delta_ts)
     else:
-        U_final = U_0
-
-        for j in range(num_t_slots):
-            # Calculate total Hamiltonian for time step j
-            H_0 = H_drift
-            H_control = 0
-            for k in range(len(H_control_array)):
-                H_control += control_amplitudes[j, k] * H_control_array[k]
-
-            # Compute U_j and immediately update U_final to discard U_j from memory
-            U_final = (
-                jax.scipy.linalg.expm(-1j * delta_t * (H_0 + H_control))
-                @ U_final
-            )
-
-        return U_final
+        return sesolve(Hs, U_0, delta_ts, type=type)
 
 
 # TODO: Why is this controlled by an amplitude
@@ -263,6 +241,7 @@ def optimize_pulse(
             U_final = _compute_forward_evolution_memory_efficient(
                 H_drift,
                 H_control_array,
+                c_ops,
                 delta_t,
                 control_amplitudes,
                 U_0,
@@ -288,6 +267,7 @@ def optimize_pulse(
         H_control_array=H_control_array,
         U_0=U_0,
         C_target=C_target,
+        c_ops=c_ops,
         control_amplitudes=control_amplitudes,
         delta_t=delta_t,
         iter_idx=iter_idx,
@@ -303,6 +283,7 @@ def evaluate(
     H_control_array,
     U_0,
     C_target,
+    c_ops,
     control_amplitudes,
     delta_t,
     iter_idx,
@@ -320,7 +301,7 @@ def evaluate(
         )
     elif propcomp == "memory-efficient":
         rho_final = _compute_forward_evolution_memory_efficient(
-            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+            H_drift, H_control_array, c_ops, delta_t, control_amplitudes, U_0, type
         )
     else:
         raise ValueError(
