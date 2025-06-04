@@ -167,7 +167,7 @@ class RNN(nn.Module):
 
         - You're giving the GRU more representational capacity
         """
-        gru_cell = GRUCell(features=self.hidden_size)
+        gru_cell = nn.GRUCell(features=self.hidden_size)
 
         if measurement.ndim == 1:
             measurement = measurement.reshape(1, -1)
@@ -175,6 +175,10 @@ class RNN(nn.Module):
         # this returns the povm_params after linear regression through the hidden state which contains
         # the information of the previous time steps and this is optimized to output best povm_params
         # new_hidden_state = nn.Dense(features=self.hidden_size)(new_hidden_state)
-        output = nn.Dense(features=self.output_size)(new_hidden_state)
+        output = nn.Dense(
+            features=self.output_size,
+            kernel_init=nn.initializers.glorot_uniform(),
+            bias_init=nn.initializers.constant(jnp.pi),
+        )(new_hidden_state)
         # output = jnp.asarray(output)
         return output[0], new_hidden_state

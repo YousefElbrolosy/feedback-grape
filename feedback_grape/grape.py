@@ -181,7 +181,7 @@ def optimize_pulse(
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
-    c_ops: list[jnp.ndarray]=None,
+    c_ops: list[jnp.ndarray] = None,
     max_iter: int = 1000,
     convergence_threshold: float = 1e-6,
     learning_rate: float = 0.01,

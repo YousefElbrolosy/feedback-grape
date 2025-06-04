@@ -161,7 +161,9 @@ def test_density_example(optimizer, propcomp):
             "liouvillian",
             get_targets_for_dissipation_problem()[0],
             get_finals(
-                *get_results_for_dissipation_problem("adam", "memory-efficient")
+                *get_results_for_dissipation_problem(
+                    "adam", "memory-efficient"
+                )
             )[0],
         ),
     ],

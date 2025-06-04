@@ -53,11 +53,31 @@ class FgResult(NamedTuple):
     """
 
 
+class decay(NamedTuple):
+    """
+    decay class to store the decay parameters.
+    """
+
+    decay_indices: List[int]
+    """
+    Indices of the gates that are used for decay.
+    """
+    decay_rates: List[int]
+    """
+    Parameters for the decay gates.
+    """
+    decay_durations: List[int]
+    """
+    Durations for the decay gates.
+    """
+
+
 def _calculate_time_step(
     *,
     rho_cav,
     parameterized_gates,
     measurement_indices,
+    decay,
     initial_params,
     param_shapes,
     rnn_model=None,
@@ -82,19 +102,24 @@ def _calculate_time_step(
     rho_final = rho_cav
     total_log_prob = 0.0
     applied_params = []
+    # if not (decay_indices is None or decay_indices == []):
+
     # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
-
+    key = rng_key
     if lut is not None:
         extracted_lut_params = initial_params
 
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
             # TODO: handle more carefully when there are multiple measurements
+            # if i in decay.decay_indices:
+            #     rho_final = dissipate(decay, rho_final)
+            key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, extracted_lut_params[i], rng_key
+                    rho_final, gate, extracted_lut_params[i], key
                 )
                 measurement_history.append(measurement)
                 applied_params.append(extracted_lut_params[i])
@@ -121,16 +146,21 @@ def _calculate_time_step(
     else:
         updated_params = initial_params
         new_hidden_state = rnn_state
+
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
             # TODO: handle more carefully when there are multiple measurements
+            key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, updated_params[i], rng_key
+                    rho_final, gate, updated_params[i], key
                 )
                 applied_params.append(updated_params[i])
                 updated_params, new_hidden_state = rnn_model.apply(
-                    rnn_params, jnp.array([measurement]), new_hidden_state
+                    rnn_params,
+                    jnp.array([measurement]),
+                    new_hidden_state,
+                    rngs={'dropout': subkey},
                 )
 
                 updated_params = reshape_params(param_shapes, updated_params)
@@ -173,6 +203,7 @@ def calculate_trajectory(
     rho_cav,
     parameterized_gates,
     measurement_indices,
+    decay,
     initial_params,
     param_shapes,
     time_steps,
@@ -191,6 +222,7 @@ def calculate_trajectory(
         rho_cav: Initial density matrix of the cavity.
         parameterized_gates: List of parameterized gates.
         measurement_indices: Indices of gates used for measurements.
+        decay: Decay parameters, if applicable.
         initial_params: Initial parameters for all gates.
         param_shapes: List of shapes for each gate's parameters.
         time_steps: Number of time steps within a trajectory.
@@ -216,6 +248,7 @@ def calculate_trajectory(
         rho_cav,
         parameterized_gates,
         measurement_indices,
+        decay,
         initial_params,
         param_shapes,
         rnn_model,
@@ -243,6 +276,7 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    decay=decay,
                     initial_params=new_params,
                     param_shapes=param_shapes,
                     lut=lut,
@@ -272,6 +306,7 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    decay=decay,
                     initial_params=new_params,
                     param_shapes=param_shapes,
                     rnn_model=rnn_model,
@@ -305,6 +340,7 @@ def calculate_trajectory(
             None,
             None,
             None,
+            None,
             0,
         ),
     )
@@ -312,6 +348,7 @@ def calculate_trajectory(
         rho_final_batched,
         parameterized_gates,
         measurement_indices,
+        decay,
         initial_params,
         param_shapes,
         rnn_model,
@@ -338,6 +375,7 @@ def optimize_pulse_with_feedback(
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     batch_size: int,
+    decay: decay | None = None,
     RNN: callable = RNN,
 ) -> FgResult:
     """
@@ -358,6 +396,8 @@ def optimize_pulse_with_feedback(
         learning_rate (float): The learning rate for the optimization algorithm.
         type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
+        batch_size (int): The number of trajectories to process in parallel.
+        decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
         RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
@@ -445,6 +485,7 @@ def optimize_pulse_with_feedback(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            decay=decay,
             initial_params=flat_params,
             param_shapes=param_shapes,
             time_steps=num_time_steps,
@@ -502,6 +543,7 @@ def optimize_pulse_with_feedback(
         C_target=C_target,
         parameterized_gates=parameterized_gates,
         measurement_indices=measurement_indices,
+        decay=decay,
         flat_params=flat_params,
         param_shapes=param_shapes,
         best_model_params=best_model_params,
@@ -557,6 +599,7 @@ def evaluate(
     C_target,
     parameterized_gates,
     measurement_indices,
+    decay,
     flat_params,
     param_shapes,
     best_model_params,
@@ -575,6 +618,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            decay=decay,
             initial_params=flat_params,
             param_shapes=param_shapes,
             time_steps=num_time_steps,
@@ -590,6 +634,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            decay=decay,
             initial_params=flat_params,
             param_shapes=param_shapes,
             time_steps=num_time_steps,
