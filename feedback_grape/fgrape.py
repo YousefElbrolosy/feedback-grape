@@ -246,16 +246,6 @@ def calculate_trajectory(
 
     def _calculate_single_trajectory(
         rho_cav,
-        parameterized_gates,
-        measurement_indices,
-        decay,
-        initial_params,
-        param_shapes,
-        rnn_model,
-        rnn_params,
-        hidden_state,
-        lut,
-        type,
         rng_key,
     ):
         time_step_keys = jax.random.split(rng_key, time_steps)
@@ -294,7 +284,7 @@ def calculate_trajectory(
                 resulting_params.append(applied_params)
 
         else:
-            new_hidden_state = hidden_state
+            new_hidden_state = rnn_state
             for i in range(time_steps):
                 (
                     rho_final,
@@ -331,31 +321,11 @@ def calculate_trajectory(
         _calculate_single_trajectory,
         in_axes=(
             0,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
             0,
         ),
     )
     return batched_trajectory_fn(
         rho_final_batched,
-        parameterized_gates,
-        measurement_indices,
-        decay,
-        initial_params,
-        param_shapes,
-        rnn_model,
-        rnn_params,
-        rnn_state,
-        lut,
-        type,
         rng_keys,
     )
 
