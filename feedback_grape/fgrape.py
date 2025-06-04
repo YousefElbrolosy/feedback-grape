@@ -423,9 +423,9 @@ def optimize_pulse_with_feedback(
         dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
         trainable_params = {
             'rnn_params': rnn_model.init(
-            parent_rng_key, dummy_input, h_initial_state
-        ),
-            'initial_params': flat_params
+                parent_rng_key, dummy_input, h_initial_state
+            ),
+            'initial_params': flat_params,
         }
         # trainable_params = rnn_model.init(
         #     parent_rng_key, dummy_input, h_initial_state
@@ -436,7 +436,7 @@ def optimize_pulse_with_feedback(
         rnn_model = None
         # step 1: initialize the parameters
         num_of_columns = num_of_params
-        num_of_sub_lists = num_time_steps - 1
+        num_of_sub_lists = num_time_steps
         F = []
         # construct ragged lookup table
         for i in range(1, num_of_sub_lists + 1):
@@ -455,10 +455,7 @@ def optimize_pulse_with_feedback(
                     for _ in range(min_num_of_rows - len(F[i]))
                 ]
                 F[i] = F[i] + zeros_arrays
-        trainable_params = {
-            'lookup_table': F,
-            'initial_params': flat_params
-        }
+        trainable_params = {'lookup_table': F, 'initial_params': flat_params}
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
 
@@ -481,13 +478,13 @@ def optimize_pulse_with_feedback(
             # reseting hidden state at end of every trajectory ( does not really change the purity tho)
             h_initial_state = jnp.zeros((1, hidden_size))
             rnn_params = trainable_params['rnn_params']
-            initial_params_opt = trainable_params['initial_params'] 
+            initial_params_opt = trainable_params['initial_params']
             lookup_table_params = None
         else:
             h_initial_state = None
             rnn_params = None
             lookup_table_params = trainable_params['lookup_table']
-            initial_params_opt = trainable_params['initial_params'] 
+            initial_params_opt = trainable_params['initial_params']
 
         rho_final, log_prob, _ = calculate_trajectory(
             rho_cav=U_0,
