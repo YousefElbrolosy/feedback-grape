@@ -3,6 +3,7 @@ def example_B_body():
     # ruff: noqa
     from feedback_grape.fgrape import optimize_pulse_with_feedback
     import jax.numpy as jnp
+
     ## The cavity is initially in a  mixed state --> Goal is to purify the state
     # initial state is a thermal state
     n_average = 2
@@ -15,7 +16,6 @@ def example_B_body():
     ## Next Step is to construct our POVM
     from feedback_grape.utils.operators import cosm, sinm
     from feedback_grape.utils.operators import create, destroy
-
 
     def povm_measure_operator(measurement_outcome, gamma, delta):
         """
@@ -54,9 +54,11 @@ def example_B_body():
 
     for i, state in enumerate(result.final_state):
         purity_value = purity(rho=state)
+        print(f"Purity of state {i}: {purity_value}")
         if purity_value > 0.99:
             return True
     return False
+
 
 def example_C_body():
     # ruff: noqa
@@ -74,8 +76,10 @@ def example_C_body():
     from feedback_grape.utils.tensor import tensor
     import jax.numpy as jnp
     from jax.scipy.linalg import expm
+
     ## defining parameterized operations that are repeated num_time_steps times
-    N_cav = 10
+    N_cav = 20
+
     def qubit_unitary(alpha):
         """
         TODO: see if alpha, can be sth elser other than scalar, and if the algo understands this
@@ -89,6 +93,7 @@ def example_C_body():
             )
             / 2
         )
+
     def qubit_cavity_unitary(beta):
         return expm(
             -1j
@@ -106,8 +111,8 @@ def example_C_body():
             )
             / 2
         )
-    from feedback_grape.utils.operators import create, destroy
 
+    from feedback_grape.utils.operators import create, destroy
 
     def povm_measure_operator(measurement_outcome, gamma, delta):
         """
@@ -122,6 +127,7 @@ def example_C_body():
             sinm(angle),
         )
         return meas_op
+
     ### defining initial (thermal) state
     # initial state is a thermal state coupled to a qubit in the ground state?
     n_average = 1
@@ -135,7 +141,8 @@ def example_C_body():
 
     ### defining target state
     psi_target = tensor(
-        (fock(N_cav, 1) + fock(N_cav, 2) + fock(N_cav, 3)) / jnp.sqrt(3), basis(2)
+        (fock(N_cav, 1) + fock(N_cav, 2) + fock(N_cav, 3)) / jnp.sqrt(3),
+        basis(2),
     )
 
     rho_target = psi_target @ psi_target.conj().T
@@ -148,13 +155,11 @@ def example_C_body():
     learning_rate = 0.05
     # avg_photon_numer = 2 When testing kitten state
 
-
     initial_params = {
         "POVM": [jnp.pi / 3, jnp.pi / 3],
         "U_q": [jnp.pi / 3],
         "U_qc": [jnp.pi / 3],
     }
-
 
     result = optimize_pulse_with_feedback(
         U_0=rho0,
@@ -177,14 +182,14 @@ def example_C_body():
         batch_size=10,
     )
     for i, state in enumerate(result.final_state):
-        fidelity_value = fidelity(C_target=rho_target, U_final=state, type="density")
+        fidelity_value = fidelity(
+            C_target=rho_target, U_final=state, type="density"
+        )
+        print(f"Fidelity of state {i}: {fidelity_value}")
+
         if fidelity_value > 0.9:
             return True
     return False
-        
-
-
-
 
 
 # TODO: if this is wrong interpretation and avg fidelity should be 0.99, then change the test accordingly
@@ -193,11 +198,16 @@ def test_example_B():
     This test tests if the max fidelity reached by example_B is above 0.99
     """
     # Example assertion, replace with actual test logic
-    assert example_B_body(), "The max fidelity reached by example_B for batch size 10 is below 0.99"
+    assert example_B_body(), (
+        "The max fidelity reached by example_B for batch size 10 is below 0.99"
+    )
+
 
 def test_example_C():
     """
     This test tests if the max fidelity reached by example_C is above 0.9
     """
     # Example assertion, replace with actual test logic
-    assert example_C_body(), "The max fidelity reached by example_C for batch size 10 is below 0.9"
+    assert example_C_body(), (
+        "The max fidelity reached by example_C for batch size 10 is below 0.9"
+    )
