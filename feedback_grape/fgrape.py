@@ -39,15 +39,15 @@ class FgResult(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    returned_params: List[List]
+    returned_params: List[jnp.ndarray]
     """
     Array of finalsPOVM parameters for each time step.
     """
-    final_purity: float | None
+    final_purity: jnp.ndarray | None
     """
     Final purity of the optimized control.
     """
-    final_fidelity: float | None
+    final_fidelity: jnp.ndarray | None
     """
     Final fidelity of the optimized control.
     """
@@ -254,7 +254,7 @@ def calculate_trajectory(
         total_log_prob = 0.0
         new_params = initial_params
         if lut is not None:
-            measurement_history = []
+            measurement_history: list[int] = []
             for i in range(time_steps):
                 (
                     rho_final,
@@ -335,7 +335,7 @@ def optimize_pulse_with_feedback(
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
     measurement_indices: list[int],
-    initial_params: list,
+    initial_params: dict[str, list[float | complex]],
     goal: str,  # purity, fidelity, both
     mode: str,  # nn, lookup
     num_time_steps: int,
@@ -346,7 +346,7 @@ def optimize_pulse_with_feedback(
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     batch_size: int,
     decay: decay | None = None,
-    RNN: callable = RNN,
+    RNN: callable = RNN,  # type: ignore
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration.
@@ -387,7 +387,7 @@ def optimize_pulse_with_feedback(
         hidden_size = 30
         output_size = num_of_params
 
-        rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
+        rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)  # type: ignore
         h_initial_state = jnp.zeros((1, hidden_size))
 
         dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
@@ -536,13 +536,13 @@ def optimize_pulse_with_feedback(
 
 
 def train(
-    optimizer: str,  # adam, l-bfgs
+    optimizer,  # adam, l-bfgs
     loss_fn,
     trainable_params,
     prng_key,
-    max_iter: int,
-    learning_rate: float = 0.01,
-    convergence_threshold: float = 1e-6,
+    max_iter,
+    learning_rate,
+    convergence_threshold,
 ):
     """
     Train the model using the specified optimizer.

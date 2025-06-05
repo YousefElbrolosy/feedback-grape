@@ -91,7 +91,7 @@ def destroy(n: int, dtype: jnp.dtype = jnp.complex128) -> jnp.ndarray:  # type: 
 
 
 # TODO: test with dynamiqs version
-def cosm(a: jnp.ndarray):
+def cosm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Cosine of a matrix.
     """
@@ -99,7 +99,7 @@ def cosm(a: jnp.ndarray):
 
 
 # TODO: test with dynamiqs version
-def sinm(a: jnp.ndarray):
+def sinm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Sine of a matrix.
     """

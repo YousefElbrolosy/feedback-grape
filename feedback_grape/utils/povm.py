@@ -57,11 +57,11 @@ def _post_measurement_state(
 
 # TODO: need to handle the case where the rho_cav is not a density matrix
 def povm(
-    rho_cav: jnp.ndarray,
-    povm_measure_operator: callable,
-    initial_povm_params: list,
+    rho_cav,
+    povm_measure_operator,  # type: ignore
+    initial_povm_params,
     rng_key,
-) -> tuple[jnp.ndarray, int, float]:
+):
     """
     Perform a POVM measurement on the given state.
 

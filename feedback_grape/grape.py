@@ -181,7 +181,7 @@ def optimize_pulse(
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
-    c_ops: list[jnp.ndarray] = None,
+    c_ops: list[jnp.ndarray] = [],
     max_iter: int = 1000,
     convergence_threshold: float = 1e-6,
     learning_rate: float = 0.01,
@@ -229,7 +229,7 @@ def optimize_pulse(
         #     Hs, delta_ts = build_parameterized_hamiltonian(
         #         control_amplitudes, H_drift, H_control_array, delta_t
         #     )
-        #     if c_ops is None:
+        #     if c_ops is []:
         #         U_final = mesolve(Hs, U_0, delta_ts)
         #     else:
         #         U_final = mesolve_1(Hs, c_ops, U_0, delta_ts)
