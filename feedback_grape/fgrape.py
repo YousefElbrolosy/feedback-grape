@@ -406,7 +406,7 @@ def optimize_pulse_with_feedback(
         rnn_model = None
         # step 1: initialize the parameters
         num_of_columns = num_of_params
-        num_of_sub_lists = num_time_steps
+        num_of_sub_lists = len(measurement_indices) * num_time_steps
         F = []
         # construct ragged lookup table
         for i in range(1, num_of_sub_lists + 1):
