@@ -1,23 +1,35 @@
-from typing import NamedTuple
-import jax.numpy as jnp
-from feedback_grape.grape import _optimize_adam, _optimize_L_BFGS
 import jax
-import flax.linen as nn
+import jax.numpy as jnp
+from typing import List, NamedTuple
+from feedback_grape.utils.optimizers import (
+    _optimize_adam_feedback,
+    _optimize_L_BFGS,
+)
+from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.purity import purity
+from feedback_grape.utils.povm import povm
+from feedback_grape.fgrape_helpers import (
+    prepare_parameters_from_dict,
+    construct_ragged_row,
+    extract_from_lut,
+    reshape_params,
+    apply_gate,
+    RNN,
+)
+
+# TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
 # ruff: noqa N8
+jax.config.update("jax_enable_x64", True)
 
 
-class FgResultPurity(NamedTuple):
+class FgResult(NamedTuple):
     """
     result class to store the results of the optimization process.
     """
 
-    optimized_rnn_parameters: jnp.ndarray
+    optimized_trainable_parameters: jnp.ndarray
     """
     Optimized control amplitudes.
-    """
-    final_purity: float
-    """
-    Final fidelity of the optimized control.
     """
     iterations: int
     """
@@ -27,120 +39,54 @@ class FgResultPurity(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
-    arr_of_povm_params: jnp.ndarray
-
-
-def _probability_of_a_measurement_outcome_given_a_certain_state(
-    rho_cav, measurement_outcome, povm_measure_operator, initial_params
-):
+    returned_params: List[jnp.ndarray]
     """
-    Calculate the probability of a measurement outcome given a quantum state.
-
-    Args:
-        rho_cav: Density matrix of the cavity
-        measurement_outcome: The measurement outcome
-        povm_measure_operator: The POVM measurement operator
-        kwargs: Additional parameters for the POVM operator
-
-    Returns:
-        Probability of the measurement outcome
+    Array of finalsPOVM parameters for each time step.
     """
-    Em = povm_measure_operator(
-        measurement_outcome, initial_params
-    ).conj().T @ povm_measure_operator(measurement_outcome, initial_params)
-    # QUESTION: would jnp.real be useful here?
-    return jnp.real(jnp.trace(Em @ rho_cav))
-
-
-# TODO: should generalize if input is a state rather than a density matrix
-def _post_measurement_state(
-    rho_cav, measurement_outcome, povm_measure_operator, initial_params
-):
+    final_purity: jnp.ndarray | None
     """
-    Returns the state after the measurement
-
-    Args:
-        rho_cav: Density matrix of the cavity
-        measurement_outcome: The measurement outcome
-        povm_measure_operator: The POVM measurement operator
-        params: Parameters for the POVM operator
-
-    Returns:
-        Post-measurement state
+    Final purity of the optimized control.
     """
-    Mm_op = povm_measure_operator(measurement_outcome, initial_params)
-    prob = _probability_of_a_measurement_outcome_given_a_certain_state(
-        rho_cav,
-        measurement_outcome,
-        povm_measure_operator,
-        initial_params,
-    )
-    # QUESTION: should we use jnp.clip here?
-    prob = jnp.maximum(prob, 1e-10)
-    # is denominator sqrted or not?
-    return Mm_op @ rho_cav @ Mm_op.conj().T / prob
-
-
-# TODO: need to handle the case where the
-def povm(
-    rho_cav: jnp.ndarray,
-    povm_measure_operator: callable,
-    initial_povm_params: jnp.ndarray,
-) -> tuple[jnp.ndarray, int, float]:
+    final_fidelity: jnp.ndarray | None
     """
-    Perform a POVM measurement on the given state.
-
-    Args:
-        rho_cav (jnp.ndarray): The density matrix of the cavity.
-        measurement_outcome (int): The measurement outcome.
-        povm_measure_operator (callable): The POVM measurement operator.
-        initial_povm_params (jnp.ndarray): Initial parameters for the POVM measurement operator.
-        key (jnp.ndarray): Random key for stochastic operations.
-
-    Returns:
-        tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
+    Final fidelity of the optimized control.
     """
-    # TODO: this should be generalized to all possible measurement outcomes
-    prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
-        rho_cav, 1, povm_measure_operator, initial_povm_params
-    )
-    random_value = jax.random.uniform(jax.random.PRNGKey(0), shape=())
-    measurement = jnp.where(random_value < prob_plus, 1, -1)
-    rho_meas = _post_measurement_state(
-        rho_cav, measurement, povm_measure_operator, initial_povm_params
-    )
-    prob = jnp.where(
-        measurement == 1,
-        prob_plus,
-        1 - prob_plus,
-    )
-    # QUESTION: If prob is 0 though then the log prob is -inf ( and 1e-10 will be a very huge number)
-    log_prob = jnp.log(jnp.maximum(prob, 1e-10))
-    return rho_meas, measurement, log_prob
 
 
-# TODO + QUESTION: ask pavlo if purity of a superoperator is something important
-def purity(*, rho):
+class decay(NamedTuple):
     """
-    Computes the purity of a density matrix.
-
-    Args:
-        rho: Density matrix.
-        type: Type of density matrix ("density" or "superoperator").
-    Returns:
-        purity: Purity value.
+    decay class to store the decay parameters.
     """
-    return jnp.real(jnp.trace(rho @ rho))
+
+    decay_indices: List[int]
+    """
+    Indices of the gates that are used for decay.
+    """
+    decay_rates: List[int]
+    """
+    Parameters for the decay gates.
+    """
+    decay_durations: List[int]
+    """
+    Durations for the decay gates.
+    """
 
 
 def _calculate_time_step(
     *,
     rho_cav,
-    povm_measure_operator,
-    initial_povm_params,
-    rnn_model,
-    rnn_params,
-    rnn_state,
+    parameterized_gates,
+    measurement_indices,
+    decay,
+    initial_params,
+    param_shapes,
+    rnn_model=None,
+    rnn_params=None,
+    rnn_state=None,
+    lut=None,
+    measurement_history=None,
+    type,
+    rng_key,
 ):
     """
     Calculate the time step for the optimization process.
@@ -153,75 +99,243 @@ def _calculate_time_step(
     Returns:
 
     """
+    rho_final = rho_cav
+    total_log_prob = 0.0
+    applied_params = []
+    # if not (decay_indices is None or decay_indices == []):
 
-    rho_meas, measurement, log_prob = povm(
-        rho_cav, povm_measure_operator, initial_povm_params
-    )
+    # TODO: IMP - See which is the more correct, should new params be propagated
+    # directly within the same time step
+    # or new parameters are together within the same time step
+    key = rng_key
+    if lut is not None:
+        extracted_lut_params = initial_params
 
-    # TODO: feed the measurement outcome to the RNN and get the new params and the new hidden state
-    updated_params, new_hidden_state = rnn_model.apply(
-        rnn_params, jnp.array([measurement]), rnn_state
-    )
-    return rho_meas, log_prob, updated_params, new_hidden_state
+        # Apply each gate in sequence
+        for i, gate in enumerate(parameterized_gates):
+            # TODO: handle more carefully when there are multiple measurements
+            # if i in decay.decay_indices:
+            #     rho_final = dissipate(decay, rho_final)
+            key, _ = jax.random.split(key)
+            if i in measurement_indices:
+                rho_final, measurement, log_prob = povm(
+                    rho_final, gate, extracted_lut_params[i], key
+                )
+                measurement_history.append(measurement)
+                applied_params.append(extracted_lut_params[i])
+                extracted_lut_params = extract_from_lut(
+                    lut, measurement_history
+                )
+                extracted_lut_params = reshape_params(
+                    param_shapes, extracted_lut_params
+                )
+                total_log_prob += log_prob
+            else:
+                rho_final = apply_gate(
+                    rho_final, gate, extracted_lut_params[i], type
+                )
+                applied_params.append(extracted_lut_params[i])
+
+        return (
+            rho_final,
+            total_log_prob,
+            extracted_lut_params,
+            applied_params,
+            measurement_history,
+        )
+    else:
+        updated_params = initial_params
+        new_hidden_state = rnn_state
+
+        # Apply each gate in sequence
+        for i, gate in enumerate(parameterized_gates):
+            # TODO: handle more carefully when there are multiple measurements
+            key, subkey = jax.random.split(key)
+            if i in measurement_indices:
+                rho_final, measurement, log_prob = povm(
+                    rho_final, gate, updated_params[i], key
+                )
+                applied_params.append(updated_params[i])
+                updated_params, new_hidden_state = rnn_model.apply(
+                    rnn_params,
+                    jnp.array([measurement]),
+                    new_hidden_state,
+                    rngs={'dropout': subkey},
+                )
+
+                updated_params = reshape_params(param_shapes, updated_params)
+                total_log_prob += log_prob
+            else:
+                rho_final = apply_gate(
+                    rho_final, gate, updated_params[i], type
+                )
+                applied_params.append(updated_params[i])
+
+        return (
+            rho_final,
+            total_log_prob,
+            updated_params,
+            applied_params,
+            new_hidden_state,
+        )
+
+    # # Apply each gate in sequence
+    # for i, gate in enumerate(parameterized_gates):
+    #     gate_params = initial_params[i]
+    #     # TODO: handle more carefully when there are multiple measurements
+    #     if i in measurement_indices:
+    #         rho_final, measurement, log_prob = povm(
+    #             rho_final, gate, gate_params
+    #         )
+    #         updated_params, new_hidden_state = rnn_model.apply(
+    #             rnn_params, jnp.array([measurement]), rnn_state
+    #         )
+    #         reshaped_rnn_params = reshape_params(param_shapes, updated_params)
+    #         total_log_prob += log_prob
+    #     else:
+    #         rho_final = apply_gate(rho_final, gate, gate_params, type)
+
+    # return rho_final, total_log_prob, reshaped_rnn_params, new_hidden_state
 
 
 def calculate_trajectory(
     *,
     rho_cav,
-    povm_measure_operator,
-    initial_povm_params,
+    parameterized_gates,
+    measurement_indices,
+    decay,
+    initial_params,
+    param_shapes,
     time_steps,
-    rnn_model,
-    rnn_params,
-    rnn_state,
+    rnn_model=None,
+    rnn_params=None,
+    rnn_state=None,
+    lut=None,
+    type,
+    batch_size,
+    rng_key,
 ):
     """
     Calculate a complete quantum trajectory with feedback.
 
     Args:
-        rho_cav: Initial density matrix
-        povm_measure_operator: POVM measurement operator
-        initial_povm_params: Initial parameters for the POVM
-        time_steps: Number of time steps
+        rho_cav: Initial density matrix of the cavity.
+        parameterized_gates: List of parameterized gates.
+        measurement_indices: Indices of gates used for measurements.
+        decay: Decay parameters, if applicable.
+        initial_params: Initial parameters for all gates.
+        param_shapes: List of shapes for each gate's parameters.
+        time_steps: Number of time steps within a trajectory.
+        rnn_model: RNN model for feedback.
+        rnn_params: Parameters of the RNN model.
+        rnn_state: Initial state of the RNN model.
+        type: Type of quantum system representation (e.g., "density").
 
     Returns:
         Final state, log probability, array of POVM parameters
     """
     # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
     # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
-    rho_final = rho_cav
-    arr_of_povm_params = [initial_povm_params]
-    new_params = initial_povm_params
-    new_hidden_state = rnn_state
-    total_log_prob = 0.0
-    for i in range(time_steps):
-        rho_final, log_prob, new_params, new_hidden_state = (
-            _calculate_time_step(
-                rho_cav=rho_final,
-                povm_measure_operator=povm_measure_operator,
-                initial_povm_params=new_params,
-                rnn_model=rnn_model,
-                rnn_params=rnn_params,
-                rnn_state=new_hidden_state,
-            )
-        )
-        # Thus, during - Refer to Eq(3) in fgrape paper
-        # the individual time-evolution trajectory, this term may
-        # be easily accumulated step by step, since the conditional
-        # probabilities are known (these are just the POVM mea-
-        # surement probabilities)
-        total_log_prob += log_prob
-        if i < time_steps - 1:
-            arr_of_povm_params.append(new_params)
-    return rho_final, total_log_prob, arr_of_povm_params
+    # Initialize batched rho_final for batch_size trajectories using jnp.repeat
+    rho_final_batched = jnp.repeat(
+        jnp.expand_dims(rho_cav, 0), batch_size, axis=0
+    )
+
+    # Split rng_key into batch_size keys for independent trajectories
+    rng_keys = jax.random.split(rng_key, batch_size)
+
+    def _calculate_single_trajectory(
+        rho_cav,
+        rng_key,
+    ):
+        time_step_keys = jax.random.split(rng_key, time_steps)
+        resulting_params = []
+        rho_final = rho_cav
+        total_log_prob = 0.0
+        new_params = initial_params
+        if lut is not None:
+            measurement_history: list[int] = []
+            for i in range(time_steps):
+                (
+                    rho_final,
+                    log_prob,
+                    new_params,
+                    applied_params,
+                    measurement_history,
+                ) = _calculate_time_step(
+                    rho_cav=rho_final,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    decay=decay,
+                    initial_params=new_params,
+                    param_shapes=param_shapes,
+                    lut=lut,
+                    measurement_history=measurement_history,
+                    type=type,
+                    rng_key=time_step_keys[i],
+                )
+                # Thus, during - Refer to Eq(3) in fgrape paper
+                # the individual time-evolution trajectory, this term may
+                # be easily accumulated step by step, since the conditional
+                # probabilities are known (these are just the POVM mea-
+                # surement probabilities)
+                total_log_prob += log_prob
+
+                resulting_params.append(applied_params)
+
+        else:
+            new_hidden_state = rnn_state
+            for i in range(time_steps):
+                (
+                    rho_final,
+                    log_prob,
+                    new_params,
+                    applied_params,
+                    new_hidden_state,
+                ) = _calculate_time_step(
+                    rho_cav=rho_final,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    decay=decay,
+                    initial_params=new_params,
+                    param_shapes=param_shapes,
+                    rnn_model=rnn_model,
+                    rnn_params=rnn_params,
+                    rnn_state=new_hidden_state,
+                    type=type,
+                    rng_key=time_step_keys[i],
+                )
+                # Thus, during - Refer to Eq(3) in fgrape paper
+                # the individual time-evolution trajectory, this term may
+                # be easily accumulated step by step, since the conditional
+                # probabilities are known (these are just the POVM mea-
+                # surement probabilities)
+                total_log_prob += log_prob
+
+                resulting_params.append(applied_params)
+
+        return rho_final, total_log_prob, resulting_params
+
+    # Use jax.vmap to vectorize the trajectory calculation for batch_size
+    batched_trajectory_fn = jax.vmap(
+        _calculate_single_trajectory,
+        in_axes=(
+            0,
+            0,
+        ),
+    )
+    return batched_trajectory_fn(
+        rho_final_batched,
+        rng_keys,
+    )
 
 
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
-    povm_measure_operator: callable,  # type: ignore
-    initial_params: jnp.ndarray,
+    measurement_indices: list[int],
+    initial_params: dict[str, list[float | complex]],
     goal: str,  # purity, fidelity, both
     mode: str,  # nn, lookup
     num_time_steps: int,
@@ -229,9 +343,11 @@ def optimize_pulse_with_feedback(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    type: str,  # unitary, state, density, superoperator (used now mainly for fidelity calculation)
-    propcomp: str = "time-efficient",  # time-efficient, memory-efficient
-) -> FgResultPurity:
+    type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
+    batch_size: int,
+    decay: decay | None = None,
+    RNN: callable = RNN,  # type: ignore
+) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration.
 
@@ -239,7 +355,7 @@ def optimize_pulse_with_feedback(
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
         parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        povm_measure_operator (callable): The POVM measurement operator Mm.
+        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
@@ -248,188 +364,284 @@ def optimize_pulse_with_feedback(
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
-        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'superoperator'.
+        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
-        propcomp (str): The method for propagator computation, either 'time-efficient' or 'memory-efficient'.
-                        This determines how the forward evolution is computed.
+        batch_size (int): The number of trajectories to process in parallel.
+        decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
+        RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
-    if mode == "nn":
-        hidden_size = 32
-        batch_size = 1
-        output_size = initial_params.shape[0]
+    # Convert dictionary parameters to list[list] structure
+    flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
+    # Calculate total number of parameters
+    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
+    trainable_params = None
 
-        rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)
-        h_initial_state = jnp.zeros((batch_size, hidden_size))
+    parent_rng_key = jax.random.PRNGKey(0)
+
+    if mode == "nn":
+        hidden_size = 30
+        output_size = num_of_params
+
+        rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)  # type: ignore
+        h_initial_state = jnp.zeros((1, hidden_size))
 
         dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
-        rnn_params = rnn_model.init(
-            jax.random.PRNGKey(0), dummy_input, h_initial_state
-        )
-        if goal == "purity":
-
-            def loss_fn(rnn_params):
-                """
-                Loss function for purity optimization.
-                Returns negative purity (we want to minimize this).
-                """
-                updated_rnn_params = rnn_params
-                povm_params = initial_params
-                rho_final, log_prob, _ = calculate_trajectory(
-                    rho_cav=U_0,
-                    povm_measure_operator=povm_measure_operator,
-                    initial_povm_params=povm_params,
-                    time_steps=num_time_steps,
-                    rnn_model=rnn_model,
-                    rnn_params=updated_rnn_params,
-                    rnn_state=h_initial_state,
-                )
-                # TODO: see if we need the log prob term
-                # TODO: see if we need to implement stochastic sampling instead
-                # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
-                # the log prob or not? ( like in porroti's implementation )?
-                purity_value = purity(rho=rho_final)
-                loss1 = -purity_value
-                loss2 = log_prob * jax.lax.stop_gradient(-purity_value)
-                return loss1 + loss2
-
-            # set up optimizer and training state
-            if optimizer.upper() == "ADAM":
-                best_model_params, iter_idx = _optimize_adam(
-                    loss_fn,
-                    rnn_params,
-                    max_iter,
-                    learning_rate,
-                    convergence_threshold,
-                )
-
-            elif optimizer.upper() == "L-BFGS":
-                best_model_params, iter_idx = _optimize_L_BFGS(
-                    loss_fn,
-                    rnn_params,
-                    max_iter,
-                    learning_rate,
-                    convergence_threshold,
-                )
-            else:
-                raise ValueError(
-                    "Invalid optimizer. Choose 'adam' or 'l-bfgs'."
-                )
-            # Calculate final state and purity
-            rho_final, _, arr_of_povm_params = calculate_trajectory(
-                rho_cav=U_0,
-                povm_measure_operator=povm_measure_operator,
-                initial_povm_params=initial_params,
-                time_steps=num_time_steps,
-                rnn_model=rnn_model,
-                rnn_params=best_model_params,
-                rnn_state=h_initial_state,
-            )
-            final_purity = purity(rho=rho_final)
-            
-            return FgResultPurity(
-                optimized_rnn_parameters=best_model_params,
-                final_purity=final_purity,
-                iterations=iter_idx,
-                final_state=rho_final,
-                arr_of_povm_params=arr_of_povm_params,
-            )
-
-        elif goal == "fidelity":
-            # TODO: Implement fidelity optimization
-            raise NotImplementedError(
-                "Fidelity optimization not implemented yet."
-            )
-
-        elif goal == "both":
-            # TODO: Implement combined optimization
-            raise NotImplementedError(
-                "Combined optimization not implemented yet."
-            )
-
-        else:
-            raise ValueError(
-                "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-            )
-
+        trainable_params = {
+            'rnn_params': rnn_model.init(
+                parent_rng_key, dummy_input, h_initial_state
+            ),
+            'initial_params': flat_params,
+        }
+        # trainable_params = rnn_model.init(
+        #     parent_rng_key, dummy_input, h_initial_state
+        # )
+    # TODO: see why this doesn't improve performance
     elif mode == "lookup":
-        # TODO: Implement look-up table approach
-        raise NotImplementedError(
-            "Look-up table approach not implemented yet."
-        )
-
+        h_initial_state = None
+        rnn_model = None
+        # step 1: initialize the parameters
+        num_of_columns = num_of_params
+        num_of_sub_lists = len(measurement_indices) * num_time_steps
+        F = []
+        # construct ragged lookup table
+        for i in range(1, num_of_sub_lists + 1):
+            F.append(
+                construct_ragged_row(
+                    num_of_rows=2**i,
+                    num_of_columns=num_of_columns,
+                    param_shapes=param_shapes,
+                )
+            )
+        min_num_of_rows = 2 ** len(F)
+        for i in range(len(F)):
+            if len(F[i]) < min_num_of_rows:
+                zeros_arrays = [
+                    jnp.zeros((num_of_columns,), dtype=jnp.float64)
+                    for _ in range(min_num_of_rows - len(F[i]))
+                ]
+                F[i] = F[i] + zeros_arrays
+        trainable_params = {'lookup_table': F, 'initial_params': flat_params}
     else:
         raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
 
-
-# RNN
-class GRUCell(nn.Module):
-    features: int
-
-    @nn.compact
-    def __call__(self, hidden_state, x_input):
-        r"""
-        The mathematical definition of the cell is as follows
-
-        .. math::
-
-            \begin{array}{ll}
-            r = \sigma(W_{ir} x + b_{ir} + W_{hr} h + b_{hr}) \\
-            z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) + b_{hz} \\
-            h~ = \tanh(W_{ih~} x + b_{i~} + r * (W_{h~} h + b_{h~})) \\
-            h_new = (1 - z) * h~ + z * h \\
-            \end{array}
+    # TODO: see if we need the log prob term
+    # TODO: see if we need to implement stochastic sampling instead
+    # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
+    # the log prob or not? ( like in porroti's implementation )?
+    def loss_fn(trainable_params, rng_key):
         """
-        # Dense is just a linear layer w x + b ( and it does this for input and for the hidden state)
-        # r = \sigma(W_{ir} x + b_{ir} + W_{hr} h + b_{hr}) \\
-        r = nn.sigmoid(
-            nn.Dense(features=self.features, name='reset_gate')(
-                jnp.concatenate([x_input, hidden_state], axis=-1)
-            )
-        )
-        # z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) + b_{hz} \\
-        z = nn.sigmoid(
-            nn.Dense(features=self.features, name='update_gate')(
-                jnp.concatenate([x_input, hidden_state], axis=-1)
-            )
-        )
-        # n = \tanh(W_{in} x + b_{in} + r * (W_{hn} h + b_{hn})) \\
-        h_telda = nn.tanh(
-            nn.Dense(features=self.features, name='candidate_gate')(
-                jnp.concatenate([x_input, r * hidden_state], axis=-1)
-            )
-        )
-        # note that this h_new, just tells us how much we should update the hidden state according to the update gate to the new candidate
-        h_new = (1 - z) * h_telda + z * hidden_state
-        return h_new, h_new
-
-
-class RNN(nn.Module):
-    hidden_size: int  # number of features in the hidden state
-    output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
-
-    @nn.compact
-    def __call__(self, measurement, hidden_state):
+        Loss function for the optimization process.
+        This function calculates the loss based on the specified goal (purity, fidelity, or both).
+        Args:
+            rnn_params: Parameters of the RNN model or lookup table.
+            rng_key: Random key for stochastic operations.
+        Returns:
+            Loss value to be minimized.
         """
-        If your GRU has a hidden state increasing number of features in the hidden stateH means:
 
-        - You're allowing the model to store more information across time steps
+        if mode == "nn":
+            # reseting hidden state at end of every trajectory ( does not really change the purity tho)
+            h_initial_state = jnp.zeros((1, hidden_size))
+            rnn_params = trainable_params['rnn_params']
+            initial_params_opt = trainable_params['initial_params']
+            lookup_table_params = None
+        else:
+            h_initial_state = None
+            rnn_params = None
+            lookup_table_params = trainable_params['lookup_table']
+            initial_params_opt = trainable_params['initial_params']
 
-        - Each time step can represent more complex features, patterns, or dependencies
+        rho_final, log_prob, _ = calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            decay=decay,
+            initial_params=initial_params_opt,
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            rnn_model=rnn_model,
+            rnn_params=rnn_params,
+            rnn_state=h_initial_state,
+            lut=lookup_table_params,
+            type=type,
+            batch_size=batch_size,
+            rng_key=rng_key,
+        )
+        if goal == "purity":
+            purity_values = jax.vmap(purity)(rho=rho_final)
+            loss1 = jnp.mean(-purity_values)
+            loss2 = jnp.mean(log_prob * jax.lax.stop_gradient(-purity_values))
 
-        - You're giving the GRU more representational capacity
-        """
-        gru_cell = GRUCell(features=self.hidden_size)
+        elif goal == "fidelity":
+            if C_target == None:
+                raise ValueError(
+                    "C_target must be provided for fidelity calculation."
+                )
+            fidelity_value = jax.vmap(
+                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+            )(rho_final)
+            loss1 = jnp.mean(-fidelity_value)
+            loss2 = jnp.mean(log_prob * jax.lax.stop_gradient(-fidelity_value))
 
-        if measurement.ndim == 1:
-            measurement = measurement.reshape(1, -1)
-        new_hidden_state, _ = gru_cell(hidden_state, measurement)
-        # this returns the povm_params after linear regression through the hidden state which contains
-        # the information of the previous time steps and this is optimized to output best povm_params
-        output = nn.Dense(features=self.output_size)(new_hidden_state)
-        # output = jnp.asarray(output)
-        return output, new_hidden_state
+        elif goal == "both":
+            fidelity_value = jax.vmap(
+                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+            )(rho_final)
+            purity_values = jax.vmap(purity)(rho=rho_final)
+            loss1 = jnp.mean(-(fidelity_value + purity_values))
+            loss2 = jnp.mean(
+                log_prob
+                * jax.lax.stop_gradient(-(fidelity_value + purity_values))
+            )
+
+        return loss1 + loss2
+
+    key, sub_key = jax.random.split(parent_rng_key)
+
+    best_model_params, iter_idx = train(
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        trainable_params=trainable_params,
+        max_iter=max_iter,
+        learning_rate=learning_rate,
+        convergence_threshold=convergence_threshold,
+        prng_key=key,
+    )
+
+    result = evaluate(
+        U_0=U_0,
+        C_target=C_target,
+        parameterized_gates=parameterized_gates,
+        measurement_indices=measurement_indices,
+        decay=decay,
+        param_shapes=param_shapes,
+        best_model_params=best_model_params,
+        mode=mode,
+        num_time_steps=num_time_steps,
+        type=type,
+        batch_size=batch_size,
+        prng_key=sub_key,
+        h_initial_state=h_initial_state,
+        rnn_model=rnn_model,
+        goal=goal,
+        num_iterations=iter_idx,
+    )
+
+    return result
+
+
+def train(
+    optimizer,  # adam, l-bfgs
+    loss_fn,
+    trainable_params,
+    prng_key,
+    max_iter,
+    learning_rate,
+    convergence_threshold,
+):
+    """
+    Train the model using the specified optimizer.
+    """
+    # Optimization
+    # set up optimizer and training state
+    if optimizer.upper() == "ADAM":
+        best_model_params, iter_idx = _optimize_adam_feedback(
+            loss_fn,
+            trainable_params,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+            prng_key,
+        )
+    elif optimizer.upper() == "L-BFGS":
+        # TODO: implement L-BFGS for feedback version
+        raise NotImplementedError(
+            "L-BFGS optimizer is not implemented for feedback version yet."
+        )
+    else:
+        raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
+    return best_model_params, iter_idx
+
+
+def evaluate(
+    U_0,
+    C_target,
+    parameterized_gates,
+    measurement_indices,
+    decay,
+    param_shapes,
+    best_model_params,
+    mode,
+    num_time_steps,
+    type,
+    batch_size,
+    prng_key,
+    h_initial_state,
+    goal,
+    rnn_model,
+    num_iterations,
+):
+    if mode == "nn":
+        rho_final, _, returned_params = calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            decay=decay,
+            initial_params=best_model_params['initial_params'],
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            rnn_model=rnn_model,
+            rnn_params=best_model_params['rnn_params'],
+            rnn_state=h_initial_state,
+            type=type,
+            batch_size=batch_size,
+            rng_key=prng_key,
+        )
+    elif mode == "lookup":
+        rho_final, _, returned_params = calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            decay=decay,
+            initial_params=best_model_params['initial_params'],
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            lut=best_model_params['lookup_table'],
+            type=type,
+            batch_size=batch_size,
+            rng_key=prng_key,
+        )
+    else:
+        raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
+
+    final_fidelity = None
+    final_purity = None
+
+    if goal in ["fidelity", "both"]:
+        final_fidelity = jnp.mean(
+            jax.vmap(
+                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+            )(rho_final)
+        )
+
+    if goal in ["purity", "both"]:
+        final_purity = jnp.mean(jax.vmap(purity)(rho=rho_final))
+
+    if goal not in ["purity", "fidelity", "both"]:
+        raise ValueError(
+            "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+        )
+
+    return FgResult(
+        optimized_trainable_parameters=best_model_params,
+        final_purity=final_purity,
+        final_fidelity=final_fidelity,
+        iterations=num_iterations,
+        final_state=rho_final,
+        returned_params=returned_params,
+    )

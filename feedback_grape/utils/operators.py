@@ -12,35 +12,35 @@ import jax
 import jax.numpy as jnp
 
 
-def sigmax(dtype=jnp.complex64):
+def sigmax(dtype=jnp.complex128):
     """
     Pauli X operator.
     """
     return jnp.array([[0, 1], [1, 0]], dtype=dtype)
 
 
-def sigmay(dtype=jnp.complex64):
+def sigmay(dtype=jnp.complex128):
     """
     Pauli Y operator.
     """
     return jnp.array([[0, -1j], [1j, 0]], dtype=dtype)
 
 
-def sigmaz(dtype=jnp.complex64):
+def sigmaz(dtype=jnp.complex128):
     """
     Pauli Z operator.
     """
     return jnp.array([[1, 0], [0, -1]], dtype=dtype)
 
 
-def sigmap(dtype=jnp.complex64):
+def sigmap(dtype=jnp.complex128):
     """
     Raising operator.
     """
     return jnp.array([[0, 1], [0, 0]], dtype=dtype)
 
 
-def sigmam(dtype=jnp.complex64):
+def sigmam(dtype=jnp.complex128):
     """
     Lowering operator.
     """
@@ -49,7 +49,7 @@ def sigmam(dtype=jnp.complex64):
 
 # TODO : check for exact dimensions since dynamiqs and qutip support nested
 # TODO : Hilbert space dimensions and so on.
-def identity(dimensions, *, dtype=jnp.float32):
+def identity(dimensions, *, dtype=jnp.float64):
     """
     Identity operator.
 
@@ -66,7 +66,7 @@ def _ladder(
     n: int,
     *,
     dagger: bool,
-    dtype: jnp.dtype = jnp.complex64,  # type: ignore
+    dtype: jnp.dtype = jnp.complex128,  # type: ignore
 ) -> jnp.ndarray:
     """
     n-dimensional ladder operator
@@ -76,14 +76,14 @@ def _ladder(
     return jnp.diag(values, k=shift)
 
 
-def create(n: int, dtype: jnp.dtype = jnp.complex64) -> jnp.ndarray:  # type: ignore
+def create(n: int, dtype: jnp.dtype = jnp.complex128) -> jnp.ndarray:  # type: ignore
     """
     n-dimensional creation operator
     """
     return _ladder(n, dagger=True, dtype=dtype)
 
 
-def destroy(n: int, dtype: jnp.dtype = jnp.complex64) -> jnp.ndarray:  # type: ignore
+def destroy(n: int, dtype: jnp.dtype = jnp.complex128) -> jnp.ndarray:  # type: ignore
     """
     n-dimensional destruction operator
     """
@@ -91,7 +91,7 @@ def destroy(n: int, dtype: jnp.dtype = jnp.complex64) -> jnp.ndarray:  # type: i
 
 
 # TODO: test with dynamiqs version
-def cosm(a: jnp.ndarray):
+def cosm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Cosine of a matrix.
     """
@@ -99,7 +99,7 @@ def cosm(a: jnp.ndarray):
 
 
 # TODO: test with dynamiqs version
-def sinm(a: jnp.ndarray):
+def sinm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Sine of a matrix.
     """

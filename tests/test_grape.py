@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import pytest
 import qutip as qt
 
-from feedback_grape.grape import fidelity
+from feedback_grape.utils.fidelity import fidelity
 from tests.helper_for_tests import (
     get_finals,
     get_results_for_cnot_problem,
@@ -158,10 +158,12 @@ def test_density_example(optimizer, propcomp):
             )[0],
         ),
         (
-            "superoperator",
+            "liouvillian",
             get_targets_for_dissipation_problem()[0],
             get_finals(
-                *get_results_for_dissipation_problem("adam", "time-efficient")
+                *get_results_for_dissipation_problem(
+                    "adam", "memory-efficient"
+                )
             )[0],
         ),
     ],
@@ -174,7 +176,7 @@ def test_fidelity_fn(fid_type, target, final):
     # Normalize the target and final states
 
     fidelity_fg = fidelity(C_target=target, U_final=final, type=fid_type)
-    if fid_type == "superoperator":
+    if fid_type == "liouvillian":
         fidelity_qt = qt.tracedist(
             qt.Qobj(target).unit(), qt.Qobj(final).unit()
         )
