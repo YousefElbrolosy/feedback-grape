@@ -58,7 +58,7 @@ def coherent(n: int, alpha: complex) -> jnp.ndarray:
 
     coherent_state = coeffs * norm_factor
 
-    return coherent_state
+    return coherent_state.reshape(-1, 1)
 
 
 def fock(n: int, n_cav: int) -> jnp.ndarray:
@@ -79,4 +79,4 @@ def fock_2(n: int, n_cav: int) -> jnp.ndarray:
     numerator = reduce(jnp.matmul, [create(n) for _ in range(n_cav)])
     denominator = jnp.pow(jax.scipy.special.factorial(n_cav), (0.5))
     fock_state = (numerator / denominator) @ basis(n)
-    return fock_state
+    return fock_state.reshape(-1, 1)

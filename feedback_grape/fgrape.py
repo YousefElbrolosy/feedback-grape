@@ -57,7 +57,18 @@ class decay(NamedTuple):
     """
     decay class to store the decay parameters.
     """
-
+    Hamiltonian: jnp.ndarray | None = None
+    """
+    Hamiltonian for the decay process, if applicable.
+    """
+    c_ops: List[jnp.ndarray]
+    """
+    Collapse operators for the decay process.
+    """
+    time_grid: List[float]
+    """
+    Time grid for the decay process.
+    """
     decay_indices: List[int]
     """
     Indices of the gates that are used for decay.
@@ -334,7 +345,6 @@ def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
-    measurement_indices: list[int],
     initial_params: dict[str, list[float | complex]],
     goal: str,  # purity, fidelity, both
     mode: str,  # nn, lookup
@@ -345,6 +355,7 @@ def optimize_pulse_with_feedback(
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     batch_size: int,
+    measurement_indices: list[int] = [],
     decay: decay | None = None,
     RNN: callable = RNN,  # type: ignore
 ) -> FgResult:

@@ -13,7 +13,7 @@ from feedback_grape.utils.optimizers import (
     _optimize_L_BFGS,
 )
 from feedback_grape.utils.fidelity import fidelity
-from feedback_grape.utils.solver import mesolve, mesolve_1, sesolve
+from feedback_grape.utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
 
