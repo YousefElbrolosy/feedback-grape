@@ -49,7 +49,7 @@ def sigmam(dtype=jnp.complex128):
 
 # TODO : check for exact dimensions since dynamiqs and qutip support nested
 # TODO : Hilbert space dimensions and so on.
-def identity(dimensions, *, dtype=jnp.float64):
+def identity(dimensions, *, dtype=jnp.complex128):
     """
     Identity operator.
 

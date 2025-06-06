@@ -1,10 +1,11 @@
 import jax
 import jax.numpy as jnp
-from typing import List, NamedTuple
+from typing import List, NamedTuple, TypedDict
 from feedback_grape.utils.optimizers import (
     _optimize_adam_feedback,
     _optimize_L_BFGS,
 )
+from feedback_grape.utils.solver import mesolve_1
 from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
@@ -57,29 +58,22 @@ class decay(NamedTuple):
     """
     decay class to store the decay parameters.
     """
-    Hamiltonian: jnp.ndarray | None = None
-    """
-    Hamiltonian for the decay process, if applicable.
-    """
+
     c_ops: List[jnp.ndarray]
     """
     Collapse operators for the decay process.
-    """
-    time_grid: List[float]
-    """
-    Time grid for the decay process.
     """
     decay_indices: List[int]
     """
     Indices of the gates that are used for decay.
     """
-    decay_rates: List[int]
+    time_grid: List[float]
     """
-    Parameters for the decay gates.
+    Time grid for the decay process.
     """
-    decay_durations: List[int]
+    Hamiltonian: jnp.ndarray | None = None
     """
-    Durations for the decay gates.
+    Hamiltonian for the decay process, if applicable.
     """
 
 
@@ -88,9 +82,9 @@ def _calculate_time_step(
     rho_cav,
     parameterized_gates,
     measurement_indices,
-    decay,
     initial_params,
     param_shapes,
+    decay,
     rnn_model=None,
     rnn_params=None,
     rnn_state=None,
@@ -124,9 +118,17 @@ def _calculate_time_step(
 
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
-            # TODO: handle more carefully when there are multiple measurements
-            # if i in decay.decay_indices:
-            #     rho_final = dissipate(decay, rho_final)
+            # TODO: see what would happen if this is a state --> because it will still output rho
+            if decay is not None:
+                if i in decay['decay_indices']:
+                    # Use the first key in the c_ops dict to get the corresponding collapse operators
+                    # first_c_ops_key = next(iter(decay['c_ops']))
+                    rho_final = mesolve_1(
+                        H=decay['Hamiltonian'],
+                        jump_ops=decay['c_ops'][i],
+                        rho0=rho_final,
+                        tsave=decay['time_grid'],
+                    )
             key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -160,7 +162,17 @@ def _calculate_time_step(
 
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
-            # TODO: handle more carefully when there are multiple measurements
+            # TODO: see what would happen if this is a state --> because it will still output rho
+            if decay is not None:
+                if i in decay['decay_indices']:
+                    # Use the first key in the c_ops dict to get the corresponding collapse operators
+                    first_c_ops_key = next(iter(decay['c_ops']))
+                    rho_final = mesolve_1(
+                        H=decay['Hamiltonian'],
+                        jump_ops=decay['c_ops'][first_c_ops_key],
+                        rho0=rho_final,
+                        tsave=decay['time_grid'],
+                    )
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -214,10 +226,10 @@ def calculate_trajectory(
     rho_cav,
     parameterized_gates,
     measurement_indices,
-    decay,
     initial_params,
     param_shapes,
     time_steps,
+    decay=None,
     rnn_model=None,
     rnn_params=None,
     rnn_state=None,

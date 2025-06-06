@@ -2,12 +2,8 @@
 This module contains functions to implement some basic quantum states
 """
 
-from functools import reduce
-
 import jax
 import jax.numpy as jnp
-
-from feedback_grape.utils.operators import create
 
 
 def basis(n, k=0):
@@ -58,7 +54,7 @@ def coherent(n: int, alpha: complex) -> jnp.ndarray:
 
     coherent_state = coeffs * norm_factor
 
-    return coherent_state.reshape(-1, 1)
+    return coherent_state.reshape(-1, 1).astype(jnp.complex128)
 
 
 def fock(n: int, n_cav: int) -> jnp.ndarray:
@@ -66,17 +62,3 @@ def fock(n: int, n_cav: int) -> jnp.ndarray:
     Creates a Fock state |n_cav⟩ in an n-dimensional Hilbert space.
     """
     return basis(n, n_cav)
-
-
-# TODO: confirm that implementation is indeed correct
-# TODO: This can actually be implemented related to basis states
-# TODO: test and compare with the qutip implementation
-# TODO: see if can be improved
-def fock_2(n: int, n_cav: int) -> jnp.ndarray:
-    """
-    Defines a fock state
-    """
-    numerator = reduce(jnp.matmul, [create(n) for _ in range(n_cav)])
-    denominator = jnp.pow(jax.scipy.special.factorial(n_cav), (0.5))
-    fock_state = (numerator / denominator) @ basis(n)
-    return fock_state.reshape(-1, 1)
