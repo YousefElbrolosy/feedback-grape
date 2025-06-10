@@ -121,8 +121,6 @@ def _calculate_time_step(
             # TODO: see what would happen if this is a state --> because it will still output rho
             if decay is not None:
                 if i in decay['decay_indices']:
-                    # Use the first key in the c_ops dict to get the corresponding collapse operators
-                    # first_c_ops_key = next(iter(decay['c_ops']))
                     rho_final = mesolve(
                         H=decay['Hamiltonian'],
                         jump_ops=decay['c_ops'],
@@ -165,11 +163,9 @@ def _calculate_time_step(
             # TODO: see what would happen if this is a state --> because it will still output rho
             if decay is not None:
                 if i in decay['decay_indices']:
-                    # Use the first key in the c_ops dict to get the corresponding collapse operators
-                    first_c_ops_key = next(iter(decay['c_ops']))
                     rho_final = mesolve(
                         H=decay['Hamiltonian'],
-                        jump_ops=decay['c_ops'][first_c_ops_key],
+                        jump_ops=decay['c_ops'],
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
@@ -412,6 +408,7 @@ def optimize_pulse_with_feedback(
 
     parent_rng_key = jax.random.PRNGKey(0)
 
+    # TODO: see why this doesn't improve performance
     if mode == "nn":
         hidden_size = 30
         output_size = num_of_params
@@ -429,7 +426,6 @@ def optimize_pulse_with_feedback(
         # trainable_params = rnn_model.init(
         #     parent_rng_key, dummy_input, h_initial_state
         # )
-    # TODO: see why this doesn't improve performance
     elif mode == "lookup":
         h_initial_state = None
         rnn_model = None
