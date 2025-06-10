@@ -35,6 +35,7 @@ def sesolve(Hs, initial_state, delta_ts, type="density"):
                 @ jax.scipy.linalg.expm(-1j * delta_t * (H)).conj().T
             )
         return U_final
+    # for state vectors and unitary operators
     else:
         for _, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
             U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final
@@ -42,7 +43,7 @@ def sesolve(Hs, initial_state, delta_ts, type="density"):
 
 
 # TODO: Add functionality for supplying H and c_ops and then doing the evolution
-def mesolve_1(H, jump_ops, rho0, tsave):
+def mesolve(H, jump_ops, rho0, tsave):
     """
     Master equation evolution of a density matrix or state for a given Hamiltonian and
     an optional set of collapse operators, or a Liouvillian. A Liouvillian is a

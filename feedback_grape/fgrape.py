@@ -5,7 +5,7 @@ from feedback_grape.utils.optimizers import (
     _optimize_adam_feedback,
     _optimize_L_BFGS,
 )
-from feedback_grape.utils.solver import mesolve_1
+from feedback_grape.utils.solver import mesolve
 from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
@@ -67,7 +67,7 @@ class decay(NamedTuple):
     """
     Indices of the gates that are used for decay.
     """
-    time_grid: List[float]
+    tsave: List[float]
     """
     Time grid for the decay process.
     """
@@ -123,12 +123,12 @@ def _calculate_time_step(
                 if i in decay['decay_indices']:
                     # Use the first key in the c_ops dict to get the corresponding collapse operators
                     # first_c_ops_key = next(iter(decay['c_ops']))
-                    rho_final = mesolve_1(
+                    rho_final = mesolve(
                         H=decay['Hamiltonian'],
-                        jump_ops=decay['c_ops'][i],
+                        jump_ops=decay['c_ops'],
                         rho0=rho_final,
-                        tsave=decay['time_grid'],
-                    )
+                        tsave=decay['tsave'],
+                    )                 
             key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -167,12 +167,13 @@ def _calculate_time_step(
                 if i in decay['decay_indices']:
                     # Use the first key in the c_ops dict to get the corresponding collapse operators
                     first_c_ops_key = next(iter(decay['c_ops']))
-                    rho_final = mesolve_1(
+                    rho_final = mesolve(
                         H=decay['Hamiltonian'],
                         jump_ops=decay['c_ops'][first_c_ops_key],
                         rho0=rho_final,
-                        tsave=decay['time_grid'],
+                        tsave=decay['tsave'],
                     )
+
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -358,15 +359,15 @@ def optimize_pulse_with_feedback(
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
     initial_params: dict[str, list[float | complex]],
-    goal: str,  # purity, fidelity, both
-    mode: str,  # nn, lookup
     num_time_steps: int,
     optimizer: str,  # adam, l-bfgs
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
-    batch_size: int,
+    goal: str = "fidelity",  # purity, fidelity, both
+    batch_size: int = 1,
+    mode: str = "lookup",  # nn, lookup
     measurement_indices: list[int] = [],
     decay: decay | None = None,
     RNN: callable = RNN,  # type: ignore
@@ -378,10 +379,7 @@ def optimize_pulse_with_feedback(
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
         parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
-        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
-        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
         num_time_steps (int): The number of time steps for the optimization process.
         optimizer (str): The optimization algorithm to use, such as 'adam' or 'l-bfgs'.
         max_iter (int): The maximum number of iterations for the optimization process.
@@ -389,7 +387,10 @@ def optimize_pulse_with_feedback(
         learning_rate (float): The learning rate for the optimization algorithm.
         type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
+        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
+        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
+        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
         RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
     Returns:
@@ -397,6 +398,11 @@ def optimize_pulse_with_feedback(
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
+    if (measurement_indices == [] or measurement_indices is None):
+        raise ValueError(
+            "You must provide at least one measurement index. If you want to optimize without feedback " \
+            "consider Using `grape_parameterized.optimize_pulse_parameterized` or `grape.optimize_pulse`."
+        )
 
     # Convert dictionary parameters to list[list] structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
@@ -622,7 +628,7 @@ def evaluate(
             rnn_params=best_model_params['rnn_params'],
             rnn_state=h_initial_state,
             type=type,
-            batch_size=batch_size,
+            batch_size=10,
             rng_key=prng_key,
         )
     elif mode == "lookup":
@@ -636,7 +642,7 @@ def evaluate(
             time_steps=num_time_steps,
             lut=best_model_params['lookup_table'],
             type=type,
-            batch_size=batch_size,
+            batch_size=10,
             rng_key=prng_key,
         )
     else:

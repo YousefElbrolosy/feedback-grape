@@ -13,7 +13,7 @@ from feedback_grape.utils.optimizers import (
     _optimize_L_BFGS,
 )
 from feedback_grape.utils.fidelity import fidelity
-from feedback_grape.utils.solver import mesolve_1, sesolve
+from feedback_grape.utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
 
@@ -226,12 +226,13 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
+        # TODO: see how to do dissipation for states/unitary
         if type == "density" and c_ops != []:
             Hs, _ = build_parameterized_hamiltonian(
                 control_amplitudes, H_drift, H_control_array, delta_t
             )
             tsave = jnp.linspace(0, total_evo_time, num_t_slots)
-            U_final = mesolve_1(Hs, c_ops, U_0, tsave)
+            U_final = mesolve(Hs, c_ops, U_0, tsave)
         else:
             if propcomp == "time-efficient":
                 U_final = _compute_forward_evolution_time_efficient(
@@ -304,7 +305,7 @@ def evaluate(
             control_amplitudes, H_drift, H_control_array, delta_t
         )
         tsave = jnp.linspace(0, total_evo_time, num_t_slots)
-        rho_final = mesolve_1(Hs, c_ops, U_0, tsave)
+        rho_final = mesolve(Hs, c_ops, U_0, tsave)
     else:
         if propcomp == "time-efficient":
             rho_final = _compute_forward_evolution_time_efficient(
