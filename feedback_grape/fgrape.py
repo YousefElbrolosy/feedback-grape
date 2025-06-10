@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from typing import List, NamedTuple, TypedDict
+from typing import List, NamedTuple
 from feedback_grape.utils.optimizers import (
     _optimize_adam_feedback,
     _optimize_L_BFGS,
@@ -107,12 +107,16 @@ def _calculate_time_step(
     rho_final = rho_cav
     total_log_prob = 0.0
     applied_params = []
+    # TODO: throw error based on content of decay indices here
     # if not (decay_indices is None or decay_indices == []):
 
     # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
     key = rng_key
+    if decay is not None:
+        res, _ = prepare_parameters_from_dict(decay['c_ops'])
+
     if lut is not None:
         extracted_lut_params = initial_params
 
@@ -123,10 +127,10 @@ def _calculate_time_step(
                 if i in decay['decay_indices']:
                     rho_final = mesolve(
                         H=decay['Hamiltonian'],
-                        jump_ops=decay['c_ops'],
+                        jump_ops=res.pop(0),
                         rho0=rho_final,
                         tsave=decay['tsave'],
-                    )                 
+                    )
             key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -165,7 +169,7 @@ def _calculate_time_step(
                 if i in decay['decay_indices']:
                     rho_final = mesolve(
                         H=decay['Hamiltonian'],
-                        jump_ops=decay['c_ops'],
+                        jump_ops=res.pop(0),
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
@@ -332,9 +336,7 @@ def calculate_trajectory(
     # Use jax.vmap to vectorize the trajectory calculation for batch_size
     batched_trajectory_fn = jax.vmap(
         _calculate_single_trajectory,
-        in_axes=(
-            0,
-        ),
+        in_axes=(0),
     )
     return batched_trajectory_fn(
         rng_keys,
@@ -355,6 +357,8 @@ def optimize_pulse_with_feedback(
     goal: str = "fidelity",  # purity, fidelity, both
     batch_size: int = 1,
     mode: str = "lookup",  # nn, lookup
+    lookup_min_init_value: float = 0.0,
+    lookup_max_init_value: float = jnp.pi,
     measurement_indices: list[int] = [],
     decay: decay | None = None,
     RNN: callable = RNN,  # type: ignore
@@ -385,12 +389,11 @@ def optimize_pulse_with_feedback(
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
-    if (measurement_indices == [] or measurement_indices is None):
+    if measurement_indices == [] or measurement_indices is None:
         raise ValueError(
-            "You must provide at least one measurement index. If you want to optimize without feedback " \
+            "You must provide at least one measurement index. If you want to optimize without feedback "
             "consider Using `grape_parameterized.optimize_pulse_parameterized` or `grape.optimize_pulse`."
         )
-
     # Convert dictionary parameters to list[list] structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
     # Calculate total number of parameters
@@ -398,6 +401,7 @@ def optimize_pulse_with_feedback(
     trainable_params = None
 
     parent_rng_key = jax.random.PRNGKey(0)
+    key, sub_key = jax.random.split(parent_rng_key)
 
     # TODO: see why this doesn't improve performance
     if mode == "nn":
@@ -425,14 +429,19 @@ def optimize_pulse_with_feedback(
         num_of_sub_lists = len(measurement_indices) * num_time_steps
         F = []
         # construct ragged lookup table
+        row_key = sub_key
         for i in range(1, num_of_sub_lists + 1):
+            row_key, _ = jax.random.split(row_key)
             F.append(
                 construct_ragged_row(
                     num_of_rows=2**i,
                     num_of_columns=num_of_columns,
-                    param_shapes=param_shapes,
+                    minval=lookup_min_init_value,
+                    maxval=lookup_max_init_value,
+                    rng_key=row_key,
                 )
             )
+        # step 2: pad the arrays to have the same number of rows
         min_num_of_rows = 2 ** len(F)
         for i in range(len(F)):
             if len(F[i]) < min_num_of_rows:
@@ -517,7 +526,7 @@ def optimize_pulse_with_feedback(
 
         return loss1 + loss2
 
-    key, sub_key = jax.random.split(parent_rng_key)
+    train_key, eval_key = jax.random.split(key)
 
     best_model_params, iter_idx = train(
         optimizer=optimizer,
@@ -526,7 +535,7 @@ def optimize_pulse_with_feedback(
         max_iter=max_iter,
         learning_rate=learning_rate,
         convergence_threshold=convergence_threshold,
-        prng_key=key,
+        prng_key=train_key,
     )
 
     result = evaluate(
@@ -541,7 +550,7 @@ def optimize_pulse_with_feedback(
         num_time_steps=num_time_steps,
         type=type,
         batch_size=batch_size,
-        prng_key=sub_key,
+        prng_key=eval_key,
         h_initial_state=h_initial_state,
         rnn_model=rnn_model,
         goal=goal,

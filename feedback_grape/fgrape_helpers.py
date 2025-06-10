@@ -95,14 +95,14 @@ def prepare_parameters_from_dict(params_dict):
     return res, shapes
 
 
-def construct_ragged_row(num_of_rows, num_of_columns, param_shapes):
+def construct_ragged_row(num_of_rows, num_of_columns, minval, maxval, rng_key):
     res = []
     for i in range(num_of_rows):
         flattened = jax.random.uniform(
-            jax.random.PRNGKey(0 + i),
+            rng_key,
             shape=(num_of_columns,),
-            minval=-jnp.pi,
-            maxval=jnp.pi,
+            minval=minval,
+            maxval=maxval,
             dtype=jnp.float64,
         )
         res.append(flattened)

@@ -88,7 +88,12 @@ def povm(
         prob_plus,
         1 - prob_plus,
     )
-    jax.debug.print("Measurement outcome: {}, Probability: {}, prob_plus: {}", measurement, prob, prob_plus)
+    # jax.debug.print(
+    #     "Measurement outcome: {}, Probability: {}, prob_plus: {}",
+    #     measurement,
+    #     prob,
+    #     prob_plus,
+    # )
     # QUESTION: If prob is 0 though then the log prob is -inf ( and 1e-10 will be a very huge number)
     log_prob = jnp.log(jnp.maximum(prob, 1e-10))
     return rho_meas, measurement, log_prob
