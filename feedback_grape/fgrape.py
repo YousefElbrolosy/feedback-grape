@@ -254,18 +254,11 @@ def calculate_trajectory(
     Returns:
         Final state, log probability, array of POVM parameters
     """
-    # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
-    # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
-    # Initialize batched rho_final for batch_size trajectories using jnp.repeat
-    rho_final_batched = jnp.repeat(
-        jnp.expand_dims(rho_cav, 0), batch_size, axis=0
-    )
 
     # Split rng_key into batch_size keys for independent trajectories
     rng_keys = jax.random.split(rng_key, batch_size)
 
     def _calculate_single_trajectory(
-        rho_cav,
         rng_key,
     ):
         time_step_keys = jax.random.split(rng_key, time_steps)
@@ -341,11 +334,9 @@ def calculate_trajectory(
         _calculate_single_trajectory,
         in_axes=(
             0,
-            0,
         ),
     )
     return batched_trajectory_fn(
-        rho_final_batched,
         rng_keys,
     )
 
