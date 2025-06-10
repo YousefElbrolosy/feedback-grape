@@ -174,6 +174,7 @@ def _init_control_amplitudes(num_t_slots, num_controls):
 
 # TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
 # TODO: see if we need to implement purity functionality for normal grape as well
+# TODO: make sure you make it require positional parameters
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
@@ -225,33 +226,32 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
-        # if type == "liouvillian":
-        #     Hs, delta_ts = build_parameterized_hamiltonian(
-        #         control_amplitudes, H_drift, H_control_array, delta_t
-        #     )
-        #     if c_ops is []:
-        #         U_final = mesolve(Hs, U_0, delta_ts)
-        #     else:
-        #         U_final = mesolve_1(Hs, c_ops, U_0, delta_ts)
-        # else:
-        if propcomp == "time-efficient":
-            U_final = _compute_forward_evolution_time_efficient(
-                H_drift,
-                H_control_array,
-                delta_t,
-                control_amplitudes,
-                U_0,
-                type,
+        if type == "density" and c_ops != []:
+            Hs, _ = build_parameterized_hamiltonian(
+                control_amplitudes, H_drift, H_control_array, delta_t
             )
+            tsave = jnp.linspace(0, total_evo_time, num_t_slots)
+            U_final = mesolve_1(Hs, c_ops, U_0, tsave)
         else:
-            U_final = _compute_forward_evolution_memory_efficient(
-                H_drift,
-                H_control_array,
-                delta_t,
-                control_amplitudes,
-                U_0,
-                type,
-            )
+            if propcomp == "time-efficient":
+                U_final = _compute_forward_evolution_time_efficient(
+                    H_drift,
+                    H_control_array,
+                    delta_t,
+                    control_amplitudes,
+                    U_0,
+                    type,
+                )
+            else:
+                U_final = _compute_forward_evolution_memory_efficient(
+                    H_drift,
+                    H_control_array,
+                    delta_t,
+                    control_amplitudes,
+                    U_0,
+                    type,
+                )
+
         return -1 * fidelity(
             C_target=C_target,
             U_final=U_final,
@@ -278,6 +278,8 @@ def optimize_pulse(
         iter_idx=iter_idx,
         type=type,
         propcomp=propcomp,
+        total_evo_time=total_evo_time,
+        num_t_slots=num_t_slots,
     )
 
     return final_res
@@ -294,33 +296,38 @@ def evaluate(
     iter_idx,
     type,
     propcomp,
+    total_evo_time,
+    num_t_slots,
 ):
-    # TODO: add support for supplying the liouvillian like the dissipative example
-    # Or just normal hamiltonians
-    # if type == "liouvillian":
-    #     U_final = mesolve(H_drift + H_control_array, c_ops, U_0, delta_ts)
-    # else:
-    # if type == "liouvillian":
-    #     Hs, delta_ts = build_parameterized_hamiltonian(
-    #         control_amplitudes, H_drift, H_control_array, delta_t
-    #     )
-    #     if c_ops is None:
-    #         rho_final = mesolve(Hs, U_0, delta_ts)
-    #     else:
-    #         rho_final = mesolve_1(Hs, c_ops, U_0, delta_ts)
-    # else:
-    if propcomp == "time-efficient":
-        rho_final = _compute_forward_evolution_time_efficient(
-            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+    if type == "density" and c_ops != []:
+        Hs, _ = build_parameterized_hamiltonian(
+            control_amplitudes, H_drift, H_control_array, delta_t
         )
-    elif propcomp == "memory-efficient":
-        rho_final = _compute_forward_evolution_memory_efficient(
-            H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
-        )
+        tsave = jnp.linspace(0, total_evo_time, num_t_slots)
+        rho_final = mesolve_1(Hs, c_ops, U_0, tsave)
     else:
-        raise ValueError(
-            f"Propagator computation method {propcomp} not supported. Use 'time-efficient' or 'memory-efficient'."
-        )
+        if propcomp == "time-efficient":
+            rho_final = _compute_forward_evolution_time_efficient(
+                H_drift,
+                H_control_array,
+                delta_t,
+                control_amplitudes,
+                U_0,
+                type,
+            )
+        elif propcomp == "memory-efficient":
+            rho_final = _compute_forward_evolution_memory_efficient(
+                H_drift,
+                H_control_array,
+                delta_t,
+                control_amplitudes,
+                U_0,
+                type,
+            )
+        else:
+            raise ValueError(
+                f"Propagator computation method {propcomp} not supported. Use 'time-efficient' or 'memory-efficient'."
+            )
 
     final_fidelity = fidelity(
         C_target=C_target,
