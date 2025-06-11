@@ -3,7 +3,7 @@ import jax.numpy as jnp
 
 
 # ruff: noqa N8
-def _isket(a: jnp.ndarray) -> bool:
+def isket(a: jnp.ndarray) -> bool:
     """
     Check if the input is a ket (column vector).
     Args:
@@ -22,7 +22,7 @@ def _isket(a: jnp.ndarray) -> bool:
     return True
 
 
-def _isbra(a: jnp.ndarray) -> bool:
+def isbra(a: jnp.ndarray) -> bool:
     """
     Check if the input is a bra (row vector).
     Args:
@@ -41,7 +41,7 @@ def _isbra(a: jnp.ndarray) -> bool:
     return True
 
 
-def _ket2dm(a: jnp.ndarray) -> jnp.ndarray:
+def ket2dm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Convert a ket to a density matrix.
     Args:
@@ -49,6 +49,8 @@ def _ket2dm(a: jnp.ndarray) -> jnp.ndarray:
     Returns:
         dm: Density matrix corresponding to the input ket.
     """
+    if not isket(a):
+        raise TypeError("Input must be a ket (column vector).")
     return jnp.outer(a, a.conj())
 
 
@@ -77,8 +79,8 @@ def _state_density_fidelity(A, B):
         Fidelity pseudo-metric between A and B.
 
     """
-    if _isket(A) or _isbra(A):
-        if _isket(B) or _isbra(B):
+    if isket(A) or isbra(A):
+        if isket(B) or isbra(B):
             A = A / jnp.linalg.norm(A)
             B = B / jnp.linalg.norm(B)
             # The fidelity for pure states reduces to the modulus of their
@@ -87,9 +89,9 @@ def _state_density_fidelity(A, B):
         # Take advantage of the fact that the density operator for A
         # is a projector to avoid a sqrtm call.
         A = A / jnp.linalg.norm(A)
-        sqrtmA = _ket2dm(A)
+        sqrtmA = ket2dm(A)
     else:
-        if _isket(B) or _isbra(B):
+        if isket(B) or isbra(B):
             # Swap the order so that we can take a more numerically
             # stable square root of B.
             return _state_density_fidelity(B, A)
