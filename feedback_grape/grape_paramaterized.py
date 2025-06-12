@@ -11,27 +11,28 @@ import jax.numpy as jnp
 jax.config.update("jax_enable_x64", True)
 
 
-# TODO: Check if the handling of complex numbers is correct, I know l-bfgs outputs error
-
+# Answer: Check if the handling of complex numbers is correct, I know l-bfgs outputs error
+# --> No, it wasn't it should be handled at the interface level by user dividing it into 
+# two real parts
 
 # here the time_step is important, because we do an intialization to all
 # parameters in all time steps, since we don't have feedback from one
 # time step to the next, and then all paramaters are updated
 # by the optimization loop at once
-def _calculate_sequence_unitary(parameterized_gates, parameters, time_step):
-    size = parameterized_gates[0](parameters[time_step][0]).shape[0]
+def _calculate_sequence_unitary(parameterized_gates, parameters):
+    size = parameterized_gates[0](*parameters[0]).shape[0]
     combined_unitary = jnp.eye(size)
     for i, gate in enumerate(parameterized_gates):
-        param = parameters[time_step, i]
-        gate_unitary = gate(param)
+        param = parameters[i]
+        gate_unitary = gate(*param)
         combined_unitary = combined_unitary @ gate_unitary
 
     return combined_unitary
 
 
-def _compute_time_step(U_0, parameterized_gates, parameters, time_step, type):
+def _compute_time_step(U_0, parameterized_gates, parameters, type):
     combined_unitary = _calculate_sequence_unitary(
-        parameterized_gates, parameters, time_step
+        parameterized_gates, parameters
     )
     if type == "density":
         rho_t = combined_unitary @ U_0 @ combined_unitary.conj().T
@@ -47,7 +48,7 @@ def calculate_trajectory(
 ):
     U_t = U_0
     for t in range(time_steps):
-        U_t = _compute_time_step(U_t, parameterized_gates, parameters, t, type)
+        U_t = _compute_time_step(U_t, parameterized_gates, parameters[t], type)
     return U_t
 
 
@@ -109,6 +110,63 @@ def optimize_pulse_parameterized(
             type=type,
         )
 
+    optimized_parameters, iter_idx = train(
+        _loss,
+        initial_parameters,
+        optimizer,
+        max_iter,
+        convergence_threshold,
+        learning_rate,
+    )
+
+
+    final_res = evaluate(
+        U_0,
+        C_target,
+        optimized_parameters,
+        num_time_steps,
+        parameterized_gates,
+        type,
+        iter_idx,
+    )
+
+    return final_res
+
+
+
+def evaluate(
+    U_0,
+    C_target,
+    optimized_parameters,
+    num_time_steps,
+    parameterized_gates,
+    type,
+    iter_idx,
+):
+    U_final = calculate_trajectory(
+        U_0,
+        optimized_parameters,
+        num_time_steps,
+        parameterized_gates,
+        type,
+    )
+    final_fidelity = fidelity(
+        C_target=C_target,
+        U_final=U_final,
+        type=type,
+    )
+    # TODO: check if iter_idx outputs the correct number of iterations
+    final_res = result(
+        optimized_parameters,
+        final_fidelity,
+        iter_idx,
+        U_final,
+    )
+
+    return final_res
+
+
+def train(_loss, initial_parameters, optimizer, max_iter, convergence_threshold, learning_rate):
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
@@ -131,24 +189,4 @@ def optimize_pulse_parameterized(
         raise ValueError(
             f"Optimizer {optimizer} not supported. Use 'adam' or 'l-bfgs'."
         )
-    U_final = calculate_trajectory(
-        U_0,
-        optimized_parameters,
-        num_time_steps,
-        parameterized_gates,
-        type,
-    )
-    final_fidelity = fidelity(
-        C_target=C_target,
-        U_final=U_final,
-        type=type,
-    )
-    # TODO: check if iter_idx outputs the correct number of iterations
-    final_res = result(
-        optimized_parameters,
-        final_fidelity,
-        iter_idx,
-        U_final,
-    )
-
-    return final_res
+    return optimized_parameters, iter_idx
