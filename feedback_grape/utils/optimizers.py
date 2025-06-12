@@ -3,7 +3,7 @@ import optax  # type: ignore
 import optax.tree_utils as otu  # type: ignore
 # ruff: noqa N8
 
-
+# TODO: Throw a warning if the user uses complex parameters with L-BFGS or Adam, since they are not optimized for complex numbers
 def _optimize_adam(
     loss_fn,
     control_amplitudes,
@@ -39,7 +39,7 @@ def _optimize_adam(
 
     return params, iter_idx + 1
 
-
+# only difference is that this one uses kayes for each time step
 def _optimize_adam_feedback(
     loss_fn,
     control_amplitudes,
@@ -78,7 +78,71 @@ def _optimize_adam_feedback(
     return params, iter_idx + 1
 
 
-# TODO: L_bfgs ouputs error when params are complex amplitudes
+
+
+def _optimize_L_BFGS_feedback(
+    loss_fn,
+    control_amplitudes,
+    max_iter,
+    convergence_threshold,
+    learning_rate,
+    key
+):
+    """
+    Uses L-BFGS to optimize the control amplitudes.
+    Args:
+        loss_fn: loss function to optimize.
+        control_amplitudes: Initial control amplitudes.
+        max_iter: Maximum number of iterations.
+        convergence_threshold: Convergence threshold for optimization.
+    Returns:
+        control_amplitudes: Optimized control amplitudes.
+        final_iter_idx: Number of iterations in the optimization.
+    """
+
+    opt = optax.lbfgs(learning_rate)
+    
+    # Wrap the loss_fn to always take key as an argument
+    def loss_fn_with_key(params, key):
+        return loss_fn(params, key)
+
+    value_and_grad_fn = optax.value_and_grad_from_state(loss_fn_with_key)
+
+    @jax.jit
+    def step(carry):
+        control_amplitudes, state, iter_idx, key = carry
+        value, grad = value_and_grad_fn(control_amplitudes, key, state=state)
+        updates, state = opt.update(
+            grad,
+            state,
+            control_amplitudes,
+            value=value,
+            grad=grad,
+            value_fn=lambda params: loss_fn_with_key(params, key),
+        )
+        control_amplitudes = optax.apply_updates(control_amplitudes, updates)
+        new_key, _ = jax.random.split(key)
+        return control_amplitudes, state, iter_idx + 1, new_key
+
+    def continuing_criterion(carry):
+        _, state, _, _ = carry
+        iter_num = otu.tree_get(state, 'count')
+        grad = otu.tree_get(state, 'grad')
+        err = otu.tree_l2_norm(grad)
+        return ((iter_num == 0) & (max_iter != 0)) | (iter_num < max_iter) & (
+            err >= convergence_threshold
+        )
+
+    init_carry = (control_amplitudes, opt.init(control_amplitudes), 0, key)
+    final_params, _, final_iter_idx, _ = jax.lax.while_loop(
+        continuing_criterion, step, init_carry
+    )
+    return final_params, final_iter_idx
+
+
+
+# Answer: L_bfgs ouputs error when params are complex amplitudes --> yeah both won't work with complex parameters
+# user needs to use two real parameters per complex number and then in his function convert them to complex
 def _optimize_L_BFGS(
     loss_fn,
     control_amplitudes,

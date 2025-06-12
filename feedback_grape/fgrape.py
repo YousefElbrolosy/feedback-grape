@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import List, NamedTuple
 from feedback_grape.utils.optimizers import (
     _optimize_adam_feedback,
-    _optimize_L_BFGS,
+    _optimize_L_BFGS_feedback
 )
 from feedback_grape.utils.solver import mesolve
 from feedback_grape.utils.fidelity import fidelity
@@ -21,6 +21,12 @@ from feedback_grape.fgrape_helpers import (
 # TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
 # ruff: noqa N8
 jax.config.update("jax_enable_x64", True)
+
+"""
+NOTE: If you want to optimize complex prameters, you need to divide your complex parameter into two real 
+parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
+"""
+
 
 
 class FgResult(NamedTuple):
@@ -125,6 +131,10 @@ def _calculate_time_step(
             # TODO: see what would happen if this is a state --> because it will still output rho
             if decay is not None:
                 if i in decay['decay_indices']:
+                    if len(res) == 0:
+                        raise ValueError(
+                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
+                        )
                     rho_final = mesolve(
                         H=decay['Hamiltonian'],
                         jump_ops=res.pop(0),
@@ -167,6 +177,10 @@ def _calculate_time_step(
             # TODO: see what would happen if this is a state --> because it will still output rho
             if decay is not None:
                 if i in decay['decay_indices']:
+                    if len(res) == 0:
+                        raise ValueError(
+                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
+                        )
                     rho_final = mesolve(
                         H=decay['Hamiltonian'],
                         jump_ops=res.pop(0),
@@ -202,24 +216,6 @@ def _calculate_time_step(
             applied_params,
             new_hidden_state,
         )
-
-    # # Apply each gate in sequence
-    # for i, gate in enumerate(parameterized_gates):
-    #     gate_params = initial_params[i]
-    #     # TODO: handle more carefully when there are multiple measurements
-    #     if i in measurement_indices:
-    #         rho_final, measurement, log_prob = povm(
-    #             rho_final, gate, gate_params
-    #         )
-    #         updated_params, new_hidden_state = rnn_model.apply(
-    #             rnn_params, jnp.array([measurement]), rnn_state
-    #         )
-    #         reshaped_rnn_params = reshape_params(param_shapes, updated_params)
-    #         total_log_prob += log_prob
-    #     else:
-    #         rho_final = apply_gate(rho_final, gate, gate_params, type)
-
-    # return rho_final, total_log_prob, reshaped_rnn_params, new_hidden_state
 
 
 def calculate_trajectory(
@@ -322,11 +318,7 @@ def calculate_trajectory(
                     type=type,
                     rng_key=time_step_keys[i],
                 )
-                # Thus, during - Refer to Eq(3) in fgrape paper
-                # the individual time-evolution trajectory, this term may
-                # be easily accumulated step by step, since the conditional
-                # probabilities are known (these are just the POVM mea-
-                # surement probabilities)
+
                 total_log_prob += log_prob
 
                 resulting_params.append(applied_params)
@@ -334,13 +326,9 @@ def calculate_trajectory(
         return rho_final, total_log_prob, resulting_params
 
     # Use jax.vmap to vectorize the trajectory calculation for batch_size
-    batched_trajectory_fn = jax.vmap(
+    return jax.vmap(
         _calculate_single_trajectory,
-        in_axes=(0),
-    )
-    return batched_trajectory_fn(
-        rng_keys,
-    )
+    )(rng_keys)
 
 
 def optimize_pulse_with_feedback(
@@ -356,6 +344,7 @@ def optimize_pulse_with_feedback(
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     goal: str = "fidelity",  # purity, fidelity, both
     batch_size: int = 1,
+    eval_batch_size: int = 10,
     mode: str = "lookup",  # nn, lookup
     lookup_min_init_value: float = 0.0,
     lookup_max_init_value: float = jnp.pi,
@@ -549,7 +538,7 @@ def optimize_pulse_with_feedback(
         mode=mode,
         num_time_steps=num_time_steps,
         type=type,
-        batch_size=batch_size,
+        eval_batch_size=eval_batch_size,
         prng_key=eval_key,
         h_initial_state=h_initial_state,
         rnn_model=rnn_model,
@@ -583,10 +572,15 @@ def train(
             convergence_threshold,
             prng_key,
         )
+    # Due to the complex parameter space, this is very slow
     elif optimizer.upper() == "L-BFGS":
-        # TODO: implement L-BFGS for feedback version
-        raise NotImplementedError(
-            "L-BFGS optimizer is not implemented for feedback version yet."
+        best_model_params, iter_idx = _optimize_L_BFGS_feedback(
+            loss_fn,
+            trainable_params,
+            max_iter,
+            learning_rate,
+            convergence_threshold,
+            prng_key,
         )
     else:
         raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
@@ -604,7 +598,7 @@ def evaluate(
     mode,
     num_time_steps,
     type,
-    batch_size,
+    eval_batch_size,
     prng_key,
     h_initial_state,
     goal,
@@ -624,7 +618,7 @@ def evaluate(
             rnn_params=best_model_params['rnn_params'],
             rnn_state=h_initial_state,
             type=type,
-            batch_size=10,
+            batch_size=eval_batch_size,
             rng_key=prng_key,
         )
     elif mode == "lookup":
@@ -638,7 +632,7 @@ def evaluate(
             time_steps=num_time_steps,
             lut=best_model_params['lookup_table'],
             type=type,
-            batch_size=10,
+            batch_size=eval_batch_size,
             rng_key=prng_key,
         )
     else:
