@@ -2,8 +2,7 @@ import jax
 import jax.numpy as jnp
 from typing import List, NamedTuple
 from feedback_grape.utils.optimizers import (
-    _optimize_adam_feedback,
-    _optimize_L_BFGS_feedback
+    _optimize_adam_feedback
 )
 from feedback_grape.utils.solver import mesolve
 from feedback_grape.utils.fidelity import fidelity
@@ -337,7 +336,6 @@ def optimize_pulse_with_feedback(
     parameterized_gates: list[callable],  # type: ignore
     initial_params: dict[str, list[float | complex]],
     num_time_steps: int,
-    optimizer: str,  # adam, l-bfgs
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
@@ -353,7 +351,7 @@ def optimize_pulse_with_feedback(
     RNN: callable = RNN,  # type: ignore
 ) -> FgResult:
     """
-    Optimizes pulse parameters for quantum systems based on the specified configuration.
+    Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
 
     Args:
         U_0: Initial state or /unitary/density/super operator.
@@ -361,7 +359,6 @@ def optimize_pulse_with_feedback(
         parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
         initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
         num_time_steps (int): The number of time steps for the optimization process.
-        optimizer (str): The optimization algorithm to use, such as 'adam' or 'l-bfgs'.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
@@ -518,7 +515,6 @@ def optimize_pulse_with_feedback(
     train_key, eval_key = jax.random.split(key)
 
     best_model_params, iter_idx = train(
-        optimizer=optimizer,
         loss_fn=loss_fn,
         trainable_params=trainable_params,
         max_iter=max_iter,
@@ -550,7 +546,6 @@ def optimize_pulse_with_feedback(
 
 
 def train(
-    optimizer,  # adam, l-bfgs
     loss_fn,
     trainable_params,
     prng_key,
@@ -563,27 +558,17 @@ def train(
     """
     # Optimization
     # set up optimizer and training state
-    if optimizer.upper() == "ADAM":
-        best_model_params, iter_idx = _optimize_adam_feedback(
-            loss_fn,
-            trainable_params,
-            max_iter,
-            learning_rate,
-            convergence_threshold,
-            prng_key,
-        )
-    # Due to the complex parameter space, this is very slow
-    elif optimizer.upper() == "L-BFGS":
-        best_model_params, iter_idx = _optimize_L_BFGS_feedback(
-            loss_fn,
-            trainable_params,
-            max_iter,
-            learning_rate,
-            convergence_threshold,
-            prng_key,
-        )
-    else:
-        raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
+    best_model_params, iter_idx = _optimize_adam_feedback(
+        loss_fn,
+        trainable_params,
+        max_iter,
+        learning_rate,
+        convergence_threshold,
+        prng_key,
+    )
+
+    # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted
+
     return best_model_params, iter_idx
 
 
