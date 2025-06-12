@@ -110,48 +110,6 @@ def construct_ragged_row(num_of_rows, num_of_columns, minval, maxval, rng_key):
 
 
 # TODO: add in docs an example of how they can construct their own `Network to use it.`
-# RNN
-class GRUCell(nn.Module):
-    features: int
-
-    @nn.compact
-    def __call__(self, hidden_state, x_input):
-        r"""
-        The mathematical definition of the cell is as follows
-
-        .. math::
-
-            \begin{array}{ll}
-            r = \sigma(W_{ir} x + b_{ir} + W_{hr} h + b_{hr}) \\
-            z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) + b_{hz} \\
-            h~ = \tanh(W_{ih~} x + b_{i~} + r * (W_{h~} h + b_{h~})) \\
-            h_new = (1 - z) * h~ + z * h \\
-            \end{array}
-        """
-        # Dense is just a linear layer w x + b ( and it does this for input and for the hidden state)
-        # r = \sigma(W_{ir} x + b_{ir} + W_{hr} h + b_{hr}) \\
-        r = nn.sigmoid(
-            nn.Dense(features=self.features, name='reset_gate')(
-                jnp.concatenate([x_input, hidden_state], axis=-1)
-            )
-        )
-        # z = \sigma(W_{iz} x + b_{iz} + W_{hz} h) + b_{hz} \\
-        z = nn.sigmoid(
-            nn.Dense(features=self.features, name='update_gate')(
-                jnp.concatenate([x_input, hidden_state], axis=-1)
-            )
-        )
-        # n = \tanh(W_{in} x + b_{in} + r * (W_{hn} h + b_{hn})) \\
-        h_telda = nn.tanh(
-            nn.Dense(features=self.features, name='candidate_gate')(
-                jnp.concatenate([x_input, r * hidden_state], axis=-1)
-            )
-        )
-        # note that this h_new, just tells us how much we should update the hidden state according to the update gate to the new candidate
-        h_new = (1 - z) * h_telda + z * hidden_state
-        return h_new, h_new
-
-
 class RNN(nn.Module):
     hidden_size: int  # number of features in the hidden state
     output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
@@ -180,5 +138,6 @@ class RNN(nn.Module):
             kernel_init=nn.initializers.glorot_uniform(),
             bias_init=nn.initializers.constant(jnp.pi),
         )(new_hidden_state)
+        output = nn.relu(output)
         # output = jnp.asarray(output)
         return output[0], new_hidden_state
