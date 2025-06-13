@@ -4,42 +4,7 @@ import optax.tree_utils as otu  # type: ignore
 # ruff: noqa N8
 
 
-def _optimize_adam(
-    loss_fn,
-    control_amplitudes,
-    max_iter,
-    learning_rate,
-    convergence_threshold,
-):
-    optimizer = optax.adam(learning_rate)
-    opt_state = optimizer.init(control_amplitudes)
-    losses = []
-
-    @jax.jit
-    def step(params, state):
-        loss = loss_fn(params)
-        grads = jax.grad(lambda x: loss_fn(x))(params)
-        updates, new_state = optimizer.update(grads, state, params)
-        new_params = optax.apply_updates(params, updates)
-        return new_params, new_state, loss
-
-    params = control_amplitudes
-    # setting it to -1 in the beginning in case the max_iter is 0
-    iter_idx = -1
-    for iter_idx in range(max_iter):
-        params, opt_state, loss = step(params, opt_state)
-
-        losses.append(loss)
-
-        if (
-            iter_idx > 0
-            and abs(losses[-1] - losses[-2]) < convergence_threshold
-        ):
-            break
-
-    return params, iter_idx + 1
-
-
+# only difference is that this one uses kayes for each time step
 def _optimize_adam_feedback(
     loss_fn,
     control_amplitudes,
@@ -78,7 +43,45 @@ def _optimize_adam_feedback(
     return params, iter_idx + 1
 
 
-# TODO: L_bfgs ouputs error when params are complex amplitudes
+# TODO: Throw a warning if the user uses complex parameters with L-BFGS or Adam, since they are not optimized for complex numbers
+def _optimize_adam(
+    loss_fn,
+    control_amplitudes,
+    max_iter,
+    learning_rate,
+    convergence_threshold,
+):
+    optimizer = optax.adam(learning_rate)
+    opt_state = optimizer.init(control_amplitudes)
+    losses = []
+
+    @jax.jit
+    def step(params, state):
+        loss = loss_fn(params)
+        grads = jax.grad(lambda x: loss_fn(x))(params)
+        updates, new_state = optimizer.update(grads, state, params)
+        new_params = optax.apply_updates(params, updates)
+        return new_params, new_state, loss
+
+    params = control_amplitudes
+    # setting it to -1 in the beginning in case the max_iter is 0
+    iter_idx = -1
+    for iter_idx in range(max_iter):
+        params, opt_state, loss = step(params, opt_state)
+
+        losses.append(loss)
+
+        if (
+            iter_idx > 0
+            and abs(losses[-1] - losses[-2]) < convergence_threshold
+        ):
+            break
+
+    return params, iter_idx + 1
+
+
+# Answer: L_bfgs ouputs error when params are complex amplitudes --> yeah both won't work with complex parameters
+# user needs to use two real parameters per complex number and then in his function convert them to complex
 def _optimize_L_BFGS(
     loss_fn,
     control_amplitudes,

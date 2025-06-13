@@ -1,10 +1,8 @@
 import jax
 import jax.numpy as jnp
 from typing import List, NamedTuple
-from feedback_grape.utils.optimizers import (
-    _optimize_adam_feedback,
-    _optimize_L_BFGS,
-)
+from feedback_grape.utils.optimizers import _optimize_adam_feedback
+from feedback_grape.utils.solver import mesolve
 from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
@@ -20,6 +18,11 @@ from feedback_grape.fgrape_helpers import (
 # TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
 # ruff: noqa N8
 jax.config.update("jax_enable_x64", True)
+
+"""
+NOTE: If you want to optimize complex prameters, you need to divide your complex parameter into two real 
+parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
+"""
 
 
 class FgResult(NamedTuple):
@@ -58,17 +61,21 @@ class decay(NamedTuple):
     decay class to store the decay parameters.
     """
 
+    c_ops: List[jnp.ndarray]
+    """
+    Collapse operators for the decay process.
+    """
     decay_indices: List[int]
     """
     Indices of the gates that are used for decay.
     """
-    decay_rates: List[int]
+    tsave: List[float]
     """
-    Parameters for the decay gates.
+    Time grid for the decay process.
     """
-    decay_durations: List[int]
+    Hamiltonian: jnp.ndarray | None = None
     """
-    Durations for the decay gates.
+    Hamiltonian for the decay process, if applicable.
     """
 
 
@@ -77,9 +84,9 @@ def _calculate_time_step(
     rho_cav,
     parameterized_gates,
     measurement_indices,
-    decay,
     initial_params,
     param_shapes,
+    decay,
     rnn_model=None,
     rnn_params=None,
     rnn_state=None,
@@ -102,20 +109,34 @@ def _calculate_time_step(
     rho_final = rho_cav
     total_log_prob = 0.0
     applied_params = []
+    # TODO: throw error based on content of decay indices here
     # if not (decay_indices is None or decay_indices == []):
 
     # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
     key = rng_key
+    if decay is not None:
+        res, _ = prepare_parameters_from_dict(decay['c_ops'])
+
     if lut is not None:
         extracted_lut_params = initial_params
 
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
-            # TODO: handle more carefully when there are multiple measurements
-            # if i in decay.decay_indices:
-            #     rho_final = dissipate(decay, rho_final)
+            # TODO: see what would happen if this is a state --> because it will still output rho
+            if decay is not None:
+                if i in decay['decay_indices']:
+                    if len(res) == 0:
+                        raise ValueError(
+                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
+                        )
+                    rho_final = mesolve(
+                        H=decay['Hamiltonian'],
+                        jump_ops=res.pop(0),
+                        rho0=rho_final,
+                        tsave=decay['tsave'],
+                    )
             key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -149,7 +170,20 @@ def _calculate_time_step(
 
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
-            # TODO: handle more carefully when there are multiple measurements
+            # TODO: see what would happen if this is a state --> because it will still output rho
+            if decay is not None:
+                if i in decay['decay_indices']:
+                    if len(res) == 0:
+                        raise ValueError(
+                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
+                        )
+                    rho_final = mesolve(
+                        H=decay['Hamiltonian'],
+                        jump_ops=res.pop(0),
+                        rho0=rho_final,
+                        tsave=decay['tsave'],
+                    )
+
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
@@ -179,34 +213,16 @@ def _calculate_time_step(
             new_hidden_state,
         )
 
-    # # Apply each gate in sequence
-    # for i, gate in enumerate(parameterized_gates):
-    #     gate_params = initial_params[i]
-    #     # TODO: handle more carefully when there are multiple measurements
-    #     if i in measurement_indices:
-    #         rho_final, measurement, log_prob = povm(
-    #             rho_final, gate, gate_params
-    #         )
-    #         updated_params, new_hidden_state = rnn_model.apply(
-    #             rnn_params, jnp.array([measurement]), rnn_state
-    #         )
-    #         reshaped_rnn_params = reshape_params(param_shapes, updated_params)
-    #         total_log_prob += log_prob
-    #     else:
-    #         rho_final = apply_gate(rho_final, gate, gate_params, type)
-
-    # return rho_final, total_log_prob, reshaped_rnn_params, new_hidden_state
-
 
 def calculate_trajectory(
     *,
     rho_cav,
     parameterized_gates,
     measurement_indices,
-    decay,
     initial_params,
     param_shapes,
     time_steps,
+    decay=None,
     rnn_model=None,
     rnn_params=None,
     rnn_state=None,
@@ -234,18 +250,11 @@ def calculate_trajectory(
     Returns:
         Final state, log probability, array of POVM parameters
     """
-    # TODO + QUESTION: in the paper, it says one should average the reward over all possible measurement outcomes
-    # How can one do that? Is this where batching comes into play? Should one do this averaging for log_prob as well?
-    # Initialize batched rho_final for batch_size trajectories using jnp.repeat
-    rho_final_batched = jnp.repeat(
-        jnp.expand_dims(rho_cav, 0), batch_size, axis=0
-    )
 
     # Split rng_key into batch_size keys for independent trajectories
     rng_keys = jax.random.split(rng_key, batch_size)
 
     def _calculate_single_trajectory(
-        rho_cav,
         rng_key,
     ):
         time_step_keys = jax.random.split(rng_key, time_steps)
@@ -305,11 +314,7 @@ def calculate_trajectory(
                     type=type,
                     rng_key=time_step_keys[i],
                 )
-                # Thus, during - Refer to Eq(3) in fgrape paper
-                # the individual time-evolution trajectory, this term may
-                # be easily accumulated step by step, since the conditional
-                # probabilities are known (these are just the POVM mea-
-                # surement probabilities)
+
                 total_log_prob += log_prob
 
                 resulting_params.append(applied_params)
@@ -317,56 +322,49 @@ def calculate_trajectory(
         return rho_final, total_log_prob, resulting_params
 
     # Use jax.vmap to vectorize the trajectory calculation for batch_size
-    batched_trajectory_fn = jax.vmap(
+    return jax.vmap(
         _calculate_single_trajectory,
-        in_axes=(
-            0,
-            0,
-        ),
-    )
-    return batched_trajectory_fn(
-        rho_final_batched,
-        rng_keys,
-    )
+    )(rng_keys)
 
 
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     parameterized_gates: list[callable],  # type: ignore
-    measurement_indices: list[int],
     initial_params: dict[str, list[float | complex]],
-    goal: str,  # purity, fidelity, both
-    mode: str,  # nn, lookup
     num_time_steps: int,
-    optimizer: str,  # adam, l-bfgs
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
-    batch_size: int,
+    goal: str = "fidelity",  # purity, fidelity, both
+    batch_size: int = 1,
+    eval_batch_size: int = 10,
+    mode: str = "lookup",  # nn, lookup
+    lookup_min_init_value: float = 0.0,
+    lookup_max_init_value: float = jnp.pi,
+    measurement_indices: list[int] = [],
     decay: decay | None = None,
     RNN: callable = RNN,  # type: ignore
 ) -> FgResult:
     """
-    Optimizes pulse parameters for quantum systems based on the specified configuration.
+    Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
 
     Args:
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
         parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
-        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
-        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
         num_time_steps (int): The number of time steps for the optimization process.
-        optimizer (str): The optimization algorithm to use, such as 'adam' or 'l-bfgs'.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
         type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
+        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
+        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
+        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
         RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
     Returns:
@@ -374,7 +372,11 @@ def optimize_pulse_with_feedback(
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
-
+    if measurement_indices == [] or measurement_indices is None:
+        raise ValueError(
+            "You must provide at least one measurement index. If you want to optimize without feedback "
+            "consider Using `grape_parameterized.optimize_pulse_parameterized` or `grape.optimize_pulse`."
+        )
     # Convert dictionary parameters to list[list] structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
     # Calculate total number of parameters
@@ -382,7 +384,9 @@ def optimize_pulse_with_feedback(
     trainable_params = None
 
     parent_rng_key = jax.random.PRNGKey(0)
+    key, sub_key = jax.random.split(parent_rng_key)
 
+    # TODO: see why this doesn't improve performance
     if mode == "nn":
         hidden_size = 30
         output_size = num_of_params
@@ -400,7 +404,6 @@ def optimize_pulse_with_feedback(
         # trainable_params = rnn_model.init(
         #     parent_rng_key, dummy_input, h_initial_state
         # )
-    # TODO: see why this doesn't improve performance
     elif mode == "lookup":
         h_initial_state = None
         rnn_model = None
@@ -409,14 +412,19 @@ def optimize_pulse_with_feedback(
         num_of_sub_lists = len(measurement_indices) * num_time_steps
         F = []
         # construct ragged lookup table
+        row_key = sub_key
         for i in range(1, num_of_sub_lists + 1):
+            row_key, _ = jax.random.split(row_key)
             F.append(
                 construct_ragged_row(
                     num_of_rows=2**i,
                     num_of_columns=num_of_columns,
-                    param_shapes=param_shapes,
+                    minval=lookup_min_init_value,
+                    maxval=lookup_max_init_value,
+                    rng_key=row_key,
                 )
             )
+        # step 2: pad the arrays to have the same number of rows
         min_num_of_rows = 2 ** len(F)
         for i in range(len(F)):
             if len(F[i]) < min_num_of_rows:
@@ -501,16 +509,15 @@ def optimize_pulse_with_feedback(
 
         return loss1 + loss2
 
-    key, sub_key = jax.random.split(parent_rng_key)
+    train_key, eval_key = jax.random.split(key)
 
     best_model_params, iter_idx = train(
-        optimizer=optimizer,
         loss_fn=loss_fn,
         trainable_params=trainable_params,
         max_iter=max_iter,
         learning_rate=learning_rate,
         convergence_threshold=convergence_threshold,
-        prng_key=key,
+        prng_key=train_key,
     )
 
     result = evaluate(
@@ -524,8 +531,8 @@ def optimize_pulse_with_feedback(
         mode=mode,
         num_time_steps=num_time_steps,
         type=type,
-        batch_size=batch_size,
-        prng_key=sub_key,
+        eval_batch_size=eval_batch_size,
+        prng_key=eval_key,
         h_initial_state=h_initial_state,
         rnn_model=rnn_model,
         goal=goal,
@@ -536,7 +543,6 @@ def optimize_pulse_with_feedback(
 
 
 def train(
-    optimizer,  # adam, l-bfgs
     loss_fn,
     trainable_params,
     prng_key,
@@ -549,22 +555,17 @@ def train(
     """
     # Optimization
     # set up optimizer and training state
-    if optimizer.upper() == "ADAM":
-        best_model_params, iter_idx = _optimize_adam_feedback(
-            loss_fn,
-            trainable_params,
-            max_iter,
-            learning_rate,
-            convergence_threshold,
-            prng_key,
-        )
-    elif optimizer.upper() == "L-BFGS":
-        # TODO: implement L-BFGS for feedback version
-        raise NotImplementedError(
-            "L-BFGS optimizer is not implemented for feedback version yet."
-        )
-    else:
-        raise ValueError("Invalid optimizer. Choose 'adam' or 'l-bfgs'.")
+    best_model_params, iter_idx = _optimize_adam_feedback(
+        loss_fn,
+        trainable_params,
+        max_iter,
+        learning_rate,
+        convergence_threshold,
+        prng_key,
+    )
+
+    # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted
+
     return best_model_params, iter_idx
 
 
@@ -579,7 +580,7 @@ def evaluate(
     mode,
     num_time_steps,
     type,
-    batch_size,
+    eval_batch_size,
     prng_key,
     h_initial_state,
     goal,
@@ -599,7 +600,7 @@ def evaluate(
             rnn_params=best_model_params['rnn_params'],
             rnn_state=h_initial_state,
             type=type,
-            batch_size=batch_size,
+            batch_size=eval_batch_size,
             rng_key=prng_key,
         )
     elif mode == "lookup":
@@ -613,7 +614,7 @@ def evaluate(
             time_steps=num_time_steps,
             lut=best_model_params['lookup_table'],
             type=type,
-            batch_size=batch_size,
+            batch_size=eval_batch_size,
             rng_key=prng_key,
         )
     else:

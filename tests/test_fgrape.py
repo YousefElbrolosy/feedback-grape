@@ -211,7 +211,7 @@ def test_example_C():
     # assert example_C_body(), (
     #     "The max fidelity reached by example_C for batch size 10 is below 0.9"
     # )
-    pass # TODO: this test reaches high fidelity on some hardware and not on others.
+    pass  # TODO: this test reaches high fidelity on some hardware and not on others.
     # this is because of the fact that the current configuration does not lead to convergence therefore
-    # the results are not stable accross different platforms which may have problems with different 
+    # the results are not stable accross different platforms which may have problems with different
     # numerical approximations.
