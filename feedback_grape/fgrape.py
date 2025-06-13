@@ -119,7 +119,35 @@ def _calculate_time_step(
     if decay is not None:
         res, _ = prepare_parameters_from_dict(decay['c_ops'])
 
-    if lut is not None:
+    if rnn_model is None and lut is None:
+        extracted_params = initial_params
+        # Apply each gate in sequence
+        for i, gate in enumerate(parameterized_gates):
+            # TODO: see what would happen if this is a state --> because it will still output rho
+            if decay is not None:
+                if i in decay['decay_indices']:
+                    if len(res) == 0:
+                        raise ValueError(
+                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
+                        )
+                    rho_final = mesolve(
+                        H=decay['Hamiltonian'],
+                        jump_ops=res.pop(0),
+                        rho0=rho_final,
+                        tsave=decay['tsave'],
+                    )
+            rho_final = apply_gate(
+                rho_final, gate, extracted_params[i], type
+            )
+            applied_params.append(extracted_params[i])
+        return (
+            rho_final,
+            total_log_prob,
+            None,
+            applied_params,
+            None,
+        ) 
+    elif lut is not None:
         extracted_lut_params = initial_params
 
         # Apply each gate in sequence
@@ -262,7 +290,27 @@ def calculate_trajectory(
         rho_final = rho_cav
         total_log_prob = 0.0
         new_params = initial_params
-        if lut is not None:
+        if rnn_model is None and lut is None:
+            for i in range(time_steps):
+                (
+                    rho_final,
+                    _,
+                    _,
+                    applied_params,
+                    _,
+                ) = _calculate_time_step(
+                    rho_cav=rho_final,
+                    parameterized_gates=parameterized_gates,
+                    measurement_indices=measurement_indices,
+                    decay=decay,
+                    initial_params=new_params[i],
+                    param_shapes=param_shapes,
+                    type=type,
+                    rng_key=time_step_keys[i],
+                )
+
+                resulting_params.append(applied_params)
+        elif lut is not None:
             measurement_history: list[int] = []
             for i in range(time_steps):
                 (
@@ -374,75 +422,83 @@ def optimize_pulse_with_feedback(
     """
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
-    if measurement_indices == [] or measurement_indices is None:
-        raise ValueError(
-            "You must provide at least one measurement index. If you want to optimize without feedback "
-            "consider Using `grape_parameterized.optimize_pulse_parameterized` or `grape.optimize_pulse`."
-        )
-    # Convert dictionary parameters to list[list] structure
-    flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
-    print("parameter shapes:", param_shapes)
-    # Calculate total number of parameters
-    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
-    print("Number of parameters:", num_of_params)
-    trainable_params = None
+
 
     parent_rng_key = jax.random.PRNGKey(0)
     key, sub_key = jax.random.split(parent_rng_key)
 
+    trainable_params = None
+    param_shapes = None
+
     # TODO: see why this doesn't improve performance
-    if mode == "nn":
-        hidden_size = rnn_hidden_size
-        output_size = num_of_params
-
-        rnn_model = rnn(hidden_size=hidden_size, output_size=output_size)  # type: ignore
-
-        # TODO: should we use some better initialization for the rnn?
-        h_initial_state = jnp.zeros((1, hidden_size))
-
-        # TODO: should this be .zeros? our input is only 1 or -1
-        dummy_input = jnp.zeros((1, 1))  # Dummy input for rnn initialization
-        trainable_params = {
-            'rnn_params': rnn_model.init(
-                parent_rng_key, dummy_input, h_initial_state
-            ),
-            'initial_params': flat_params,
-        }
-        # trainable_params = rnn_model.init(
-        #     parent_rng_key, dummy_input, h_initial_state
-        # )
-    elif mode == "lookup":
+    if mode == "no-feedback":
+        # If no feedback is used, we can just use the initial parameters
         h_initial_state = None
         rnn_model = None
-        # step 1: initialize the parameters
-        num_of_columns = num_of_params
-        num_of_sub_lists = len(measurement_indices) * num_time_steps
-        F = []
-        # construct ragged lookup table
-        row_key = sub_key
-        for i in range(1, num_of_sub_lists + 1):
-            row_key, _ = jax.random.split(row_key)
-            F.append(
-                construct_ragged_row(
-                    num_of_rows=2**i,
-                    num_of_columns=num_of_columns,
-                    minval=lookup_min_init_value,
-                    maxval=lookup_max_init_value,
-                    rng_key=row_key,
-                )
+        trainable_params = initial_params
+        if not (measurement_indices == [] or measurement_indices is None):
+            raise ValueError(
+                "You provided a measurement indices, but no feedback is used. Please set mode to 'nn' or 'lookup'."
             )
-        # step 2: pad the arrays to have the same number of rows
-        min_num_of_rows = 2 ** len(F)
-        for i in range(len(F)):
-            if len(F[i]) < min_num_of_rows:
-                zeros_arrays = [
-                    jnp.zeros((num_of_columns,), dtype=jnp.float64)
-                    for _ in range(min_num_of_rows - len(F[i]))
-                ]
-                F[i] = F[i] + zeros_arrays
-        trainable_params = {'lookup_table': F, 'initial_params': flat_params}
     else:
-        raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
+        # Convert dictionary parameters to list[list] structure
+        flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
+        print("parameter shapes:", param_shapes)
+        # Calculate total number of parameters
+        num_of_params = len(jax.tree_util.tree_leaves(initial_params))
+        print("Number of parameters:", num_of_params)
+        if mode == "nn":
+            hidden_size = rnn_hidden_size
+            output_size = num_of_params
+
+            rnn_model = rnn(hidden_size=hidden_size, output_size=output_size)  # type: ignore
+
+            # TODO: should we use some better initialization for the rnn?
+            h_initial_state = jnp.zeros((1, hidden_size))
+
+            # TODO: should this be .zeros? our input is only 1 or -1
+            dummy_input = jnp.zeros((1, 1))  # Dummy input for rnn initialization
+            trainable_params = {
+                'rnn_params': rnn_model.init(
+                    parent_rng_key, dummy_input, h_initial_state
+                ),
+                'initial_params': flat_params,
+            }
+            # trainable_params = rnn_model.init(
+            #     parent_rng_key, dummy_input, h_initial_state
+            # )
+        elif mode == "lookup":
+            h_initial_state = None
+            rnn_model = None
+            # step 1: initialize the parameters
+            num_of_columns = num_of_params
+            num_of_sub_lists = len(measurement_indices) * num_time_steps
+            F = []
+            # construct ragged lookup table
+            row_key = sub_key
+            for i in range(1, num_of_sub_lists + 1):
+                row_key, _ = jax.random.split(row_key)
+                F.append(
+                    construct_ragged_row(
+                        num_of_rows=2**i,
+                        num_of_columns=num_of_columns,
+                        minval=lookup_min_init_value,
+                        maxval=lookup_max_init_value,
+                        rng_key=row_key,
+                    )
+                )
+            # step 2: pad the arrays to have the same number of rows
+            min_num_of_rows = 2 ** len(F)
+            for i in range(len(F)):
+                if len(F[i]) < min_num_of_rows:
+                    zeros_arrays = [
+                        jnp.zeros((num_of_columns,), dtype=jnp.float64)
+                        for _ in range(min_num_of_rows - len(F[i]))
+                    ]
+                    F[i] = F[i] + zeros_arrays
+            trainable_params = {'lookup_table': F, 'initial_params': flat_params}
+        else:
+            raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-feedback'.")
 
     # TODO: see if we need the log prob term
     # TODO: see if we need to implement stochastic sampling instead
@@ -459,13 +515,19 @@ def optimize_pulse_with_feedback(
             Loss value to be minimized.
         """
 
-        if mode == "nn":
+
+        if mode == "no-feedback":
+            h_initial_state = None
+            rnn_params = None
+            lookup_table_params = None
+            initial_params_opt = trainable_params
+        elif mode == "nn":
             # reseting hidden state at end of every trajectory ( does not really change the purity tho)
             h_initial_state = jnp.zeros((1, hidden_size))
             rnn_params = trainable_params['rnn_params']
             initial_params_opt = trainable_params['initial_params']
             lookup_table_params = None
-        else:
+        elif mode == "lookup":
             h_initial_state = None
             rnn_params = None
             lookup_table_params = trainable_params['lookup_table']
@@ -594,7 +656,20 @@ def evaluate(
     rnn_model,
     num_iterations,
 ):
-    if mode == "nn":
+    if mode == "no-feedback":
+        rho_final, _, returned_params = calculate_trajectory(
+            rho_cav=U_0,
+            parameterized_gates=parameterized_gates,
+            measurement_indices=measurement_indices,
+            decay=decay,
+            initial_params=best_model_params,
+            param_shapes=param_shapes,
+            time_steps=num_time_steps,
+            type=type,
+            batch_size=eval_batch_size,
+            rng_key=prng_key,
+        )
+    elif mode == "nn":
         rho_final, _, returned_params = calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
@@ -625,7 +700,7 @@ def evaluate(
             rng_key=prng_key,
         )
     else:
-        raise ValueError("Invalid mode. Choose 'nn' or 'lookup'.")
+        raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-feedback'.")
 
     final_fidelity = None
     final_purity = None
