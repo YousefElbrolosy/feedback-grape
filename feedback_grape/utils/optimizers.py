@@ -4,7 +4,6 @@ import optax.tree_utils as otu  # type: ignore
 # ruff: noqa N8
 
 
-
 # only difference is that this one uses kayes for each time step
 def _optimize_adam_feedback(
     loss_fn,

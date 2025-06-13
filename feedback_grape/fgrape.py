@@ -1,9 +1,7 @@
 import jax
 import jax.numpy as jnp
 from typing import List, NamedTuple
-from feedback_grape.utils.optimizers import (
-    _optimize_adam_feedback
-)
+from feedback_grape.utils.optimizers import _optimize_adam_feedback
 from feedback_grape.utils.solver import mesolve
 from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.purity import purity
@@ -25,7 +23,6 @@ jax.config.update("jax_enable_x64", True)
 NOTE: If you want to optimize complex prameters, you need to divide your complex parameter into two real 
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
-
 
 
 class FgResult(NamedTuple):
