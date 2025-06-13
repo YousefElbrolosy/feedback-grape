@@ -10,6 +10,7 @@ import jax.numpy as jnp
 
 jax.config.update("jax_enable_x64", True)
 
+# TODO: CLEANUP AND CHECK AGAIN For Correct unitary dynamics
 
 # Answer: Check if the handling of complex numbers is correct, I know l-bfgs outputs error
 # --> No, it wasn't it should be handled at the interface level by user dividing it into 
@@ -25,12 +26,12 @@ def _calculate_sequence_unitary(parameterized_gates, parameters):
     for i, gate in enumerate(parameterized_gates):
         param = parameters[i]
         gate_unitary = gate(*param)
-        combined_unitary = combined_unitary @ gate_unitary
+        combined_unitary =  gate_unitary @ combined_unitary
 
     return combined_unitary
 
 
-def _compute_time_step(U_0, parameterized_gates, parameters, type):
+def _compute_time_step_time_efficient(U_0, parameterized_gates, parameters, type):
     combined_unitary = _calculate_sequence_unitary(
         parameterized_gates, parameters
     )
@@ -43,21 +44,44 @@ def _compute_time_step(U_0, parameterized_gates, parameters, type):
 
 
 # either this way or the parameter vectors are repeated for each time step
+def _compute_time_step_memory_efficient(
+    U_0, parameterized_gates,  parameters, type
+):
+    U_final = U_0
+    if type == "density":
+        for gate, gate_parameters in zip(parameterized_gates, parameters):
+            gate_unitary = gate(*gate_parameters)
+            U_final = gate_unitary @ U_final @ gate_unitary.conj().T
+    else:
+        for gate, gate_parameters in zip(parameterized_gates, parameters):
+            # jax.debug.print("gate_parameters: {}" , gate_parameters)
+            gate_unitary = gate(*gate_parameters)
+            U_final = gate_unitary @ U_final
+    return U_final
+
+
+
+# either this way or the parameter vectors are repeated for each time step
 def calculate_trajectory(
-    U_0, parameters, time_steps, parameterized_gates, type
+    U_0, parameters, time_steps, parameterized_gates, propcomp, type
 ):
     U_t = U_0
-    for t in range(time_steps):
-        U_t = _compute_time_step(U_t, parameterized_gates, parameters[t], type)
+    if propcomp == "time-efficient":
+        for t in range(time_steps):
+            U_t = _compute_time_step_time_efficient(U_t, parameterized_gates, parameters[t], type)
+    elif propcomp == "memory-efficient":
+        for t in range(time_steps):
+            U_t = _compute_time_step_memory_efficient(U_t, parameterized_gates, parameters[t], type)
+    else:
+        raise ValueError(
+            f"propcomp {propcomp} not supported. Use 'time-efficient' or 'memory-efficient'."
+        )
     return U_t
-
 
 # QUESTION: should non-parameterized hava an option for feedback as well? -- I think yes
 # QUESTION: should initial parameters be provided by the user?
 # NOTE: Here a deliberate choice is made that the user should provide
 # initial parameters, since he/she might have a better guess than random initialization
-# TODO: see if we need to handle purity here
-# TODO: handle propcomp
 def optimize_pulse_parameterized(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
@@ -97,18 +121,22 @@ def optimize_pulse_parameterized(
 
     def _loss(initial_parameters):
         # Compute the forward evolution using the parameterized gates
+
         U_final = calculate_trajectory(
             U_0,
             initial_parameters,
             num_time_steps,
             parameterized_gates,
+            propcomp,
             type,
         )
+
         return -1 * fidelity(
             C_target=C_target,
             U_final=U_final,
             type=type,
         )
+
 
     optimized_parameters, iter_idx = train(
         _loss,
@@ -128,6 +156,7 @@ def optimize_pulse_parameterized(
         parameterized_gates,
         type,
         iter_idx,
+        propcomp
     )
 
     return final_res
@@ -142,14 +171,17 @@ def evaluate(
     parameterized_gates,
     type,
     iter_idx,
+    propcomp
 ):
     U_final = calculate_trajectory(
         U_0,
         optimized_parameters,
         num_time_steps,
         parameterized_gates,
+        propcomp,
         type,
     )
+
     final_fidelity = fidelity(
         C_target=C_target,
         U_final=U_final,
