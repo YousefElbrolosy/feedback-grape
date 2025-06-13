@@ -242,9 +242,9 @@ def calculate_trajectory(
         initial_params: Initial parameters for all gates.
         param_shapes: List of shapes for each gate's parameters.
         time_steps: Number of time steps within a trajectory.
-        rnn_model: RNN model for feedback.
-        rnn_params: Parameters of the RNN model.
-        rnn_state: Initial state of the RNN model.
+        rnn_model: rnn model for feedback.
+        rnn_params: Parameters of the rnn model.
+        rnn_state: Initial state of the rnn model.
         type: Type of quantum system representation (e.g., "density").
 
     Returns:
@@ -345,7 +345,8 @@ def optimize_pulse_with_feedback(
     lookup_max_init_value: float = jnp.pi,
     measurement_indices: list[int] = [],
     decay: decay | None = None,
-    RNN: callable = RNN,  # type: ignore
+    rnn: callable = RNN,  # type: ignore
+    rnn_hidden_size: int = 30,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -366,7 +367,8 @@ def optimize_pulse_with_feedback(
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
         measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
-        RNN (callable): The RNN model to use for the optimization process. Defaults to a predefined RNN class. Only used if mode is 'nn'.
+        rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
+        rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
@@ -379,8 +381,10 @@ def optimize_pulse_with_feedback(
         )
     # Convert dictionary parameters to list[list] structure
     flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
+    print("parameter shapes:", param_shapes)
     # Calculate total number of parameters
     num_of_params = len(jax.tree_util.tree_leaves(initial_params))
+    print("Number of parameters:", num_of_params)
     trainable_params = None
 
     parent_rng_key = jax.random.PRNGKey(0)
@@ -388,13 +392,16 @@ def optimize_pulse_with_feedback(
 
     # TODO: see why this doesn't improve performance
     if mode == "nn":
-        hidden_size = 30
+        hidden_size = rnn_hidden_size
         output_size = num_of_params
 
-        rnn_model = RNN(hidden_size=hidden_size, output_size=output_size)  # type: ignore
+        rnn_model = rnn(hidden_size=hidden_size, output_size=output_size)  # type: ignore
+
+        # TODO: should we use some better initialization for the rnn?
         h_initial_state = jnp.zeros((1, hidden_size))
 
-        dummy_input = jnp.zeros((1, 1))  # Dummy input for RNN initialization
+        # TODO: should this be .zeros? our input is only 1 or -1
+        dummy_input = jnp.zeros((1, 1))  # Dummy input for rnn initialization
         trainable_params = {
             'rnn_params': rnn_model.init(
                 parent_rng_key, dummy_input, h_initial_state
@@ -446,7 +453,7 @@ def optimize_pulse_with_feedback(
         Loss function for the optimization process.
         This function calculates the loss based on the specified goal (purity, fidelity, or both).
         Args:
-            rnn_params: Parameters of the RNN model or lookup table.
+            rnn_params: Parameters of the rnn model or lookup table.
             rng_key: Random key for stochastic operations.
         Returns:
             Loss value to be minimized.
