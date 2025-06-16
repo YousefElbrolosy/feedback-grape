@@ -12,7 +12,7 @@ from feedback_grape.utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,
 )
-from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
 from feedback_grape.utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
@@ -216,6 +216,16 @@ def optimize_pulse(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
+
+    if (
+        not is_positive_semi_definite(U_0)
+        and not is_positive_semi_definite(C_target)
+        and type == "density"
+    ):
+        raise TypeError(
+            'your initial and target rhos must be positive semi-definite.'
+        )
+
     # Step 1: Initialize control amplitudes
     control_amplitudes = _init_control_amplitudes(num_t_slots, len(H_control))
     delta_t = total_evo_time / num_t_slots

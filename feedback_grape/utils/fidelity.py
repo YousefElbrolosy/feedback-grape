@@ -54,6 +54,48 @@ def ket2dm(a: jnp.ndarray) -> jnp.ndarray:
     return jnp.outer(a, a.conj())
 
 
+# Only works for hermitian matrices
+def sqrtm_eig(A):
+    """GPU-friendly matrix square root using eigendecomposition."""
+    eigenvals, eigenvecs = jnp.linalg.eigh(A)  # eigh for Hermitian matrices
+    # Clamp negative eigenvalues to avoid numerical issues
+    # this may actually be more accurate than using jax.scipy.linalg.sqrtm
+    # since it can return complex numbers for negative eigenvalues
+    # and we want to avoid that in the square root.
+    eigenvals = jnp.where(eigenvals > 0, eigenvals, 0)
+    sqrt_eigenvals = jnp.sqrt(eigenvals)
+    return eigenvecs @ jnp.diag(sqrt_eigenvals) @ eigenvecs.conj().T
+
+
+def is_positive_semi_definite(A, tol=1e-15):
+    """
+    Check if a matrix is positive semi-definite.
+
+    Parameters
+    ----------
+    A : jnp.ndarray
+        The matrix to check.
+    tol : float, optional
+        Tolerance for numerical stability, default is 1e-8.
+
+    Returns
+    -------
+    bool
+        True if A is positive semi-definite, False otherwise.
+    """
+    # Check if the matrix is Hermitian
+    if not is_hermitian(A, tol):
+        return False
+
+    # Check if all eigenvalues are non-negative
+    eigenvalues = jnp.linalg.eigvalsh(A)
+    return jnp.all(eigenvalues >= -tol)
+
+
+def is_hermitian(A, tol=1e-8):
+    return jnp.allclose(A, A.conj().T, atol=tol)
+
+
 def _state_density_fidelity(A, B):
     """
     Inspired by qutip's implementation
@@ -99,9 +141,9 @@ def _state_density_fidelity(A, B):
         # we have to take the sqrtm of one of them.
         A = A / jnp.linalg.trace(A)
         B = B / jnp.linalg.trace(B)
-        # TODO: need to implement own sqrtm function that doesn't depend on jax.scipy.schur since it causes
-        # inability to run on gpu's
-        sqrtmA = jax.scipy.linalg.sqrtm(A)
+
+        sqrtmA = sqrtm_eig(A)
+        # sqrtmA = jax.scipy.linalg.sqrtm(A)
 
     if sqrtmA.shape != B.shape:
         raise TypeError('Density matrices do not have same dimensions.')
