@@ -430,8 +430,7 @@ def optimize_pulse_with_feedback(
     trainable_params = None
     param_shapes = None
 
-    # TODO: see why this doesn't improve performance
-    if mode == "no-feedback":
+    if mode == "no-measurement":
         # If no feedback is used, we can just use the initial parameters
         h_initial_state = None
         rnn_model = None
@@ -498,7 +497,7 @@ def optimize_pulse_with_feedback(
                     F[i] = F[i] + zeros_arrays
             trainable_params = {'lookup_table': F, 'initial_params': flat_params}
         else:
-            raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-feedback'.")
+            raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")
 
     # TODO: see if we need the log prob term
     # TODO: see if we need to implement stochastic sampling instead
@@ -516,7 +515,7 @@ def optimize_pulse_with_feedback(
         """
 
 
-        if mode == "no-feedback":
+        if mode == "no-measurement":
             h_initial_state = None
             rnn_params = None
             lookup_table_params = None
@@ -656,7 +655,7 @@ def evaluate(
     rnn_model,
     num_iterations,
 ):
-    if mode == "no-feedback":
+    if mode == "no-measurement":
         rho_final, _, returned_params = calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
@@ -700,7 +699,7 @@ def evaluate(
             rng_key=prng_key,
         )
     else:
-        raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-feedback'.")
+        raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")
 
     final_fidelity = None
     final_purity = None
