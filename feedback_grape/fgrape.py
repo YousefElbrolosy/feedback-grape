@@ -24,7 +24,7 @@ NOTE: If you want to optimize complex prameters, you need to divide your complex
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
 
-
+# TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
 class FgResult(NamedTuple):
     """
     result class to store the results of the optimization process.
