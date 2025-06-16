@@ -3,7 +3,7 @@ import jax.numpy as jnp
 from typing import List, NamedTuple
 from feedback_grape.utils.optimizers import _optimize_adam_feedback
 from feedback_grape.utils.solver import mesolve
-from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
 from feedback_grape.fgrape_helpers import (
@@ -23,6 +23,7 @@ jax.config.update("jax_enable_x64", True)
 NOTE: If you want to optimize complex prameters, you need to divide your complex parameter into two real 
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
+
 
 # TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
 class FgResult(NamedTuple):
@@ -136,9 +137,7 @@ def _calculate_time_step(
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
-            rho_final = apply_gate(
-                rho_final, gate, extracted_params[i], type
-            )
+            rho_final = apply_gate(rho_final, gate, extracted_params[i], type)
             applied_params.append(extracted_params[i])
         return (
             rho_final,
@@ -146,7 +145,7 @@ def _calculate_time_step(
             None,
             applied_params,
             None,
-        ) 
+        )
     elif lut is not None:
         extracted_lut_params = initial_params
 
@@ -423,7 +422,20 @@ def optimize_pulse_with_feedback(
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
+    # TODO: check if user enters states here, should we convert them to density matrices?
 
+    if (
+        goal in ["fidelity", "both"]
+        and type == "density"
+        and
+        (
+            not is_positive_semi_definite(U_0)
+            or not is_positive_semi_definite(C_target)
+        )
+    ):
+        raise TypeError(
+            'your initial and target rhos must be positive semi-definite.'
+        )
     parent_rng_key = jax.random.PRNGKey(0)
     key, sub_key = jax.random.split(parent_rng_key)
 
@@ -441,7 +453,9 @@ def optimize_pulse_with_feedback(
             )
     else:
         # Convert dictionary parameters to list[list] structure
-        flat_params, param_shapes = prepare_parameters_from_dict(initial_params)
+        flat_params, param_shapes = prepare_parameters_from_dict(
+            initial_params
+        )
         print("parameter shapes:", param_shapes)
         # Calculate total number of parameters
         num_of_params = len(jax.tree_util.tree_leaves(initial_params))
@@ -456,7 +470,9 @@ def optimize_pulse_with_feedback(
             h_initial_state = jnp.zeros((1, hidden_size))
 
             # TODO: should this be .zeros? our input is only 1 or -1
-            dummy_input = jnp.zeros((1, 1))  # Dummy input for rnn initialization
+            dummy_input = jnp.zeros(
+                (1, 1)
+            )  # Dummy input for rnn initialization
             trainable_params = {
                 'rnn_params': rnn_model.init(
                     parent_rng_key, dummy_input, h_initial_state
@@ -495,9 +511,14 @@ def optimize_pulse_with_feedback(
                         for _ in range(min_num_of_rows - len(F[i]))
                     ]
                     F[i] = F[i] + zeros_arrays
-            trainable_params = {'lookup_table': F, 'initial_params': flat_params}
+            trainable_params = {
+                'lookup_table': F,
+                'initial_params': flat_params,
+            }
         else:
-            raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")
+            raise ValueError(
+                "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
+            )
 
     # TODO: see if we need the log prob term
     # TODO: see if we need to implement stochastic sampling instead
@@ -513,7 +534,6 @@ def optimize_pulse_with_feedback(
         Returns:
             Loss value to be minimized.
         """
-
 
         if mode == "no-measurement":
             h_initial_state = None
@@ -699,7 +719,9 @@ def evaluate(
             rng_key=prng_key,
         )
     else:
-        raise ValueError("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")
+        raise ValueError(
+            "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
+        )
 
     final_fidelity = None
     final_purity = None

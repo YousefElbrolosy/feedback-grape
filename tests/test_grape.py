@@ -3,11 +3,14 @@ Tests for the GRAPE package.
 """
 
 # ruff: noqa
+import jax
 import jax.numpy as jnp
 import pytest
 import qutip as qt
 
 from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.fidelity import sqrtm_eig
+from feedback_grape.utils.fidelity import is_positive_semi_definite
 from tests.helper_for_tests import (
     get_finals,
     get_results_for_cnot_problem,
@@ -193,6 +196,35 @@ def test_fidelity_fn(fid_type, target, final):
     print(f"fg fidelity: for {fid_type}", fidelity_fg)
     assert jnp.allclose(fidelity_fg, fidelity_qt, atol=1e-1), (
         "fidelities not close enough"
+    )
+
+
+@pytest.mark.parametrize(
+    "A",
+    [
+        jnp.array([[2, 0], [0, 3]]),
+        jnp.array([[4, 2], [2, 4]]),
+        jnp.array([[1, 0], [0, 0]]),
+        jnp.array([[5, 4], [4, 5]]),
+        jnp.array([[3, 0], [0, 7]]),
+    ],
+)
+def test_sqrtm_eig(A):
+    """Test that verifies mathematical correctness for positive semidefinite matrices."""
+    # Check Hermitian
+    assert is_positive_semi_definite(A), "A is not positive semi definite"
+
+    sqrt_A = sqrtm_eig(A)
+
+    sqrtm_jax = jax.scipy.linalg.sqrtm(A)
+
+    assert jnp.allclose(sqrt_A, sqrtm_jax, atol=1e-9), (
+        "Square root matrices are not close enough."
+    )
+
+    reconstructed = sqrt_A @ sqrt_A
+    assert jnp.allclose(reconstructed, A, atol=1e-9), (
+        "Square root verification failed: sqrt(A) @ sqrt(A) != A"
     )
 
 
