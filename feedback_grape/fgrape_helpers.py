@@ -109,6 +109,50 @@ def construct_ragged_row(num_of_rows, num_of_columns, minval, maxval, rng_key):
     return res
 
 
+def convert_system_params(system_params):
+    """
+    Convert system_params format to (initial_params, parameterized_gates, measurement_indices) format.
+    
+    Args:
+        system_params: List of dictionaries, each containing:
+            - "gate": gate function
+            - "initial_params": list of parameters
+            - "measurement_flag": boolean indicating if this is a measurement gate
+    
+    Returns:
+        tuple: (initial_params, parameterized_gates, measurement_indices)
+            - initial_params: dict mapping gate names/types to parameter lists
+            - parameterized_gates: list of gate functions
+            - measurement_indices: list of indices where measurement gates appear
+    """
+    initial_params = {}
+    parameterized_gates = []
+    measurement_indices = []
+    param_constrains = []
+    
+    for i, gate_config in enumerate(system_params):
+        gate_func = gate_config["gate"]
+        params = gate_config["initial_params"]
+        is_measurement = gate_config["measurement_flag"]
+        
+        # Add gate to parameterized_gates list
+        parameterized_gates.append(gate_func)
+        
+        # If this is a measurement gate, add its index
+        if is_measurement:
+            measurement_indices.append(i)
+        
+        param_name = f"gate_{i}"
+        
+        initial_params[param_name] = params
+
+        # Add parameter constraints if provided
+        # TODO: make sure to have default
+        if "param_constrains" in gate_config:
+            param_constrains.append(gate_config.get("param_constrains", None))
+    
+    return initial_params, parameterized_gates, measurement_indices, param_constrains
+
 # Answer: add in docs an example of how they can construct their own `Network to use it.`
 # --> the example E nn is suitable enough to show how to use it
 class RNN(nn.Module):
@@ -142,3 +186,4 @@ class RNN(nn.Module):
         output = nn.relu(output)
         # output = jnp.asarray(output)
         return output[0], new_hidden_state
+

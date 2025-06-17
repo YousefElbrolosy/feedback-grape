@@ -1,13 +1,14 @@
 import jax
 import jax.numpy as jnp
 from typing import List, NamedTuple
-from feedback_grape.utils.optimizers import _optimize_adam_feedback
 from feedback_grape.utils.solver import mesolve
+from feedback_grape.utils.optimizers import _optimize_adam_feedback
 from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
 from feedback_grape.fgrape_helpers import (
     prepare_parameters_from_dict,
+    convert_system_params,
     construct_ragged_row,
     extract_from_lut,
     reshape_params,
@@ -78,6 +79,13 @@ class decay(NamedTuple):
     """
     Hamiltonian for the decay process, if applicable.
     """
+
+class Input(NamedTuple):
+    gate: callable
+    initial_params: list
+    measurement_flag: bool
+    param_constrains: list
+
 
 
 def _calculate_time_step(
@@ -376,20 +384,18 @@ def calculate_trajectory(
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
-    parameterized_gates: list[callable],  # type: ignore
-    initial_params: dict[str, list[float | complex]],
+    system_params: list[Input],
     num_time_steps: int,
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
+    lookup_min_init_value: float = 0.0,
+    lookup_max_init_value: float = jnp.pi,
     goal: str = "fidelity",  # purity, fidelity, both
     batch_size: int = 1,
     eval_batch_size: int = 10,
     mode: str = "lookup",  # nn, lookup
-    lookup_min_init_value: float = 0.0,
-    lookup_max_init_value: float = jnp.pi,
-    measurement_indices: list[int] = [],
     decay: decay | None = None,
     rnn: callable = RNN,  # type: ignore
     rnn_hidden_size: int = 30,
@@ -400,8 +406,7 @@ def optimize_pulse_with_feedback(
     Args:
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
-        parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
+        system_params: List of Input objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
@@ -411,7 +416,6 @@ def optimize_pulse_with_feedback(
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
-        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
         rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
@@ -422,7 +426,7 @@ def optimize_pulse_with_feedback(
         raise ValueError("Time steps must be greater than 0.")
 
     # TODO: check if user enters states here, should we convert them to density matrices?
-
+    
     if (
         goal in ["fidelity", "both"]
         and type == "density"
@@ -432,13 +436,23 @@ def optimize_pulse_with_feedback(
         )
     ):
         raise TypeError(
-            'your initial and target rhos must be positive semi-definite.'
+            'Your initial and target rhos must be positive semi-definite.'
         )
+    
+
+    initial_params, parameterized_gates, measurement_indices, param_constrains = convert_system_params(
+        system_params
+    )
+
+
     parent_rng_key = jax.random.PRNGKey(0)
     key, sub_key = jax.random.split(parent_rng_key)
 
     trainable_params = None
     param_shapes = None
+
+
+
 
     if mode == "no-measurement":
         # If no feedback is used, we can just use the initial parameters
