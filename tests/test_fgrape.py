@@ -22,7 +22,6 @@ def example_B_body():
         POVM for the measurement of the cavity state.
         returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
         """
-        # TODO: see if there is a better way other than flattening
         number_operator = create(N_cavity) @ destroy(N_cavity)
         angle = (gamma * number_operator) + delta / 2
         return jnp.where(
@@ -81,10 +80,6 @@ def example_C_body():
     N_cav = 20
 
     def qubit_unitary(alpha):
-        """
-        TODO: see if alpha, can be sth elser other than scalar, and if the algo understands this
-        see if there can be multiple params like alpha and beta input
-        """
         return expm(
             -1j
             * (
