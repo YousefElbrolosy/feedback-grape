@@ -113,7 +113,6 @@ def _calculate_time_step(
     # TODO: throw error based on content of decay indices here
     # if not (decay_indices is None or decay_indices == []):
 
-    # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
     key = rng_key
@@ -427,8 +426,7 @@ def optimize_pulse_with_feedback(
     if (
         goal in ["fidelity", "both"]
         and type == "density"
-        and
-        (
+        and (
             not is_positive_semi_definite(U_0)
             or not is_positive_semi_definite(C_target)
         )
@@ -520,8 +518,6 @@ def optimize_pulse_with_feedback(
                 "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
             )
 
-    # TODO: see if we need the log prob term
-    # TODO: see if we need to implement stochastic sampling instead
     # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
     # the log prob or not? ( like in porroti's implementation )?
     def loss_fn(trainable_params, rng_key):

@@ -30,8 +30,6 @@ from tests.helper_for_tests import (
 
 # Testing target Operator transformations
 
-# TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
-
 
 def test_cnot(optimizer="l-bfgs", propcomp="time-efficient"):
     result_fg, result_qt = get_results_for_cnot_problem(optimizer, propcomp)

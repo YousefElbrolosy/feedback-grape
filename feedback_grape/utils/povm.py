@@ -73,7 +73,6 @@ def povm(
     Returns:
         tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
     """
-    # TODO: this should be generalized to all possible measurement outcomes
     prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav, 1, povm_measure_operator, initial_povm_params
     )
@@ -82,7 +81,6 @@ def povm(
     rho_meas = _post_measurement_state(
         rho_cav, measurement, povm_measure_operator, initial_povm_params
     )
-    # TODO: handle if there are more than 2 possibilities
     prob = jnp.where(
         measurement == 1,
         prob_plus,

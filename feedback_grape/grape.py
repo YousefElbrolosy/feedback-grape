@@ -41,9 +41,8 @@ class result(NamedTuple):
     """
 
 
-# TODO: for next 3 functions related to propagator computation
-# TODO: Confirm if for a Lioviliian (superoperator) the same evolution technique
-# TODO: can be used or should it be different?
+# TODO: for next 3 functions related to propagator computation, Confirm if for a Lioviliian (superoperator) the same evolution technique
+# can be used or should it be different?
 def _compute_propagators(
     H_drift,
     H_control_array,
@@ -172,8 +171,6 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     )
 
 
-# TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
-# TODO: see if we need to implement purity functionality for normal grape as well
 # TODO: make sure you make it require positional parameters
 def optimize_pulse(
     H_drift: jnp.ndarray,

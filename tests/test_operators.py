@@ -2,6 +2,7 @@
 Tests for the GRAPE package.
 """
 
+import jax
 import jax.numpy as jnp
 import pytest
 import qutip as qt
@@ -19,9 +20,9 @@ from feedback_grape.utils.operators import (
     sinm,
 )
 
+jax.config.update("jax_enable_x64", True)  # Ensure we use 64-bit precision
+
 # Check documentation for pytest for more decorators
-# TODO: add tests for changing dimesions and data type
-# TODO: see if you can add tests related to a certain file in its directory
 
 
 # Here I do not want to use isclose, because those are so elementary that
@@ -145,3 +146,63 @@ def test_cosm_and_sinm():
 
     test_cosm()
     test_sinm()
+
+
+@pytest.mark.parametrize(
+    "func, expected, dtype",
+    [
+        (sigmax, qt.sigmax().full().astype(jnp.float32), jnp.float32),
+        (sigmay, qt.sigmay().full().astype(jnp.complex64), jnp.complex64),
+        (sigmaz, qt.sigmaz().full().astype(jnp.float32), jnp.float32),
+        (sigmap, qt.sigmap().full().astype(jnp.complex64), jnp.complex64),
+        (sigmam, qt.sigmam().full().astype(jnp.complex64), jnp.complex64),
+    ],
+)
+def test_pauli_dtype(func, expected, dtype):
+    """
+    Test Pauli and ladder operators with different dtypes.
+    """
+    result = func(dtype=dtype)
+    assert result.dtype == dtype
+    assert jnp.allclose(result, expected, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "dimensions, dtype",
+    [
+        (2, jnp.float32),
+        (3, jnp.complex64),
+        (5, jnp.complex128),
+    ],
+)
+def test_identity_dtype(dimensions, dtype):
+    """
+    Test identity with different dimensions and dtypes.
+    """
+    result = identity(dimensions, dtype=dtype)
+    expected = jnp.eye(dimensions, dtype=dtype)
+    assert result.dtype == dtype
+    assert jnp.allclose(result, expected)
+
+
+@pytest.mark.parametrize(
+    "n, dtype",
+    [
+        (2, jnp.complex64),
+        (3, jnp.complex128),
+        (5, jnp.complex64),
+    ],
+)
+def test_create_destroy_dtype(n, dtype):
+    """
+    Test create and destroy with different dimensions and dtypes.
+    """
+    result_create = create(n, dtype=dtype)
+    expected_create = qt.create(n).full().astype(dtype)
+    assert result_create.dtype == dtype
+    assert jnp.allclose(result_create, expected_create, atol=1e-6)
+
+    result_destroy = destroy(n, dtype=dtype)
+    expected_destroy = qt.destroy(n).full().astype(dtype)
+    assert result_destroy.dtype == dtype
+    assert jnp.allclose(result_destroy, expected_destroy, atol=1e-6)

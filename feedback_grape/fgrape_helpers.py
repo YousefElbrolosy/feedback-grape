@@ -109,7 +109,8 @@ def construct_ragged_row(num_of_rows, num_of_columns, minval, maxval, rng_key):
     return res
 
 
-# TODO: add in docs an example of how they can construct their own `Network to use it.`
+# Answer: add in docs an example of how they can construct their own `Network to use it.`
+# --> the example E nn is suitable enough to show how to use it
 class RNN(nn.Module):
     hidden_size: int  # number of features in the hidden state
     output_size: int  # number of features in the output ( 2 in the case of gamma and beta)

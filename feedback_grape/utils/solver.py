@@ -11,10 +11,8 @@ from feedback_grape.utils.operators import identity
 import dynamiqs as dq
 
 
-# TODO: make it more efficient (using ODE methods maybe?)
 def sesolve(Hs, initial_state, delta_ts, type="density"):
     """
-    Find evolution operator for piecewise Hs on time intervals delta_ts
 
     Args:
         Hs: List of Hamiltonians for each time interval.
@@ -42,10 +40,9 @@ def sesolve(Hs, initial_state, delta_ts, type="density"):
         return U_final
 
 
-# TODO: Add functionality for supplying H and c_ops and then doing the evolution
+# TODO: see how to make it compatible with liouvillian superoperator
 def mesolve(H, jump_ops, rho0, tsave):
     """
-    Master equation evolution of a density matrix or state for a given Hamiltonian and
     an optional set of collapse operators, or a Liouvillian. A Liouvillian is a
     superoperator that accounts for hamiltonian and collapse operators.
 
@@ -76,7 +73,6 @@ def mesolve(H, jump_ops, rho0, tsave):
 
 # def mesolve(H, jump_ops, rho0, time_grid):
 #     """
-#     Master equation evolution of a density matrix for a given Hamiltonian and
 #     an optional set of collapse operators, or a Liouvillian. A Liouvillian is a
 #     superoperator that accounts for hamiltonian and collapse operators.
 
@@ -93,7 +89,6 @@ def mesolve(H, jump_ops, rho0, tsave):
 #         H = [identity(rho0.shape[0]) for _ in range(len(time_grid) - 1)]
 #     def RK4_step(rho, H, jump_ops, delta_t):
 #         """
-#         Perform a single RK4 step for lindblad master equation evolution.
 #         """
 #         k1 = lindblad(H, jump_ops, rho)
 #         k2 = lindblad(H, jump_ops, rho + 0.5 * delta_t * k1)
