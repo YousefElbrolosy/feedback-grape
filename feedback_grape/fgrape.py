@@ -8,6 +8,7 @@ from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
 from feedback_grape.fgrape_helpers import (
     prepare_parameters_from_dict,
+    get_trainable_parameters,
     convert_system_params,
     construct_ragged_row,
     extract_from_lut,
@@ -447,7 +448,7 @@ def optimize_pulse_with_feedback(
 
     parent_rng_key = jax.random.PRNGKey(0)
     key, sub_key = jax.random.split(parent_rng_key)
-
+    sub_key, new_sub_key = jax.random.split(sub_key)
     trainable_params = None
     param_shapes = None
 
@@ -458,7 +459,7 @@ def optimize_pulse_with_feedback(
         # If no feedback is used, we can just use the initial parameters
         h_initial_state = None
         rnn_model = None
-        trainable_params = initial_params
+        trainable_params = get_trainable_parameters(initial_params, param_constrains, num_time_steps, new_sub_key)
         if not (measurement_indices == [] or measurement_indices is None):
             raise ValueError(
                 "You provided a measurement indices, but no feedback is used. Please set mode to 'nn' or 'lookup'."

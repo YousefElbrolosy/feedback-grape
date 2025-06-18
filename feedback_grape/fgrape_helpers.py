@@ -147,11 +147,52 @@ def convert_system_params(system_params):
         initial_params[param_name] = params
 
         # Add parameter constraints if provided
-        # TODO: make sure to have default
         if "param_constrains" in gate_config:
             param_constrains.append(gate_config.get("param_constrains", None))
+
+        if len(param_constrains) != len(parameterized_gates):
+            raise ValueError("If you provide parameter constraints for some gates, you need to provide them for all gates.")
     
     return initial_params, parameterized_gates, measurement_indices, param_constrains
+
+
+def get_trainable_parameters(initial_parameters, param_constrains, num_time_steps, rng_key):
+    trainable_params = []
+    flat_params ,_ = prepare_parameters_from_dict(initial_parameters)
+    trainable_params.append(flat_params)
+    for i in range(num_time_steps - 1):
+        gate_params_list = []
+        if param_constrains != []:
+            for gate_params, gate_constraints in zip(flat_params, param_constrains):
+                sampled_params = []
+                for var_bounds in gate_constraints:
+                    rng_key, subkey = jax.random.split(rng_key)
+                    var = jax.random.uniform(
+                        subkey,
+                        shape=(),
+                        minval=var_bounds[0],
+                        maxval=var_bounds[1],
+                    )
+                    sampled_params.append(var)
+                gate_params_list.append(jnp.array(sampled_params))
+        else: # TODO: mention in the docs that if no constraints are given, the parameters are sampled uniformly from -2pi to 2pi
+            for gate_params in flat_params:
+                sampled_params = []
+                for _ in range(gate_params.shape[0]):
+                    rng_key, subkey = jax.random.split(rng_key)
+                    var = jax.random.uniform(
+                        subkey,
+                        shape=(),
+                        minval=-2 *jnp.pi,
+                        maxval=2 * jnp.pi,
+                    )
+                    sampled_params.append(var)
+                gate_params_list.append(jnp.array(sampled_params))
+        trainable_params.append(gate_params_list)
+
+
+
+    return trainable_params
 
 # Answer: add in docs an example of how they can construct their own `Network to use it.`
 # --> the example E nn is suitable enough to show how to use it
