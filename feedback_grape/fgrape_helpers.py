@@ -1,8 +1,55 @@
 import jax
 import numpy as np
+from enum import Enum, auto
 import flax.linen as nn
 import jax.numpy as jnp
 # ruff: noqa N8
+
+jax.config.update("jax_enable_x64", True)
+
+
+# Answer: add in docs an example of how they can construct their own `Network to use it.`
+# --> the example E nn is suitable enough to show how to use it
+class RNN(nn.Module):
+    hidden_size: int  # number of features in the hidden state
+    output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
+
+    @nn.compact
+    def __call__(self, measurement, hidden_state):
+        """
+        If your GRU has a hidden state increasing number of features in the hidden stateH means:
+
+        - You're allowing the model to store more information across time steps
+
+        - Each time step can represent more complex features, patterns, or dependencies
+
+        - You're giving the GRU more representational capacity
+        """
+        gru_cell = nn.GRUCell(features=self.hidden_size)
+
+        if measurement.ndim == 1:
+            measurement = measurement.reshape(1, -1)
+        new_hidden_state, _ = gru_cell(hidden_state, measurement)
+        # this returns the povm_params after linear regression through the hidden state which contains
+        # the information of the previous time steps and this is optimized to output best povm_params
+        # new_hidden_state = nn.Dense(features=self.hidden_size)(new_hidden_state)
+        output = nn.Dense(
+            features=self.output_size,
+            kernel_init=nn.initializers.glorot_uniform(),
+            bias_init=nn.initializers.constant(jnp.pi),
+        )(new_hidden_state)
+        output = nn.relu(output)
+        # output = jnp.asarray(output)
+        return output[0], new_hidden_state
+
+class DEFAULTS(Enum):
+    BATCH_SIZE = 1
+    EVAL_BATCH_SIZE = 10
+    MODE = "lookup"
+    RNN = RNN
+    RNN_HIDDEN_SIZE = 30
+    GOAL = "fidelity"
+    DECAY = None
 
 
 def apply_gate(rho_cav, gate, params, type):
@@ -95,75 +142,101 @@ def prepare_parameters_from_dict(params_dict):
     return res, shapes
 
 
-def construct_ragged_row(num_of_rows, num_of_columns, minval, maxval, rng_key):
+def construct_ragged_row(
+    num_of_rows, num_of_columns, param_constraints, init_flat_params, rng_key
+):
     res = []
-    for i in range(num_of_rows):
-        flattened = jax.random.uniform(
-            rng_key,
-            shape=(num_of_columns,),
-            minval=minval,
-            maxval=maxval,
-            dtype=jnp.float64,
-        )
-        res.append(flattened)
-    return res
+    if len(param_constraints) == 0:
+        for i in range(num_of_rows):
+            flattened = jnp.concatenate([arr for arr in init_flat_params])
+            res.append(flattened)
+        return res
+    else:
+        for i in range(num_of_rows):
+            row = []
+            for j in range(num_of_columns):
+                rng_key, subkey = jax.random.split(rng_key)
+                val = jax.random.uniform(
+                    subkey,
+                    shape=(),
+                    minval=param_constraints[j][0],
+                    maxval=param_constraints[j][1],
+                )
+                row.append(val)
+            res.append(jnp.array(row))
+        return res
 
 
 def convert_system_params(system_params):
     """
     Convert system_params format to (initial_params, parameterized_gates, measurement_indices) format.
-    
+
     Args:
         system_params: List of dictionaries, each containing:
             - "gate": gate function
             - "initial_params": list of parameters
             - "measurement_flag": boolean indicating if this is a measurement gate
-    
+            - "param_constraints": optional list of parameter constraints (min, max) for each gate
+
     Returns:
         tuple: (initial_params, parameterized_gates, measurement_indices)
             - initial_params: dict mapping gate names/types to parameter lists
             - parameterized_gates: list of gate functions
             - measurement_indices: list of indices where measurement gates appear
+            - param_constraints: list of parameter constraints for each gate
     """
     initial_params = {}
     parameterized_gates = []
     measurement_indices = []
-    param_constrains = []
-    
+    param_constraints = []
+
     for i, gate_config in enumerate(system_params):
         gate_func = gate_config["gate"]
         params = gate_config["initial_params"]
         is_measurement = gate_config["measurement_flag"]
-        
+
         # Add gate to parameterized_gates list
         parameterized_gates.append(gate_func)
-        
+
         # If this is a measurement gate, add its index
         if is_measurement:
             measurement_indices.append(i)
-        
+
         param_name = f"gate_{i}"
-        
+
         initial_params[param_name] = params
 
         # Add parameter constraints if provided
-        if "param_constrains" in gate_config:
-            param_constrains.append(gate_config.get("param_constrains", None))
+        if "param_constraints" in gate_config:
+            param_constraints.append(
+                gate_config.get("param_constraints", None)
+            )
 
-        if len(param_constrains) != len(parameterized_gates):
-            raise ValueError("If you provide parameter constraints for some gates, you need to provide them for all gates.")
-    
-    return initial_params, parameterized_gates, measurement_indices, param_constrains
+        if len(param_constraints) > 0 and (
+            len(param_constraints) != len(parameterized_gates)
+        ):
+            raise TypeError(
+                "If you provide parameter constraints for some gates, you need to provide them for all gates."
+            )
+
+    return (
+        initial_params,
+        parameterized_gates,
+        measurement_indices,
+        param_constraints,
+    )
 
 
-def get_trainable_parameters(initial_parameters, param_constrains, num_time_steps, rng_key):
+def get_trainable_parameters_for_no_meas(
+    initial_parameters, param_constraints, num_time_steps, rng_key
+):
     trainable_params = []
-    flat_params ,_ = prepare_parameters_from_dict(initial_parameters)
+    flat_params, _ = prepare_parameters_from_dict(initial_parameters)
     trainable_params.append(flat_params)
     for i in range(num_time_steps - 1):
         gate_params_list = []
-        if param_constrains != []:
-            for gate_params, gate_constraints in zip(flat_params, param_constrains):
+        if param_constraints != []:
+            for gate_constraints in zip(param_constraints):
                 sampled_params = []
                 for var_bounds in gate_constraints:
                     rng_key, subkey = jax.random.split(rng_key)
@@ -175,56 +248,8 @@ def get_trainable_parameters(initial_parameters, param_constrains, num_time_step
                     )
                     sampled_params.append(var)
                 gate_params_list.append(jnp.array(sampled_params))
-        else: # TODO: mention in the docs that if no constraints are given, the parameters are sampled uniformly from -2pi to 2pi
-            for gate_params in flat_params:
-                sampled_params = []
-                for _ in range(gate_params.shape[0]):
-                    rng_key, subkey = jax.random.split(rng_key)
-                    var = jax.random.uniform(
-                        subkey,
-                        shape=(),
-                        minval=-2 *jnp.pi,
-                        maxval=2 * jnp.pi,
-                    )
-                    sampled_params.append(var)
-                gate_params_list.append(jnp.array(sampled_params))
-        trainable_params.append(gate_params_list)
-
-
+                trainable_params.append(gate_params_list)
+        else:  # TODO: explain those differences in the docs
+            trainable_params.append(flat_params)
 
     return trainable_params
-
-# Answer: add in docs an example of how they can construct their own `Network to use it.`
-# --> the example E nn is suitable enough to show how to use it
-class RNN(nn.Module):
-    hidden_size: int  # number of features in the hidden state
-    output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
-
-    @nn.compact
-    def __call__(self, measurement, hidden_state):
-        """
-        If your GRU has a hidden state increasing number of features in the hidden stateH means:
-
-        - You're allowing the model to store more information across time steps
-
-        - Each time step can represent more complex features, patterns, or dependencies
-
-        - You're giving the GRU more representational capacity
-        """
-        gru_cell = nn.GRUCell(features=self.hidden_size)
-
-        if measurement.ndim == 1:
-            measurement = measurement.reshape(1, -1)
-        new_hidden_state, _ = gru_cell(hidden_state, measurement)
-        # this returns the povm_params after linear regression through the hidden state which contains
-        # the information of the previous time steps and this is optimized to output best povm_params
-        # new_hidden_state = nn.Dense(features=self.hidden_size)(new_hidden_state)
-        output = nn.Dense(
-            features=self.output_size,
-            kernel_init=nn.initializers.glorot_uniform(),
-            bias_init=nn.initializers.constant(jnp.pi),
-        )(new_hidden_state)
-        output = nn.relu(output)
-        # output = jnp.asarray(output)
-        return output[0], new_hidden_state
-

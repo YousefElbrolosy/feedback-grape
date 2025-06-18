@@ -7,14 +7,14 @@ from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
 from feedback_grape.fgrape_helpers import (
+    get_trainable_parameters_for_no_meas,
     prepare_parameters_from_dict,
-    get_trainable_parameters,
     convert_system_params,
     construct_ragged_row,
     extract_from_lut,
     reshape_params,
     apply_gate,
-    RNN,
+    DEFAULTS,
 )
 
 # TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
@@ -81,12 +81,12 @@ class decay(NamedTuple):
     Hamiltonian for the decay process, if applicable.
     """
 
+
 class Input(NamedTuple):
     gate: callable
     initial_params: list
     measurement_flag: bool
-    param_constrains: list
-
+    param_constraints: list
 
 
 def _calculate_time_step(
@@ -391,15 +391,13 @@ def optimize_pulse_with_feedback(
     convergence_threshold: float,
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
-    lookup_min_init_value: float = 0.0,
-    lookup_max_init_value: float = jnp.pi,
-    goal: str = "fidelity",  # purity, fidelity, both
-    batch_size: int = 1,
-    eval_batch_size: int = 10,
-    mode: str = "lookup",  # nn, lookup
-    decay: decay | None = None,
-    rnn: callable = RNN,  # type: ignore
-    rnn_hidden_size: int = 30,
+    goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
+    batch_size: int = DEFAULTS.BATCH_SIZE.value,
+    eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
+    mode: str = DEFAULTS.MODE.value,  # nn, lookup
+    decay: decay | None = DEFAULTS.DECAY.value,
+    rnn: callable = DEFAULTS.RNN.value,  # type: ignore
+    rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -427,7 +425,7 @@ def optimize_pulse_with_feedback(
         raise ValueError("Time steps must be greater than 0.")
 
     # TODO: check if user enters states here, should we convert them to density matrices?
-    
+
     if (
         goal in ["fidelity", "both"]
         and type == "density"
@@ -439,27 +437,34 @@ def optimize_pulse_with_feedback(
         raise TypeError(
             'Your initial and target rhos must be positive semi-definite.'
         )
-    
 
-    initial_params, parameterized_gates, measurement_indices, param_constrains = convert_system_params(
-        system_params
-    )
-
+    (
+        initial_params,
+        parameterized_gates,
+        measurement_indices,
+        param_constraints,
+    ) = convert_system_params(system_params)
 
     parent_rng_key = jax.random.PRNGKey(0)
     key, sub_key = jax.random.split(parent_rng_key)
     sub_key, new_sub_key = jax.random.split(sub_key)
     trainable_params = None
     param_shapes = None
+    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
 
-
-
+    if(param_constraints != []):
+        if len(jax.tree_util.tree_leaves(param_constraints)) != num_of_params * 2:
+            raise TypeError(
+                "Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default."
+            )
 
     if mode == "no-measurement":
         # If no feedback is used, we can just use the initial parameters
         h_initial_state = None
         rnn_model = None
-        trainable_params = get_trainable_parameters(initial_params, param_constrains, num_time_steps, new_sub_key)
+        trainable_params = get_trainable_parameters_for_no_meas(
+            initial_params, param_constraints, num_time_steps, new_sub_key
+        )
         if not (measurement_indices == [] or measurement_indices is None):
             raise ValueError(
                 "You provided a measurement indices, but no feedback is used. Please set mode to 'nn' or 'lookup'."
@@ -469,10 +474,7 @@ def optimize_pulse_with_feedback(
         flat_params, param_shapes = prepare_parameters_from_dict(
             initial_params
         )
-        print("parameter shapes:", param_shapes)
         # Calculate total number of parameters
-        num_of_params = len(jax.tree_util.tree_leaves(initial_params))
-        print("Number of parameters:", num_of_params)
         if mode == "nn":
             hidden_size = rnn_hidden_size
             output_size = num_of_params
@@ -502,6 +504,10 @@ def optimize_pulse_with_feedback(
             num_of_columns = num_of_params
             num_of_sub_lists = len(measurement_indices) * num_time_steps
             F = []
+            param_constraints_reshaped = jnp.array(param_constraints).reshape(
+                -1, 2
+            )
+
             # construct ragged lookup table
             row_key = sub_key
             for i in range(1, num_of_sub_lists + 1):
@@ -510,8 +516,8 @@ def optimize_pulse_with_feedback(
                     construct_ragged_row(
                         num_of_rows=2**i,
                         num_of_columns=num_of_columns,
-                        minval=lookup_min_init_value,
-                        maxval=lookup_max_init_value,
+                        param_constraints=param_constraints_reshaped,
+                        init_flat_params=flat_params,
                         rng_key=row_key,
                     )
                 )
