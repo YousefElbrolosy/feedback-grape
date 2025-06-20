@@ -236,7 +236,7 @@ def get_trainable_parameters_for_no_meas(
     for i in range(num_time_steps - 1):
         gate_params_list = []
         if param_constraints != []:
-            for gate_constraints in zip(param_constraints):
+            for gate_constraints in param_constraints:
                 sampled_params = []
                 for var_bounds in gate_constraints:
                     rng_key, subkey = jax.random.split(rng_key)
@@ -248,8 +248,10 @@ def get_trainable_parameters_for_no_meas(
                     )
                     sampled_params.append(var)
                 gate_params_list.append(jnp.array(sampled_params))
-                trainable_params.append(gate_params_list)
+            trainable_params.append(gate_params_list)
         else:  # TODO: explain those differences in the docs
+            # if no parameter constraints are provided, we just use the initial parameters
+            # for all time steps as initial parameters
             trainable_params.append(flat_params)
 
     return trainable_params
