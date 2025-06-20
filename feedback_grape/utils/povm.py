@@ -61,7 +61,7 @@ def povm(
     rho_cav,
     povm_measure_operator,  # type: ignore
     initial_povm_params,
-    gate_param_constraints, 
+    gate_param_constraints,
     rng_key,
 ):
     """

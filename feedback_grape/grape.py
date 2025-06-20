@@ -41,6 +41,7 @@ class result(NamedTuple):
     Final operator after applying the optimized control amplitudes.
     """
 
+
 class DEFAULTS(Enum):
     C_OPS = []
     MAX_ITER = 1000
@@ -48,6 +49,7 @@ class DEFAULTS(Enum):
     LEARNING_RATE = 0.01
     OPTIMIZER = "adam"
     PROPCOMP = "time-efficient"
+
 
 # TODO: for next 3 functions related to propagator computation, Confirm if for a Lioviliian (superoperator) the same evolution technique
 # can be used or should it be different?

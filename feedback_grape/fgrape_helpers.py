@@ -42,6 +42,7 @@ class RNN(nn.Module):
         # output = jnp.asarray(output)
         return output[0], new_hidden_state
 
+
 class DEFAULTS(Enum):
     BATCH_SIZE = 1
     EVAL_BATCH_SIZE = 10
@@ -50,7 +51,6 @@ class DEFAULTS(Enum):
     RNN_HIDDEN_SIZE = 30
     GOAL = "fidelity"
     DECAY = None
-
 
 
 def clip_params(params, gate_param_constraints):
@@ -71,7 +71,7 @@ def clip_params(params, gate_param_constraints):
     for i, param in enumerate(params):
         min_val, max_val = gate_param_constraints[i]
         within_bounds = (param >= min_val) & (param <= max_val)
-        
+
         # If within bounds, keep original; otherwise apply sigmoid mapping
         sigmoid_mapped = min_val + (max_val - min_val) * jax.nn.sigmoid(param)
         mapped_param = jnp.where(within_bounds, param, sigmoid_mapped)

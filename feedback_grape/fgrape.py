@@ -95,7 +95,6 @@ class Input(NamedTuple):
     """
 
 
-
 def _calculate_time_step(
     *,
     rho_cav,
@@ -153,7 +152,15 @@ def _calculate_time_step(
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
-            rho_final = apply_gate(rho_final, gate, extracted_params[i], type, gate_param_constraints=param_constraints[i] if param_constraints != [] else [])
+            rho_final = apply_gate(
+                rho_final,
+                gate,
+                extracted_params[i],
+                type,
+                gate_param_constraints=param_constraints[i]
+                if param_constraints != []
+                else [],
+            )
             applied_params.append(extracted_params[i])
         return (
             rho_final,
@@ -183,7 +190,13 @@ def _calculate_time_step(
             key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, extracted_lut_params[i], gate_param_constraints=param_constraints[i] if param_constraints != [] else [], rng_key=key
+                    rho_final,
+                    gate,
+                    extracted_lut_params[i],
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else [],
+                    rng_key=key,
                 )
                 measurement_history.append(measurement)
                 applied_params.append(extracted_lut_params[i])
@@ -196,7 +209,15 @@ def _calculate_time_step(
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
-                    rho_final, gate, extracted_lut_params[i], type, gate_param_constraints=param_constraints[i] if param_constraints != [] else [] if param_constraints != [] else []
+                    rho_final,
+                    gate,
+                    extracted_lut_params[i],
+                    type,
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else []
+                    if param_constraints != []
+                    else [],
                 )
                 applied_params.append(extracted_lut_params[i])
 
@@ -230,7 +251,13 @@ def _calculate_time_step(
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, updated_params[i], gate_param_constraints=param_constraints[i] if param_constraints != [] else [], rng_key=key
+                    rho_final,
+                    gate,
+                    updated_params[i],
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else [],
+                    rng_key=key,
                 )
                 applied_params.append(updated_params[i])
                 updated_params, new_hidden_state = rnn_model.apply(
@@ -244,7 +271,13 @@ def _calculate_time_step(
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
-                    rho_final, gate, updated_params[i], type, gate_param_constraints=param_constraints[i] if param_constraints != [] else []
+                    rho_final,
+                    gate,
+                    updated_params[i],
+                    type,
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else [],
                 )
                 applied_params.append(updated_params[i])
 
@@ -464,8 +497,11 @@ def optimize_pulse_with_feedback(
     param_shapes = None
     num_of_params = len(jax.tree_util.tree_leaves(initial_params))
 
-    if(param_constraints != []):
-        if len(jax.tree_util.tree_leaves(param_constraints)) != num_of_params * 2:
+    if param_constraints != []:
+        if (
+            len(jax.tree_util.tree_leaves(param_constraints))
+            != num_of_params * 2
+        ):
             raise TypeError(
                 "Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default."
             )
