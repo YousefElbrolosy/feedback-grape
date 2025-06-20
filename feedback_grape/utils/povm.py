@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from feedback_grape.fgrape_helpers import clip_params
 # ruff: noqa N8
 
 
@@ -60,6 +61,7 @@ def povm(
     rho_cav,
     povm_measure_operator,  # type: ignore
     initial_povm_params,
+    gate_param_constraints, 
     rng_key,
 ):
     """
@@ -73,6 +75,11 @@ def povm(
     Returns:
         tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.
     """
+
+    initial_povm_params = clip_params(
+        initial_povm_params, gate_param_constraints
+    )
+
     prob_plus = _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav, 1, povm_measure_operator, initial_povm_params
     )

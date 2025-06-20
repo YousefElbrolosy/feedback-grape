@@ -87,6 +87,13 @@ class Input(NamedTuple):
     initial_params: list
     measurement_flag: bool
     param_constraints: list
+    # TODO: IMPORTANT Is that what florian wanted?
+    """
+    param_constraints This constraints the initialization of the parameters to be withing the specified range.
+    This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
+    sigmoid function.
+    """
+
 
 
 def _calculate_time_step(
@@ -96,6 +103,7 @@ def _calculate_time_step(
     measurement_indices,
     initial_params,
     param_shapes,
+    param_constraints,
     decay,
     rnn_model=None,
     rnn_params=None,
@@ -145,7 +153,7 @@ def _calculate_time_step(
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
-            rho_final = apply_gate(rho_final, gate, extracted_params[i], type)
+            rho_final = apply_gate(rho_final, gate, extracted_params[i], type, gate_param_constraints=param_constraints[i] if param_constraints != [] else [])
             applied_params.append(extracted_params[i])
         return (
             rho_final,
@@ -175,7 +183,7 @@ def _calculate_time_step(
             key, _ = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, extracted_lut_params[i], key
+                    rho_final, gate, extracted_lut_params[i], gate_param_constraints=param_constraints[i] if param_constraints != [] else [], rng_key=key
                 )
                 measurement_history.append(measurement)
                 applied_params.append(extracted_lut_params[i])
@@ -188,7 +196,7 @@ def _calculate_time_step(
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
-                    rho_final, gate, extracted_lut_params[i], type
+                    rho_final, gate, extracted_lut_params[i], type, gate_param_constraints=param_constraints[i] if param_constraints != [] else [] if param_constraints != [] else []
                 )
                 applied_params.append(extracted_lut_params[i])
 
@@ -222,7 +230,7 @@ def _calculate_time_step(
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, updated_params[i], key
+                    rho_final, gate, updated_params[i], gate_param_constraints=param_constraints[i] if param_constraints != [] else [], rng_key=key
                 )
                 applied_params.append(updated_params[i])
                 updated_params, new_hidden_state = rnn_model.apply(
@@ -236,7 +244,7 @@ def _calculate_time_step(
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
-                    rho_final, gate, updated_params[i], type
+                    rho_final, gate, updated_params[i], type, gate_param_constraints=param_constraints[i] if param_constraints != [] else []
                 )
                 applied_params.append(updated_params[i])
 
@@ -256,6 +264,7 @@ def calculate_trajectory(
     measurement_indices,
     initial_params,
     param_shapes,
+    param_constraints,
     time_steps,
     decay=None,
     rnn_model=None,
@@ -309,6 +318,7 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    param_constraints=param_constraints,
                     decay=decay,
                     initial_params=new_params[i],
                     param_shapes=param_shapes,
@@ -330,6 +340,7 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    param_constraints=param_constraints,
                     decay=decay,
                     initial_params=new_params,
                     param_shapes=param_shapes,
@@ -360,6 +371,7 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    param_constraints=param_constraints,
                     decay=decay,
                     initial_params=new_params,
                     param_shapes=param_shapes,
@@ -573,6 +585,7 @@ def optimize_pulse_with_feedback(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=initial_params_opt,
             param_shapes=param_shapes,
@@ -630,6 +643,7 @@ def optimize_pulse_with_feedback(
         C_target=C_target,
         parameterized_gates=parameterized_gates,
         measurement_indices=measurement_indices,
+        param_constraints=param_constraints,
         decay=decay,
         param_shapes=param_shapes,
         best_model_params=best_model_params,
@@ -681,6 +695,7 @@ def evaluate(
     measurement_indices,
     decay,
     param_shapes,
+    param_constraints,
     best_model_params,
     mode,
     num_time_steps,
@@ -697,6 +712,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=best_model_params,
             param_shapes=param_shapes,
@@ -710,6 +726,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=best_model_params['initial_params'],
             param_shapes=param_shapes,
@@ -726,6 +743,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=best_model_params['initial_params'],
             param_shapes=param_shapes,

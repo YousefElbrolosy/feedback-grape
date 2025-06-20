@@ -52,19 +52,51 @@ class DEFAULTS(Enum):
     DECAY = None
 
 
-def apply_gate(rho_cav, gate, params, type):
+
+def clip_params(params, gate_param_constraints):
     """
-    Apply a gate to the given state, with measurement if needed.
+    Clip the parameters to be within the specified constraints.
+
+    Args:
+        params: Parameters to be clipped.
+        param_constraints: List of tuples specifying (min, max) for each parameter.
+
+    Returns:
+        Clipped parameters.
+    """
+    if not gate_param_constraints:
+        return params
+
+    mapped_params = []
+    for i, param in enumerate(params):
+        min_val, max_val = gate_param_constraints[i]
+        within_bounds = (param >= min_val) & (param <= max_val)
+        
+        # If within bounds, keep original; otherwise apply sigmoid mapping
+        sigmoid_mapped = min_val + (max_val - min_val) * jax.nn.sigmoid(param)
+        mapped_param = jnp.where(within_bounds, param, sigmoid_mapped)
+        mapped_params.append(mapped_param)
+
+    return jnp.array(mapped_params)
+
+
+def apply_gate(rho_cav, gate, params, type, gate_param_constraints):
+    """
+    Apply a gate to the given state. This also clips the parameters
+    to be within the specified constraints specified by the user.
 
     Args:
         rho_cav: Density matrix of the cavity.
         gate: The gate function to apply.
         params: Parameters for the gate.
+        param_constraints: Constraints for the parameters.
+        gate_index: Index of the gate in the system.
 
     Returns:
         tuple: Updated state, measurement result (or None), log probability (or 0.0).
     """
     # For non-measurement gates, apply the gate without measurement
+    params = clip_params(params, gate_param_constraints)
     operator = gate(*params)
     if type == "density":
         rho_meas = operator @ rho_cav @ operator.conj().T
