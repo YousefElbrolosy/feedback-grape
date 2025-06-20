@@ -64,7 +64,7 @@ def clip_params(params, gate_param_constraints):
     Returns:
         Clipped parameters.
     """
-    if not gate_param_constraints:
+    if gate_param_constraints == []:
         return params
 
     mapped_params = []
