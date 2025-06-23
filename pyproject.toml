@@ -17,8 +17,13 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 addopts = "--cov=feedback_grape"
 
+
 testpaths = [
     "tests",
+]
+
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')"
 ]
 
 [tool.ruff]

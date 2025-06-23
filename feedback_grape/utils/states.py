@@ -59,6 +59,6 @@ def coherent(n: int, alpha: complex) -> jnp.ndarray:
 
 def fock(n_cav: int, n: int) -> jnp.ndarray:
     """
-    Creates a Fock state |n_cav⟩ in an n-dimensional Hilbert space.
+    Creates a Fock state `|n_cav⟩` in an n-dimensional Hilbert space.
     """
     return basis(n_cav, n)

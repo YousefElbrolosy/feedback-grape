@@ -33,13 +33,17 @@ then simply import as follows:
    from feedback_grape.utils.states import basis
 
 
-Refer to the documentation to see the full list of available functions in :doc:`grape` and in :doc:`utils`.
+Refer to the documentation to see the full list of available functions in :doc:`grape`, :doc:`fgrape` and in :doc:`utils`.
 
-Click here to get started with some example tutorials: :doc:`tutorials/index`.
+Click here to get started with some example tutorials for GRAPE: :doc:`tutorials/GRAPE-tutorials/index`.
+
+Click here to get started with some example tutorials for feedbackGRAPE: :doc:`tutorials/feedbackGRAPE-tutorials/index`.
 
 .. toctree::
    :caption: Contents:
+   :maxdepth: 2
    
+   fgrape.rst
    grape.rst
    utils.rst
    tutorials/index.rst

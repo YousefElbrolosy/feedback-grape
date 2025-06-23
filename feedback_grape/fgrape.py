@@ -1,12 +1,12 @@
 import jax
 import jax.numpy as jnp
 from typing import List, NamedTuple
-from feedback_grape.utils.solver import mesolve
-from feedback_grape.utils.optimizers import _optimize_adam_feedback
-from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
-from feedback_grape.utils.purity import purity
-from feedback_grape.utils.povm import povm
-from feedback_grape.fgrape_helpers import (
+from .utils.solver import mesolve
+from .utils.optimizers import _optimize_adam_feedback
+from .utils.fidelity import fidelity, is_positive_semi_definite
+from .utils.purity import purity
+from .utils.povm import povm
+from .utils.fgrape_helpers import (
     get_trainable_parameters_for_no_meas,
     prepare_parameters_from_dict,
     convert_system_params,
@@ -83,13 +83,26 @@ class decay(NamedTuple):
 
 
 class Input(NamedTuple):
-    gate: callable
-    initial_params: list
+    """
+    Input class to store the parameters for each gate.
+    """
+
+    gate: callable  # type: ignore
+    """
+    Function that applies the gate to the state.
+    """
+    initial_params: list[float]
+    """
+    Initial parameters for the gate.
+    """
     measurement_flag: bool
-    param_constraints: list
+    """
+    Flag indicating if the gate is used for measurement.
+    """
+    param_constraints: list[float]
     # TODO: IMPORTANT Is that what florian wanted?
     """
-    param_constraints This constraints the initialization of the parameters to be withing the specified range.
+    This constraints the initialization of the parameters to be withing the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
     sigmoid function.
     """
@@ -665,7 +678,7 @@ def optimize_pulse_with_feedback(
 
     train_key, eval_key = jax.random.split(train_eval_key)
 
-    best_model_params, iter_idx = train(
+    best_model_params, iter_idx = _train(
         loss_fn=loss_fn,
         trainable_params=trainable_params,
         max_iter=max_iter,
@@ -674,7 +687,7 @@ def optimize_pulse_with_feedback(
         prng_key=train_key,
     )
 
-    result = evaluate(
+    result = _evaluate(
         U_0=U_0,
         C_target=C_target,
         parameterized_gates=parameterized_gates,
@@ -697,7 +710,7 @@ def optimize_pulse_with_feedback(
     return result
 
 
-def train(
+def _train(
     loss_fn,
     trainable_params,
     prng_key,
@@ -724,7 +737,7 @@ def train(
     return best_model_params, iter_idx
 
 
-def evaluate(
+def _evaluate(
     U_0,
     C_target,
     parameterized_gates,
@@ -743,6 +756,9 @@ def evaluate(
     rnn_model,
     num_iterations,
 ):
+    """
+    Evaluate the model using the best parameters found during training.
+    """
     if mode == "no-measurement":
         rho_final, _, returned_params = calculate_trajectory(
             rho_cav=U_0,

@@ -5,3 +5,4 @@ jax[cuda12]
 optax==0.2.4
 chex==0.1.89
 flax==0.10.6
+dynamiqs==0.3.2
