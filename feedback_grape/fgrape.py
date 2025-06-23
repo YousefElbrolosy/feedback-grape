@@ -110,7 +110,7 @@ def _calculate_time_step(
     lut=None,
     measurement_history=None,
     type,
-    rng_key,
+    time_step_key,
 ):
     """
     Calculate the time step for the optimization process.
@@ -131,7 +131,7 @@ def _calculate_time_step(
 
     # directly within the same time step
     # or new parameters are together within the same time step
-    key = rng_key
+    key = time_step_key
     if decay is not None:
         res, _ = prepare_parameters_from_dict(decay['c_ops'])
 
@@ -187,7 +187,7 @@ def _calculate_time_step(
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
-            key, _ = jax.random.split(key)
+            key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
                     rho_final,
@@ -196,7 +196,7 @@ def _calculate_time_step(
                     gate_param_constraints=param_constraints[i]
                     if param_constraints != []
                     else [],
-                    rng_key=key,
+                    rng_key=subkey,
                 )
                 measurement_history.append(measurement)
                 applied_params.append(extracted_lut_params[i])
@@ -249,6 +249,7 @@ def _calculate_time_step(
                     )
 
             key, subkey = jax.random.split(key)
+            meas_key, dropout_key = jax.random.split(subkey)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
                     rho_final,
@@ -257,14 +258,14 @@ def _calculate_time_step(
                     gate_param_constraints=param_constraints[i]
                     if param_constraints != []
                     else [],
-                    rng_key=key,
+                    rng_key=meas_key,
                 )
                 applied_params.append(updated_params[i])
                 updated_params, new_hidden_state = rnn_model.apply(
                     rnn_params,
                     jnp.array([measurement]),
                     new_hidden_state,
-                    rngs={'dropout': subkey},
+                    rngs={'dropout': dropout_key},
                 )
 
                 updated_params = reshape_params(param_shapes, updated_params)
@@ -329,12 +330,12 @@ def calculate_trajectory(
     """
 
     # Split rng_key into batch_size keys for independent trajectories
-    rng_keys = jax.random.split(rng_key, batch_size)
+    batch_keys = jax.random.split(rng_key, batch_size)
 
     def _calculate_single_trajectory(
-        rng_key,
+        batch_key,
     ):
-        time_step_keys = jax.random.split(rng_key, time_steps)
+        time_step_keys = jax.random.split(batch_key, time_steps)
         resulting_params = []
         rho_final = rho_cav
         total_log_prob = 0.0
@@ -356,7 +357,7 @@ def calculate_trajectory(
                     initial_params=new_params[i],
                     param_shapes=param_shapes,
                     type=type,
-                    rng_key=time_step_keys[i],
+                    time_step_key=time_step_keys[i],
                 )
 
                 resulting_params.append(applied_params)
@@ -380,7 +381,7 @@ def calculate_trajectory(
                     lut=lut,
                     measurement_history=measurement_history,
                     type=type,
-                    rng_key=time_step_keys[i],
+                    time_step_key=time_step_keys[i],
                 )
                 # Thus, during - Refer to Eq(3) in fgrape paper
                 # the individual time-evolution trajectory, this term may
@@ -412,7 +413,7 @@ def calculate_trajectory(
                     rnn_params=rnn_params,
                     rnn_state=new_hidden_state,
                     type=type,
-                    rng_key=time_step_keys[i],
+                    time_step_key=time_step_keys[i],
                 )
 
                 total_log_prob += log_prob
@@ -424,7 +425,7 @@ def calculate_trajectory(
     # Use jax.vmap to vectorize the trajectory calculation for batch_size
     return jax.vmap(
         _calculate_single_trajectory,
-    )(rng_keys)
+    )(batch_keys)
 
 
 def optimize_pulse_with_feedback(
@@ -491,8 +492,8 @@ def optimize_pulse_with_feedback(
     ) = convert_system_params(system_params)
 
     parent_rng_key = jax.random.PRNGKey(0)
-    key, sub_key = jax.random.split(parent_rng_key)
-    sub_key, new_sub_key = jax.random.split(sub_key)
+    train_eval_key, sub_key, rnn_key = jax.random.split(parent_rng_key, 3)
+    row_key, no_meas_key = jax.random.split(sub_key)
     trainable_params = None
     param_shapes = None
     num_of_params = len(jax.tree_util.tree_leaves(initial_params))
@@ -511,7 +512,7 @@ def optimize_pulse_with_feedback(
         h_initial_state = None
         rnn_model = None
         trainable_params = get_trainable_parameters_for_no_meas(
-            initial_params, param_constraints, num_time_steps, new_sub_key
+            initial_params, param_constraints, num_time_steps, no_meas_key
         )
         if not (measurement_indices == [] or measurement_indices is None):
             raise ValueError(
@@ -538,12 +539,12 @@ def optimize_pulse_with_feedback(
             )  # Dummy input for rnn initialization
             trainable_params = {
                 'rnn_params': rnn_model.init(
-                    parent_rng_key, dummy_input, h_initial_state
+                    rnn_key, dummy_input, h_initial_state
                 ),
                 'initial_params': flat_params,
             }
             # trainable_params = rnn_model.init(
-            #     parent_rng_key, dummy_input, h_initial_state
+            #     rnn_key, dummy_input, h_initial_state
             # )
         elif mode == "lookup":
             h_initial_state = None
@@ -557,16 +558,15 @@ def optimize_pulse_with_feedback(
             )
 
             # construct ragged lookup table
-            row_key = sub_key
             for i in range(1, num_of_sub_lists + 1):
-                row_key, _ = jax.random.split(row_key)
+                row_key, row_sub_key = jax.random.split(row_key)
                 F.append(
                     construct_ragged_row(
                         num_of_rows=2**i,
                         num_of_columns=num_of_columns,
                         param_constraints=param_constraints_reshaped,
                         init_flat_params=flat_params,
-                        rng_key=row_key,
+                        rng_key=row_sub_key,
                     )
                 )
             # step 2: pad the arrays to have the same number of rows
@@ -663,7 +663,7 @@ def optimize_pulse_with_feedback(
 
         return loss1 + loss2
 
-    train_key, eval_key = jax.random.split(key)
+    train_key, eval_key = jax.random.split(train_eval_key)
 
     best_model_params, iter_idx = train(
         loss_fn=loss_fn,
