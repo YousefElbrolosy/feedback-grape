@@ -742,6 +742,7 @@ def test_example_C():
     )
 
 
+@pytest.mark.slow
 def test_example_D():
     """
     This test tests if the max fidelity reached by example_C is above 0.9
