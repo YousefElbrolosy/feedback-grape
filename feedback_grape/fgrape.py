@@ -63,6 +63,7 @@ class decay(NamedTuple):
     """
     decay class to store the decay parameters.
     """
+
     c_ops: List[jnp.ndarray]
     """
     Collapse operators for the decay process.
@@ -85,6 +86,7 @@ class Input(NamedTuple):
     """
     Input class to store the parameters for each gate.
     """
+
     gate: callable  # type: ignore
     """
     Function that applies the gate to the state.
