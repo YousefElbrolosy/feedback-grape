@@ -1,18 +1,20 @@
 import jax
 import jax.numpy as jnp
 from typing import List, NamedTuple
-from feedback_grape.utils.optimizers import _optimize_adam_feedback
 from feedback_grape.utils.solver import mesolve
+from feedback_grape.utils.optimizers import _optimize_adam_feedback
 from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
 from feedback_grape.utils.purity import purity
 from feedback_grape.utils.povm import povm
 from feedback_grape.fgrape_helpers import (
+    get_trainable_parameters_for_no_meas,
     prepare_parameters_from_dict,
+    convert_system_params,
     construct_ragged_row,
     extract_from_lut,
     reshape_params,
     apply_gate,
-    RNN,
+    DEFAULTS,
 )
 
 # TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
@@ -80,6 +82,19 @@ class decay(NamedTuple):
     """
 
 
+class Input(NamedTuple):
+    gate: callable
+    initial_params: list
+    measurement_flag: bool
+    param_constraints: list
+    # TODO: IMPORTANT Is that what florian wanted?
+    """
+    param_constraints This constraints the initialization of the parameters to be withing the specified range.
+    This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
+    sigmoid function.
+    """
+
+
 def _calculate_time_step(
     *,
     rho_cav,
@@ -87,6 +102,7 @@ def _calculate_time_step(
     measurement_indices,
     initial_params,
     param_shapes,
+    param_constraints,
     decay,
     rnn_model=None,
     rnn_params=None,
@@ -94,7 +110,7 @@ def _calculate_time_step(
     lut=None,
     measurement_history=None,
     type,
-    rng_key,
+    time_step_key,
 ):
     """
     Calculate the time step for the optimization process.
@@ -113,10 +129,9 @@ def _calculate_time_step(
     # TODO: throw error based on content of decay indices here
     # if not (decay_indices is None or decay_indices == []):
 
-    # TODO: IMP - See which is the more correct, should new params be propagated
     # directly within the same time step
     # or new parameters are together within the same time step
-    key = rng_key
+    key = time_step_key
     if decay is not None:
         res, _ = prepare_parameters_from_dict(decay['c_ops'])
 
@@ -137,7 +152,15 @@ def _calculate_time_step(
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
-            rho_final = apply_gate(rho_final, gate, extracted_params[i], type)
+            rho_final = apply_gate(
+                rho_final,
+                gate,
+                extracted_params[i],
+                type,
+                gate_param_constraints=param_constraints[i]
+                if param_constraints != []
+                else [],
+            )
             applied_params.append(extracted_params[i])
         return (
             rho_final,
@@ -164,10 +187,16 @@ def _calculate_time_step(
                         rho0=rho_final,
                         tsave=decay['tsave'],
                     )
-            key, _ = jax.random.split(key)
+            key, subkey = jax.random.split(key)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, extracted_lut_params[i], key
+                    rho_final,
+                    gate,
+                    extracted_lut_params[i],
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else [],
+                    rng_key=subkey,
                 )
                 measurement_history.append(measurement)
                 applied_params.append(extracted_lut_params[i])
@@ -180,7 +209,15 @@ def _calculate_time_step(
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
-                    rho_final, gate, extracted_lut_params[i], type
+                    rho_final,
+                    gate,
+                    extracted_lut_params[i],
+                    type,
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else []
+                    if param_constraints != []
+                    else [],
                 )
                 applied_params.append(extracted_lut_params[i])
 
@@ -212,23 +249,36 @@ def _calculate_time_step(
                     )
 
             key, subkey = jax.random.split(key)
+            meas_key, dropout_key = jax.random.split(subkey)
             if i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
-                    rho_final, gate, updated_params[i], key
+                    rho_final,
+                    gate,
+                    updated_params[i],
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else [],
+                    rng_key=meas_key,
                 )
                 applied_params.append(updated_params[i])
                 updated_params, new_hidden_state = rnn_model.apply(
                     rnn_params,
                     jnp.array([measurement]),
                     new_hidden_state,
-                    rngs={'dropout': subkey},
+                    rngs={'dropout': dropout_key},
                 )
 
                 updated_params = reshape_params(param_shapes, updated_params)
                 total_log_prob += log_prob
             else:
                 rho_final = apply_gate(
-                    rho_final, gate, updated_params[i], type
+                    rho_final,
+                    gate,
+                    updated_params[i],
+                    type,
+                    gate_param_constraints=param_constraints[i]
+                    if param_constraints != []
+                    else [],
                 )
                 applied_params.append(updated_params[i])
 
@@ -248,6 +298,7 @@ def calculate_trajectory(
     measurement_indices,
     initial_params,
     param_shapes,
+    param_constraints,
     time_steps,
     decay=None,
     rnn_model=None,
@@ -279,12 +330,12 @@ def calculate_trajectory(
     """
 
     # Split rng_key into batch_size keys for independent trajectories
-    rng_keys = jax.random.split(rng_key, batch_size)
+    batch_keys = jax.random.split(rng_key, batch_size)
 
     def _calculate_single_trajectory(
-        rng_key,
+        batch_key,
     ):
-        time_step_keys = jax.random.split(rng_key, time_steps)
+        time_step_keys = jax.random.split(batch_key, time_steps)
         resulting_params = []
         rho_final = rho_cav
         total_log_prob = 0.0
@@ -301,11 +352,12 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    param_constraints=param_constraints,
                     decay=decay,
                     initial_params=new_params[i],
                     param_shapes=param_shapes,
                     type=type,
-                    rng_key=time_step_keys[i],
+                    time_step_key=time_step_keys[i],
                 )
 
                 resulting_params.append(applied_params)
@@ -322,13 +374,14 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    param_constraints=param_constraints,
                     decay=decay,
                     initial_params=new_params,
                     param_shapes=param_shapes,
                     lut=lut,
                     measurement_history=measurement_history,
                     type=type,
-                    rng_key=time_step_keys[i],
+                    time_step_key=time_step_keys[i],
                 )
                 # Thus, during - Refer to Eq(3) in fgrape paper
                 # the individual time-evolution trajectory, this term may
@@ -352,6 +405,7 @@ def calculate_trajectory(
                     rho_cav=rho_final,
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
+                    param_constraints=param_constraints,
                     decay=decay,
                     initial_params=new_params,
                     param_shapes=param_shapes,
@@ -359,7 +413,7 @@ def calculate_trajectory(
                     rnn_params=rnn_params,
                     rnn_state=new_hidden_state,
                     type=type,
-                    rng_key=time_step_keys[i],
+                    time_step_key=time_step_keys[i],
                 )
 
                 total_log_prob += log_prob
@@ -371,29 +425,25 @@ def calculate_trajectory(
     # Use jax.vmap to vectorize the trajectory calculation for batch_size
     return jax.vmap(
         _calculate_single_trajectory,
-    )(rng_keys)
+    )(batch_keys)
 
 
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
-    parameterized_gates: list[callable],  # type: ignore
-    initial_params: dict[str, list[float | complex]],
+    system_params: list[Input],
     num_time_steps: int,
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
     type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
-    goal: str = "fidelity",  # purity, fidelity, both
-    batch_size: int = 1,
-    eval_batch_size: int = 10,
-    mode: str = "lookup",  # nn, lookup
-    lookup_min_init_value: float = 0.0,
-    lookup_max_init_value: float = jnp.pi,
-    measurement_indices: list[int] = [],
-    decay: decay | None = None,
-    rnn: callable = RNN,  # type: ignore
-    rnn_hidden_size: int = 30,
+    goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
+    batch_size: int = DEFAULTS.BATCH_SIZE.value,
+    eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
+    mode: str = DEFAULTS.MODE.value,  # nn, lookup
+    decay: decay | None = DEFAULTS.DECAY.value,
+    rnn: callable = DEFAULTS.RNN.value,  # type: ignore
+    rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -401,8 +451,7 @@ def optimize_pulse_with_feedback(
     Args:
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
-        parameterized_gates (list[callable]): A list of parameterized gate functions to be optimized.
-        initial_params (jnp.ndarray): Initial parameters for the parameterized gates.
+        system_params: List of Input objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
@@ -412,7 +461,6 @@ def optimize_pulse_with_feedback(
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
-        measurement_indices (list[int]): Indices of the parameterized gates that are used for measurements.
         decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
         rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
@@ -427,26 +475,45 @@ def optimize_pulse_with_feedback(
     if (
         goal in ["fidelity", "both"]
         and type == "density"
-        and
-        (
+        and (
             not is_positive_semi_definite(U_0)
             or not is_positive_semi_definite(C_target)
         )
     ):
         raise TypeError(
-            'your initial and target rhos must be positive semi-definite.'
+            'Your initial and target rhos must be positive semi-definite.'
         )
-    parent_rng_key = jax.random.PRNGKey(0)
-    key, sub_key = jax.random.split(parent_rng_key)
 
+    (
+        initial_params,
+        parameterized_gates,
+        measurement_indices,
+        param_constraints,
+    ) = convert_system_params(system_params)
+
+    parent_rng_key = jax.random.PRNGKey(0)
+    train_eval_key, sub_key, rnn_key = jax.random.split(parent_rng_key, 3)
+    row_key, no_meas_key = jax.random.split(sub_key)
     trainable_params = None
     param_shapes = None
+    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
+
+    if param_constraints != []:
+        if (
+            len(jax.tree_util.tree_leaves(param_constraints))
+            != num_of_params * 2
+        ):
+            raise TypeError(
+                "Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default."
+            )
 
     if mode == "no-measurement":
         # If no feedback is used, we can just use the initial parameters
         h_initial_state = None
         rnn_model = None
-        trainable_params = initial_params
+        trainable_params = get_trainable_parameters_for_no_meas(
+            initial_params, param_constraints, num_time_steps, no_meas_key
+        )
         if not (measurement_indices == [] or measurement_indices is None):
             raise ValueError(
                 "You provided a measurement indices, but no feedback is used. Please set mode to 'nn' or 'lookup'."
@@ -456,10 +523,7 @@ def optimize_pulse_with_feedback(
         flat_params, param_shapes = prepare_parameters_from_dict(
             initial_params
         )
-        print("parameter shapes:", param_shapes)
         # Calculate total number of parameters
-        num_of_params = len(jax.tree_util.tree_leaves(initial_params))
-        print("Number of parameters:", num_of_params)
         if mode == "nn":
             hidden_size = rnn_hidden_size
             output_size = num_of_params
@@ -475,12 +539,12 @@ def optimize_pulse_with_feedback(
             )  # Dummy input for rnn initialization
             trainable_params = {
                 'rnn_params': rnn_model.init(
-                    parent_rng_key, dummy_input, h_initial_state
+                    rnn_key, dummy_input, h_initial_state
                 ),
                 'initial_params': flat_params,
             }
             # trainable_params = rnn_model.init(
-            #     parent_rng_key, dummy_input, h_initial_state
+            #     rnn_key, dummy_input, h_initial_state
             # )
         elif mode == "lookup":
             h_initial_state = None
@@ -489,17 +553,20 @@ def optimize_pulse_with_feedback(
             num_of_columns = num_of_params
             num_of_sub_lists = len(measurement_indices) * num_time_steps
             F = []
+            param_constraints_reshaped = jnp.array(param_constraints).reshape(
+                -1, 2
+            )
+
             # construct ragged lookup table
-            row_key = sub_key
             for i in range(1, num_of_sub_lists + 1):
-                row_key, _ = jax.random.split(row_key)
+                row_key, row_sub_key = jax.random.split(row_key)
                 F.append(
                     construct_ragged_row(
                         num_of_rows=2**i,
                         num_of_columns=num_of_columns,
-                        minval=lookup_min_init_value,
-                        maxval=lookup_max_init_value,
-                        rng_key=row_key,
+                        param_constraints=param_constraints_reshaped,
+                        init_flat_params=flat_params,
+                        rng_key=row_sub_key,
                     )
                 )
             # step 2: pad the arrays to have the same number of rows
@@ -520,8 +587,6 @@ def optimize_pulse_with_feedback(
                 "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
             )
 
-    # TODO: see if we need the log prob term
-    # TODO: see if we need to implement stochastic sampling instead
     # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
     # the log prob or not? ( like in porroti's implementation )?
     def loss_fn(trainable_params, rng_key):
@@ -556,6 +621,7 @@ def optimize_pulse_with_feedback(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=initial_params_opt,
             param_shapes=param_shapes,
@@ -597,7 +663,7 @@ def optimize_pulse_with_feedback(
 
         return loss1 + loss2
 
-    train_key, eval_key = jax.random.split(key)
+    train_key, eval_key = jax.random.split(train_eval_key)
 
     best_model_params, iter_idx = train(
         loss_fn=loss_fn,
@@ -613,6 +679,7 @@ def optimize_pulse_with_feedback(
         C_target=C_target,
         parameterized_gates=parameterized_gates,
         measurement_indices=measurement_indices,
+        param_constraints=param_constraints,
         decay=decay,
         param_shapes=param_shapes,
         best_model_params=best_model_params,
@@ -664,6 +731,7 @@ def evaluate(
     measurement_indices,
     decay,
     param_shapes,
+    param_constraints,
     best_model_params,
     mode,
     num_time_steps,
@@ -680,6 +748,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=best_model_params,
             param_shapes=param_shapes,
@@ -693,6 +762,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=best_model_params['initial_params'],
             param_shapes=param_shapes,
@@ -709,6 +779,7 @@ def evaluate(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
+            param_constraints=param_constraints,
             decay=decay,
             initial_params=best_model_params['initial_params'],
             param_shapes=param_shapes,

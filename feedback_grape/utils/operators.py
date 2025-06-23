@@ -5,7 +5,6 @@ used to generate hamiltonians and unitary transformations.
 gates.py are more predefined in terms of dimensions I think?
 """
 
-# TODO : see if we should give user ability to choose the dtype of the gates
 # TODO : see if we should jit the operators
 
 import jax
@@ -47,8 +46,6 @@ def sigmam(dtype=jnp.complex128):
     return jnp.array([[0, 0], [1, 0]], dtype=dtype)
 
 
-# TODO : check for exact dimensions since dynamiqs and qutip support nested
-# TODO : Hilbert space dimensions and so on.
 def identity(dimensions, *, dtype=jnp.complex128):
     """
     Identity operator.
@@ -90,7 +87,6 @@ def destroy(n: int, dtype: jnp.dtype = jnp.complex128) -> jnp.ndarray:  # type: 
     return _ladder(n, dagger=False, dtype=dtype)
 
 
-# TODO: test with dynamiqs version
 def cosm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Cosine of a matrix.
@@ -98,7 +94,6 @@ def cosm(a: jnp.ndarray) -> jnp.ndarray:
     return (jax.scipy.linalg.expm(1j * a) + jax.scipy.linalg.expm(-1j * a)) / 2
 
 
-# TODO: test with dynamiqs version
 def sinm(a: jnp.ndarray) -> jnp.ndarray:
     """
     Sine of a matrix.

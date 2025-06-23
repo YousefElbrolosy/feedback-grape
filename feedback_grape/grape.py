@@ -3,6 +3,7 @@ Gradient Ascent Pulse Engineering (GRAPE)
 """
 
 # ruff: noqa N8
+from enum import Enum
 import jax
 from typing import NamedTuple
 import jax.numpy as jnp
@@ -41,9 +42,17 @@ class result(NamedTuple):
     """
 
 
-# TODO: for next 3 functions related to propagator computation
-# TODO: Confirm if for a Lioviliian (superoperator) the same evolution technique
-# TODO: can be used or should it be different?
+class DEFAULTS(Enum):
+    C_OPS = []
+    MAX_ITER = 1000
+    CONVERGENCE_THRESHOLD = 1e-6
+    LEARNING_RATE = 0.01
+    OPTIMIZER = "adam"
+    PROPCOMP = "time-efficient"
+
+
+# TODO: for next 3 functions related to propagator computation, Confirm if for a Lioviliian (superoperator) the same evolution technique
+# can be used or should it be different?
 def _compute_propagators(
     H_drift,
     H_control_array,
@@ -172,8 +181,6 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     )
 
 
-# TODO: hyperparameter search space for finding best set of hyper paramters (Bayesian optimization)
-# TODO: see if we need to implement purity functionality for normal grape as well
 # TODO: make sure you make it require positional parameters
 def optimize_pulse(
     H_drift: jnp.ndarray,
@@ -182,13 +189,13 @@ def optimize_pulse(
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
-    c_ops: list[jnp.ndarray] = [],
-    max_iter: int = 1000,
-    convergence_threshold: float = 1e-6,
-    learning_rate: float = 0.01,
-    type: str = "unitary",
-    optimizer: str = "adam",
-    propcomp: str = "time-efficient",
+    type: str,
+    c_ops: list[jnp.ndarray] = DEFAULTS.C_OPS.value,
+    max_iter: int = DEFAULTS.MAX_ITER.value,
+    convergence_threshold: float = DEFAULTS.CONVERGENCE_THRESHOLD.value,
+    learning_rate: float = DEFAULTS.OPTIMIZER.value,
+    optimizer: str = DEFAULTS.OPTIMIZER.value,
+    propcomp: str = DEFAULTS.PROPCOMP.value,
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
