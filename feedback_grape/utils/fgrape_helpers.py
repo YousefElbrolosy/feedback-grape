@@ -1,6 +1,6 @@
 import jax
 import numpy as np
-from enum import Enum, auto
+from enum import Enum
 import flax.linen as nn
 import jax.numpy as jnp
 # ruff: noqa N8

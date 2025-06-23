@@ -11,7 +11,7 @@ tox-gh-actions==3.3.0
 ruff==0.11.2
 # for documentation
 sphinx==8.2.3
-sphinx_rtd_theme==3.0.2
+sphinx-book-theme==1.1.4
 nbsphinx==0.9.6
 # pre-commit
 pre-commit==4.2.0
@@ -22,3 +22,5 @@ qutip_qtrl==0.1.5
 qutip_qip==0.4.1
 # for lexer (showing python code in the notebook)
 ipython==9.1.0
+sphinx-design==0.6.1
+myst_nb==1.2.0

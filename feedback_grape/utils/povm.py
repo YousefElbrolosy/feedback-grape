@@ -1,6 +1,6 @@
 import jax
 import jax.numpy as jnp
-from feedback_grape.fgrape_helpers import clip_params
+from .fgrape_helpers import clip_params
 # ruff: noqa N8
 
 

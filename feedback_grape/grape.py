@@ -8,13 +8,12 @@ import jax
 from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
-from functools import partial
-from feedback_grape.utils.optimizers import (
+from .utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,
 )
-from feedback_grape.utils.fidelity import fidelity, is_positive_semi_definite
-from feedback_grape.utils.solver import mesolve, sesolve
+from .utils.fidelity import fidelity, is_positive_semi_definite
+from .utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
 
@@ -42,7 +41,7 @@ class result(NamedTuple):
     """
 
 
-class DEFAULTS(Enum):
+class _DEFAULTS(Enum):
     C_OPS = []  # type: ignore
     MAX_ITER = 1000
     CONVERGENCE_THRESHOLD = 1e-6
@@ -190,12 +189,12 @@ def optimize_pulse(
     num_t_slots: int,
     total_evo_time: float,
     type: str,
-    c_ops: list[jnp.ndarray] = DEFAULTS.C_OPS.value,
-    max_iter: int = DEFAULTS.MAX_ITER.value,
-    convergence_threshold: float = DEFAULTS.CONVERGENCE_THRESHOLD.value,
-    learning_rate: float = DEFAULTS.LEARNING_RATE.value,
-    optimizer: str = DEFAULTS.OPTIMIZER.value,
-    propcomp: str = DEFAULTS.PROPCOMP.value,
+    c_ops: list[jnp.ndarray] = _DEFAULTS.C_OPS.value,
+    max_iter: int = _DEFAULTS.MAX_ITER.value,
+    convergence_threshold: float = _DEFAULTS.CONVERGENCE_THRESHOLD.value,
+    learning_rate: float = _DEFAULTS.LEARNING_RATE.value,
+    optimizer: str = _DEFAULTS.OPTIMIZER.value,
+    propcomp: str = _DEFAULTS.PROPCOMP.value,
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
