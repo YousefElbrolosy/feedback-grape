@@ -1,66 +1,117 @@
-def example_B_body():
-    # B. State purification with qubit-mediated measurement
-    # ruff: noqa
+# examples B,C,E are not tested because they take a lot of time to run
+# ruff: noqa
+def example_A_body():
     from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.utils.operators import (
+        sigmap,
+        sigmam,
+        create,
+        destroy,
+        identity,
+    )
+    from feedback_grape.utils.states import basis, fock
+    from feedback_grape.utils.tensor import tensor
     import jax.numpy as jnp
+    from jax.scipy.linalg import expm
 
-    ## The cavity is initially in a  mixed state --> Goal is to purify the state
-    # initial state is a thermal state
-    n_average = 2
-    N_cavity = 30
-    # natural logarithm
-    beta = jnp.log((1 / n_average) + 1)
-    diags = jnp.exp(-beta * jnp.arange(N_cavity))
-    normalized_diags = diags / jnp.sum(diags, axis=0)
-    rho_cav = jnp.diag(normalized_diags)
-    ## Next Step is to construct our POVM
-    from feedback_grape.utils.operators import cosm, sinm
-    from feedback_grape.utils.operators import create, destroy
+    N_cav = 30
 
-    def povm_measure_operator(measurement_outcome, gamma, delta):
-        """
-        POVM for the measurement of the cavity state.
-        returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
-        """
-        number_operator = create(N_cavity) @ destroy(N_cavity)
-        angle = (gamma * number_operator) + delta / 2
-        return jnp.where(
-            measurement_outcome == 1,
-            cosm(angle),
-            sinm(angle),
+
+
+    def qubit_unitary(alpha_re, alpha_im):
+        alpha = alpha_re + 1j * alpha_im
+        return tensor(
+            identity(N_cav),
+            expm(-1j * (alpha * sigmap() + alpha.conjugate() * sigmam()) / 2),
         )
 
-    initial_params = {
-        "POVM": [0.1, -3 * jnp.pi / 2],
+
+
+    def qubit_cavity_unitary(beta_re):
+        beta = beta_re
+        return expm(
+            -1j
+            * (
+                beta * (tensor(destroy(N_cav), sigmap()))
+                + beta.conjugate() * (tensor(create(N_cav), sigmam()))
+            )
+            / 2
+        )
+
+    time_steps = 5
+
+    psi0 = tensor(basis(N_cav), basis(2))
+    psi0 = psi0 / jnp.linalg.norm(psi0)
+    psi_target = tensor((fock(N_cav, 1) + fock(N_cav, 3)) / jnp.sqrt(2), basis(2))
+    psi_target = psi_target / jnp.linalg.norm(psi_target)
+
+
+
+
+
+
+    from feedback_grape.utils.fidelity import ket2dm
+    import jax
+
+    key = jax.random.PRNGKey(42)
+    # not provideing param_constraints just propagates the same initial_parameters for each time step
+    qub_unitary = {
+        "gate": qubit_unitary,
+        "initial_params": jax.random.uniform(
+            key,
+            shape=(1, 2),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        )[0].tolist(),
+        "measurement_flag": False,
+        "param_constraints": [
+            [-2 * jnp.pi, 2 * jnp.pi],
+            [-2 * jnp.pi, 2 * jnp.pi],
+        ],
     }
+
+    qub_cav = {
+        "gate": qubit_cavity_unitary,
+        "initial_params": jax.random.uniform(
+            key,
+            shape=(1, 1),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        )[0].tolist(),
+        "measurement_flag": False,
+        "param_constraints": [[-2 * jnp.pi, 2 * jnp.pi]],
+    }
+
+    system_params = [qub_unitary, qub_cav]
+
+
     result = optimize_pulse_with_feedback(
-        U_0=rho_cav,
-        C_target=rho_cav,
-        parameterized_gates=[povm_measure_operator],
-        measurement_indices=[0],
-        initial_params=initial_params,
-        num_time_steps=5,
-        mode="lookup",
-        goal="purity",
-        optimizer="adam",
+        U_0=ket2dm(psi0),
+        C_target=ket2dm(psi_target),
+        system_params=system_params,
+        num_time_steps=time_steps,
         max_iter=1000,
-        convergence_threshold=1e-20,
-        learning_rate=0.01,
+        convergence_threshold=1e-16,
         type="density",
+        mode="no-measurement",
+        goal="fidelity",
+        learning_rate=0.02,
         batch_size=10,
+        eval_batch_size=2,
     )
-    from feedback_grape.utils.purity import purity
 
-    for i, state in enumerate(result.final_state):
-        purity_value = purity(rho=state)
-        print(f"Purity of state {i}: {purity_value}")
-        if purity_value > 0.99:
-            return True
-    return False
+    if (result.final_fidelity > 0.99):
+        return True
+    else:
+        print(f"Final fidelity: {result.final_fidelity}")
+        return False
 
 
-def example_C_body():
-    # ruff: noqa
+def example_D_body():
+
+    no_dissipation_flag = False
+    dissipation_flag = False
+
     from feedback_grape.fgrape import optimize_pulse_with_feedback
     from feedback_grape.utils.operators import (
         sigmap,
@@ -74,40 +125,31 @@ def example_C_body():
     from feedback_grape.utils.states import basis, fock
     from feedback_grape.utils.tensor import tensor
     import jax.numpy as jnp
+    import jax
     from jax.scipy.linalg import expm
 
-    ## defining parameterized operations that are repeated num_time_steps times
-    N_cav = 20
+    N_cav = 30
 
-    def qubit_unitary(alpha):
+    def qubit_unitary(alpha_re):
+        alpha = alpha_re
+        return tensor(
+            identity(N_cav),
+            expm(-1j * (alpha * sigmap() + alpha.conjugate() * sigmam()) / 2),
+        )
+
+    def qubit_cavity_unitary(beta_re):
+        beta = beta_re
         return expm(
             -1j
             * (
-                alpha * tensor(identity(N_cav), sigmap())
-                + alpha.conjugate() * tensor(identity(N_cav), sigmam())
+                beta * (tensor(destroy(N_cav), sigmap()))
+                + beta.conjugate() * (tensor(create(N_cav), sigmam()))
             )
             / 2
         )
-
-    def qubit_cavity_unitary(beta):
-        return expm(
-            -1j
-            * (
-                beta
-                * (
-                    tensor(destroy(N_cav), identity(2))
-                    @ tensor(identity(N_cav), sigmap())
-                )
-                + beta.conjugate()
-                * (
-                    tensor(create(N_cav), identity(2))
-                    @ tensor(identity(N_cav), sigmam())
-                )
-            )
-            / 2
-        )
-
+    
     from feedback_grape.utils.operators import create, destroy
+
 
     def povm_measure_operator(measurement_outcome, gamma, delta):
         """
@@ -122,91 +164,116 @@ def example_C_body():
             sinm(angle),
         )
         return meas_op
+    
 
-    ### defining initial (thermal) state
-    # initial state is a thermal state coupled to a qubit in the ground state?
-    n_average = 1
-    # natural logarithm
-    beta = jnp.log((1 / n_average) + 1)
-    diags = jnp.exp(-beta * jnp.arange(N_cav))
-    normalized_diags = diags / jnp.sum(diags, axis=0)
-    rho_cav = jnp.diag(normalized_diags)
-    rho_cav.shape
-    rho0 = tensor(rho_cav, basis(2, 0) @ basis(2, 0).conj().T)
+    from feedback_grape.utils.states import coherent
 
-    ### defining target state
+    alpha = 3
     psi_target = tensor(
-        (fock(N_cav, 1) + fock(N_cav, 2) + fock(N_cav, 3)) / jnp.sqrt(3),
+        coherent(N_cav, alpha)
+        + coherent(N_cav, -alpha)
+        + coherent(N_cav, 1j * alpha)
+        + coherent(N_cav, -1j * alpha),
         basis(2),
-    )
+    )  # 4-legged state
 
+    # Normalize psi_target before constructing rho_target
+    psi_target = psi_target / jnp.linalg.norm(psi_target)
     rho_target = psi_target @ psi_target.conj().T
-    rho_target.shape
-    from feedback_grape.utils.fidelity import fidelity
 
-    ### initialize random params
-    num_time_steps = 5
-    num_of_iterations = 1000
-    learning_rate = 0.05
-    # avg_photon_numer = 2 When testing kitten state
+    # Here the loss directly corressponds to the -fidelity (when converging) because log(1) is 0 and
 
-    initial_params = {
-        "POVM": [jnp.pi / 3, jnp.pi / 3],
-        "U_q": [jnp.pi / 3],
-        "U_qc": [jnp.pi / 3],
+    # the algorithm is choosing params that makes the POVM generate prob = 1
+    measure = {
+        "gate": povm_measure_operator,
+        "initial_params": [0.058, jnp.pi / 2],  # gamma and delta
+        "measurement_flag": True,
+        # "param_constraints": [[0, 0.5], [-1, 1]],
     }
 
+    qub_unitary = {
+        "gate": qubit_unitary,
+        "initial_params": [jnp.pi / 3],
+        "measurement_flag": False,
+        # "param_constraints": [[0, 0.5], [-1, 1]],
+    }
+
+    qub_cav = {
+        "gate": qubit_cavity_unitary,
+        "initial_params": [jnp.pi / 3],
+        "measurement_flag": False,
+        # "param_constraints": [[0, 0.5], [-1, 1]],
+    }
+
+    system_params = [measure, qub_unitary, qub_cav]
     result = optimize_pulse_with_feedback(
-        U_0=rho0,
+        U_0=rho_target,
         C_target=rho_target,
-        parameterized_gates=[
-            povm_measure_operator,
-            qubit_unitary,
-            qubit_cavity_unitary,
-        ],
-        measurement_indices=[0],
-        initial_params=initial_params,
-        num_time_steps=num_time_steps,
+        system_params=system_params,
+        num_time_steps=1,
         mode="lookup",
         goal="fidelity",
-        optimizer="adam",
-        max_iter=num_of_iterations,
-        convergence_threshold=1e-20,
-        learning_rate=learning_rate,
+        max_iter=1000,
+        convergence_threshold=1e-16,
+        learning_rate=0.02,
         type="density",
-        batch_size=10,
+        batch_size=1,
     )
-    for i, state in enumerate(result.final_state):
-        fidelity_value = fidelity(
-            C_target=rho_target, U_final=state, type="density"
+
+    if (result.final_fidelity > 0.99):
+        no_dissipation_flag = True
+    
+    # Now we add dissipation
+
+    result = optimize_pulse_with_feedback(
+        U_0=rho_target,
+        C_target=rho_target,
+        decay={
+            "decay_indices": [0],
+            "c_ops": {
+                "tm": [tensor(identity(N_cav), jnp.sqrt(0.15) * sigmam())],
+            },
+            "tsave": jnp.linspace(0, 1, 2),  # time grid for decay
+            "Hamiltonian": None,
+        },
+        system_params=system_params,
+        num_time_steps=1,
+        mode="lookup",
+        goal="fidelity",
+        max_iter=1000,
+        convergence_threshold=1e-6,
+        learning_rate=0.02,
+        type="density",
+        batch_size=1,
+    )
+
+    if (result.final_fidelity < 0.99):
+        dissipation_flag = True
+    
+
+    if no_dissipation_flag and dissipation_flag:
+        return True
+    else:
+        print(
+            f"Final fidelity without dissipation: {result.final_fidelity}, with dissipation: {result.final_fidelity}"
         )
-        print(f"Fidelity of state {i}: {fidelity_value}")
-
-        if fidelity_value > 0.9:
-            return True
-    return False
+        return False
 
 
-# TODO: if this is wrong interpretation and avg fidelity should be 0.99, then change the test accordingly
-def test_example_B():
+# test normal state preparation using parameterized grape
+def test_example_A():
     """
     This test tests if the max fidelity reached by example_B is above 0.99
     """
-    # Example assertion, replace with actual test logic
-    assert example_B_body(), (
-        "The max fidelity reached by example_B for batch size 10 is below 0.99"
+    assert example_A_body(), (
+        "The max fidelity reached by example_A for batch size 10 and eval_batch_size 2 is below 0.99"
     )
 
 
-def test_example_C():
+def test_example_D():
     """
     This test tests if the max fidelity reached by example_C is above 0.9
     """
-    # Example assertion, replace with actual test logic
-    # assert example_C_body(), (
-    #     "The max fidelity reached by example_C for batch size 10 is below 0.9"
-    # )
-    pass  # TODO: this test reaches high fidelity on some hardware and not on others.
-    # this is because of the fact that the current configuration does not lead to convergence therefore
-    # the results are not stable accross different platforms which may have problems with different
-    # numerical approximations.
+    assert example_D_body(), (
+        "The max fidelity reached by example_D is not within expected range (>0.99 for no dissipation and below 0.99 for dissipation)."
+    )
