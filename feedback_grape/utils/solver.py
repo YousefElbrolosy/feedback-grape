@@ -5,7 +5,8 @@ Module for solving the time-dependent Schrödinger equation and master equation
 # ruff: noqa N8
 import jax
 import jax.numpy as jnp
-from feedback_grape.utils.superoperator import lindblad
+
+# from feedback_grape.utils.superoperator import lindblad
 from dynamiqs import mesolve as mesolve_dynamiqs
 from feedback_grape.utils.operators import identity
 import dynamiqs as dq

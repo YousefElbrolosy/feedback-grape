@@ -43,7 +43,7 @@ class result(NamedTuple):
 
 
 class DEFAULTS(Enum):
-    C_OPS = []
+    C_OPS = []  # type: ignore
     MAX_ITER = 1000
     CONVERGENCE_THRESHOLD = 1e-6
     LEARNING_RATE = 0.01
@@ -193,7 +193,7 @@ def optimize_pulse(
     c_ops: list[jnp.ndarray] = DEFAULTS.C_OPS.value,
     max_iter: int = DEFAULTS.MAX_ITER.value,
     convergence_threshold: float = DEFAULTS.CONVERGENCE_THRESHOLD.value,
-    learning_rate: float = DEFAULTS.OPTIMIZER.value,
+    learning_rate: float = DEFAULTS.LEARNING_RATE.value,
     optimizer: str = DEFAULTS.OPTIMIZER.value,
     propcomp: str = DEFAULTS.PROPCOMP.value,
 ) -> result:

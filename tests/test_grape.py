@@ -23,6 +23,7 @@ from tests.helper_for_tests import (
     get_targets_for_dissipation_problem,
     get_targets_for_hadamard_problem,
     get_targets_for_qubit_in_cavity_problem,
+    get_results_for_new_dissipation_problem,
 )
 
 # Check documentation for pytest for more decorators
@@ -102,6 +103,21 @@ def test_dissipative_model(optimizer, propcomp):
     assert jnp.allclose(
         1 - result_fg.final_fidelity, result_qt.fid_err, atol=1e-1
     ), "The fidelities are not close enough."
+
+
+def test_new_dissipative_model():
+    """
+    Test the new dissipative model.
+    """
+    # This test is not parametrized because it is a specific test for the new dissipative model
+    # that does not require different optimizers or propcomps.
+    result_fg = get_results_for_new_dissipation_problem(
+        "adam", "memory-efficient"
+    )
+    print("result_fg.final_fidelity: ", result_fg.final_fidelity)
+    assert result_fg.final_fidelity > 0.99, (
+        "The final fidelity is not high enough."
+    )
 
 
 @pytest.mark.parametrize(

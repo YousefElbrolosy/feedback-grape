@@ -28,34 +28,3 @@ def tensor(*args: jnp.ndarray) -> jnp.ndarray:
     for arg in args[1:]:
         result = jnp.kron(result, arg)
     return result
-
-
-def tensor_einsum(a: jnp.ndarray, b: jnp.ndarray) -> jnp.ndarray:
-    """
-    Compute the tensor/Kronecker product of two quantum objects.
-
-    Args:
-        a (jnp.ndarray): First quantum object.
-        b (jnp.ndarray): Second quantum object.
-    Returns:
-        jnp.ndarray: The resulting quantum object after applying the
-        tensor product.
-    """
-    # Check if a and b are 1D arrays
-    if a.ndim == 1 and b.ndim == 1:
-        return jnp.outer(a, b).reshape(a.shape[0] * b.shape[0], 1 * 1)
-    # Check if a is a 1D array and b is a 2D array
-    elif a.ndim == 1 and b.ndim == 2:
-        return jnp.einsum("i,jk->ijk", a, b).reshape(
-            a.shape[0] * b.shape[0], 1 * b.shape[1]
-        )
-    # Check if a is a 2D array and b is a 1D array
-    elif a.ndim == 2 and b.ndim == 1:
-        return jnp.einsum("ij,k->ikj", a, b).reshape(
-            a.shape[0] * b.shape[0], a.shape[1] * 1
-        )
-    # Both a and b are 2D arrays
-    else:
-        return jnp.einsum("ij,kl->ikjl", a, b).reshape(
-            a.shape[0] * b.shape[0], a.shape[1] * b.shape[1]
-        )

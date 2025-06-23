@@ -16,16 +16,12 @@ def example_A_body():
 
     N_cav = 30
 
-
-
     def qubit_unitary(alpha_re, alpha_im):
         alpha = alpha_re + 1j * alpha_im
         return tensor(
             identity(N_cav),
             expm(-1j * (alpha * sigmap() + alpha.conjugate() * sigmam()) / 2),
         )
-
-
 
     def qubit_cavity_unitary(beta_re):
         beta = beta_re
@@ -42,13 +38,10 @@ def example_A_body():
 
     psi0 = tensor(basis(N_cav), basis(2))
     psi0 = psi0 / jnp.linalg.norm(psi0)
-    psi_target = tensor((fock(N_cav, 1) + fock(N_cav, 3)) / jnp.sqrt(2), basis(2))
+    psi_target = tensor(
+        (fock(N_cav, 1) + fock(N_cav, 3)) / jnp.sqrt(2), basis(2)
+    )
     psi_target = psi_target / jnp.linalg.norm(psi_target)
-
-
-
-
-
 
     from feedback_grape.utils.fidelity import ket2dm
     import jax
@@ -84,7 +77,6 @@ def example_A_body():
 
     system_params = [qub_unitary, qub_cav]
 
-
     result = optimize_pulse_with_feedback(
         U_0=ket2dm(psi0),
         C_target=ket2dm(psi_target),
@@ -100,7 +92,7 @@ def example_A_body():
         eval_batch_size=2,
     )
 
-    if (result.final_fidelity > 0.99):
+    if result.final_fidelity > 0.99:
         return True
     else:
         print(f"Final fidelity: {result.final_fidelity}")
@@ -108,7 +100,6 @@ def example_A_body():
 
 
 def example_D_body():
-
     no_dissipation_flag = False
     dissipation_flag = False
 
@@ -147,9 +138,8 @@ def example_D_body():
             )
             / 2
         )
-    
-    from feedback_grape.utils.operators import create, destroy
 
+    from feedback_grape.utils.operators import create, destroy
 
     def povm_measure_operator(measurement_outcome, gamma, delta):
         """
@@ -164,7 +154,6 @@ def example_D_body():
             sinm(angle),
         )
         return meas_op
-    
 
     from feedback_grape.utils.states import coherent
 
@@ -220,9 +209,9 @@ def example_D_body():
         batch_size=1,
     )
 
-    if (result.final_fidelity > 0.99):
+    if result.final_fidelity > 0.99:
         no_dissipation_flag = True
-    
+
     # Now we add dissipation
 
     result = optimize_pulse_with_feedback(
@@ -247,9 +236,8 @@ def example_D_body():
         batch_size=1,
     )
 
-    if (result.final_fidelity < 0.99):
+    if result.final_fidelity < 0.99:
         dissipation_flag = True
-    
 
     if no_dissipation_flag and dissipation_flag:
         return True

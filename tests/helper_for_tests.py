@@ -17,6 +17,13 @@ from feedback_grape.utils.operators import (
     sigmam,
     destroy,
 )
+import jax.numpy as jnp
+from feedback_grape.grape import *
+from feedback_grape.utils.gates import *
+from feedback_grape.utils.operators import *
+from feedback_grape.utils.states import *
+from feedback_grape.utils.superoperator import *
+from feedback_grape.utils.tensor import *
 from feedback_grape.utils.superoperator import liouvillian, sprepost
 from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis
@@ -864,3 +871,55 @@ def get_finals(result_fg, result_qt):
     final_operator_qt = result_qt.evo_full_final
 
     return final_operator_fg, final_operator_qt
+
+
+def get_results_for_new_dissipation_problem(optimizer, propcomp):
+    """
+    Get the results for the new dissipation problem.
+    """
+
+    Sx = sigmax()
+    Sz = sigmaz()
+    Sm = sigmam()
+    # Hamiltonian
+    Del = 0.1  # Tunnelling term
+    wq = 1.0  # Energy of the 2-level system.
+    H0 = 0.5 * wq * sigmaz() + 0.5 * Del * sigmax()
+
+    # Amplitude damping#
+    # Damping rate:
+    gamma = 0.01
+    l_ops = [jnp.sqrt(gamma) * Sm]
+    # Kraus operators
+    # Drift
+    drift = H0
+    # Controls - different combinations can be tried
+    ctrls = [Sz, Sx]
+    # Number of time slots
+    n_ts = 10
+    # Time allowed for the evolution
+    evo_time = 2
+
+    from feedback_grape.utils.states import basis, coherent
+
+    psi0 = basis(2)  # Initial state
+    psi_target = coherent(2, 1.5)  # Target state
+
+    res = optimize_pulse(
+        H_drift=drift,
+        H_control=ctrls,
+        U_0=psi0 @ psi0.conj().T,  # Initial state as a density matrix
+        C_target=psi_target
+        @ psi_target.conj().T,  # Target state as a density matrix
+        c_ops=l_ops,
+        num_t_slots=n_ts,
+        total_evo_time=evo_time,
+        type="density",
+        optimizer=optimizer,
+        propcomp=propcomp,
+        convergence_threshold=1e-16,
+        max_iter=1000,
+        learning_rate=0.1,
+    )
+
+    return res

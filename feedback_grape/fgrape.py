@@ -83,10 +83,10 @@ class decay(NamedTuple):
 
 
 class Input(NamedTuple):
-    gate: callable
-    initial_params: list
+    gate: callable  # type: ignore
+    initial_params: list[float]
     measurement_flag: bool
-    param_constraints: list
+    param_constraints: list[float]
     # TODO: IMPORTANT Is that what florian wanted?
     """
     param_constraints This constraints the initialization of the parameters to be withing the specified range.
