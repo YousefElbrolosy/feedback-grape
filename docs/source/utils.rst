@@ -4,33 +4,58 @@ Utils
 Operators
 ------------------------
 
-.. automodule:: utils.operators
+.. automodule:: feedback_grape.utils.operators
     :members:
 
 
 Gates
 ------------------------
 
-.. automodule:: utils.gates
+.. automodule:: feedback_grape.utils.gates
     :members:
 
 
 Superoperators
 ------------------------
 
-.. automodule:: utils.superoperator
+.. automodule:: feedback_grape.utils.superoperator
     :members:
 
 
 States
 ------------------------
 
-.. automodule:: utils.states
+.. automodule:: feedback_grape.utils.states
     :members:
 
 
 Tensor
 ------------------------
 
-.. automodule:: utils.tensor
+.. automodule:: feedback_grape.utils.tensor
+    :members:
+
+Fidelity
+------------------------
+.. automodule:: feedback_grape.utils.fidelity
+    :members:
+
+Purity
+------------------------
+.. automodule:: feedback_grape.utils.purity
+    :members:
+
+Optimizers
+------------------------
+.. automodule:: feedback_grape.utils.optimizers
+    :members:
+
+POVM
+------------------------
+.. automodule:: feedback_grape.utils.povm
+    :members:
+
+Solver
+------------------------
+.. automodule:: feedback_grape.utils.solver
     :members:
