@@ -192,7 +192,7 @@ def test_fidelity_fn(fid_type, target, final):
 
     # Normalize the target and final states
 
-    fidelity_fg = fidelity(C_target=target, U_final=final, type=fid_type)
+    fidelity_fg = fidelity(C_target=target, U_final=final, evo_type=fid_type)
     if fid_type == "liouvillian":
         fidelity_qt = qt.tracedist(
             qt.Qobj(target).unit(), qt.Qobj(final).unit()

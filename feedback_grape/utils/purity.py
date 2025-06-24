@@ -9,7 +9,6 @@ def purity(*, rho):
 
     Args:
         rho: Density matrix.
-        type: Type of density matrix ("density" or "liouvillian").
     Returns:
         purity: Purity value.
     """

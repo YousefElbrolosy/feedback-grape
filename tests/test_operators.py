@@ -112,7 +112,6 @@ def test_destroy():
     assert jnp.allclose(result, expected)
 
 
-
 def povm_measure_operator(measurement_outcome, gamma, delta):
     number_operator = create(4) @ destroy(4)
     angle = (gamma * number_operator) + delta / 2
@@ -121,6 +120,7 @@ def povm_measure_operator(measurement_outcome, gamma, delta):
         cosm(angle),
         sinm(angle),
     )
+
 
 def test_cosm():
     """
@@ -134,6 +134,7 @@ def test_cosm():
         f"cosm result: {result}, expected: {expected}"
     )
 
+
 def test_sinm():
     """
     Test the sinm function.
@@ -143,7 +144,6 @@ def test_sinm():
     print(f"result: {result}")
     print(f"expected: {expected}")
     assert jnp.allclose(result, expected), "Not Close enough"
-
 
 
 @pytest.mark.parametrize(

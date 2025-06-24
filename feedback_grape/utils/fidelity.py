@@ -157,7 +157,7 @@ def _state_density_fidelity(A, B):
     return jnp.real(jnp.sum(jnp.sqrt(eig_vals_non_neg)))
 
 
-def fidelity(*, C_target, U_final, type="unitary"):
+def fidelity(*, C_target, U_final, evo_type="unitary"):
     """
     Computes the fidelity of the final state/operator/density matrix/liouvillian
     with respect to the target state/operator/density matrix/liouvillian.
@@ -172,24 +172,24 @@ def fidelity(*, C_target, U_final, type="unitary"):
     Args:
         C_target: Target operator.
         U_final: Final operator after evolution.
-        type: Type of fidelity calculation ("unitary", "state", "density", or "liouvillian (using tracediff method)")
+        evo_type: Type of fidelity calculation ("unitary", "state", "density", or "liouvillian (using tracediff method)")
     Returns:
         fidelity: Fidelity value.
     """
-    if type == "liouvillian":
+    if evo_type == "liouvillian":
         # TRACEDIFF fidelity: 1 - 0.5*Tr(|C_target - U_final|)
         # Where |A| is the matrix absolute value (element-wise)
         diff = C_target - U_final
         # Alternative approach: use the trace of the absolute value directly
         trace_diff = 0.5 * jnp.abs(jnp.trace(diff))
         return 1.0 - trace_diff / C_target.shape[0]
-    elif type == "unitary":
+    elif evo_type == "unitary":
         # TODO: check accuracy of this, do we really need vector conjugate or .dot will simply work?
         norm_C_target = C_target / jnp.linalg.norm(C_target)
         norm_U_final = U_final / jnp.linalg.norm(U_final)
 
         overlap = jnp.vdot(norm_C_target, norm_U_final)
-    elif type == "density" or type == "state":
+    elif evo_type == "density" or evo_type == "state":
         # normalization occurs in the _state_density_fidelity function
         return _state_density_fidelity(
             C_target,
@@ -197,6 +197,6 @@ def fidelity(*, C_target, U_final, type="unitary"):
         )
     else:
         raise ValueError(
-            "Invalid type. Choose 'unitary', 'state', 'density', 'liouvillian'."
+            "Invalid evo_type. Choose 'unitary', 'state', 'density', 'liouvillian'."
         )
     return jnp.abs(overlap) ** 2

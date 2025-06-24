@@ -224,7 +224,7 @@ def test_cat_state():
         psi_target,
         num_t_slots=num_of_intervals,
         total_evo_time=T,
-        type="state",
+        evo_type="state",
         optimizer="l-bfgs",
     )
     print("Final fidelity: ", res.final_fidelity)

@@ -86,7 +86,7 @@ def example_A_body():
         num_time_steps=time_steps,
         max_iter=1000,
         convergence_threshold=1e-16,
-        type="density",
+        evo_type="density",
         mode="no-measurement",
         goal="fidelity",
         learning_rate=0.02,
@@ -152,7 +152,7 @@ def example_B_body():
         max_iter=1000,
         convergence_threshold=1e-20,
         learning_rate=0.01,
-        type="density",
+        evo_type="density",
         batch_size=10,
     )
     print(result.final_purity)
@@ -294,7 +294,7 @@ def example_C_body():
         max_iter=num_of_iterations,
         convergence_threshold=1e-6,
         learning_rate=learning_rate,
-        type="density",
+        evo_type="density",
         batch_size=10,
     )
     print(result.final_fidelity)
@@ -302,10 +302,12 @@ def example_C_body():
 
     print(
         "initial fidelity:",
-        fidelity(C_target=rho_target, U_final=rho0, type="density"),
+        fidelity(C_target=rho_target, U_final=rho0, evo_type="density"),
     )
     for i, state in enumerate(result.final_state):
-        fid_val = fidelity(C_target=rho_target, U_final=state, type="density")
+        fid_val = fidelity(
+            C_target=rho_target, U_final=state, evo_type="density"
+        )
         print(f"fidelity of state {i}:", fid_val)
         if fid_val > 0.8:
             return True
@@ -419,7 +421,7 @@ def example_D_body():
         max_iter=1000,
         convergence_threshold=1e-16,
         learning_rate=0.02,
-        type="density",
+        evo_type="density",
         batch_size=1,
     )
 
@@ -446,7 +448,7 @@ def example_D_body():
         max_iter=1000,
         convergence_threshold=1e-6,
         learning_rate=0.02,
-        type="density",
+        evo_type="density",
         batch_size=1,
     )
 
@@ -690,7 +692,7 @@ def example_E_body():
         max_iter=1000,
         convergence_threshold=1e-6,
         learning_rate=0.09,
-        type="density",
+        evo_type="density",
         batch_size=16,
         rnn=RNN,
         rnn_hidden_size=30,
@@ -712,7 +714,9 @@ def example_E_body():
     from feedback_grape.utils.fidelity import fidelity
 
     for i, state in enumerate(result.final_state):
-        fid_val = fidelity(C_target=rho_target, U_final=state, type="density")
+        fid_val = fidelity(
+            C_target=rho_target, U_final=state, evo_type="density"
+        )
         print(f"fidelity of state {i}:", fid_val)
         if fid_val > 0.9:
             return True

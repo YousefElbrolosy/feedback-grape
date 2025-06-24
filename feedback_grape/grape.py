@@ -89,7 +89,7 @@ def _compute_propagators(
 
 
 def _compute_forward_evolution_time_efficient(
-    H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+    H_drift, H_control_array, delta_t, control_amplitudes, U_0, evo_type
 ):
     """
     Compute the forward evolution states (ρⱼ) according to the paper's definition.
@@ -104,7 +104,7 @@ def _compute_forward_evolution_time_efficient(
     propagators = _compute_propagators(
         H_drift, H_control_array, delta_t, control_amplitudes
     )
-    if type == "density":
+    if evo_type == "density":
         rho_final = U_0
         for U_j in propagators:
             rho_final = U_j @ rho_final @ U_j.conj().T
@@ -120,7 +120,7 @@ def _compute_forward_evolution_time_efficient(
 
 
 def _compute_forward_evolution_memory_efficient(
-    H_drift, H_control_array, delta_t, control_amplitudes, U_0, type
+    H_drift, H_control_array, delta_t, control_amplitudes, U_0, evo_type
 ):
     """
     Computes the forward evolution using a memory-efficient method,
@@ -139,7 +139,7 @@ def _compute_forward_evolution_memory_efficient(
     Hs, delta_ts = build_parameterized_hamiltonian(
         control_amplitudes, H_drift, H_control_array, delta_t
     )
-    return sesolve(Hs, U_0, delta_ts, type=type)
+    return sesolve(Hs, U_0, delta_ts, evo_type=evo_type)
 
 
 def build_parameterized_hamiltonian(
@@ -188,7 +188,7 @@ def optimize_pulse(
     C_target: jnp.ndarray,
     num_t_slots: int,
     total_evo_time: float,
-    type: str,
+    evo_type: str,
     c_ops: list[jnp.ndarray] = _DEFAULTS.C_OPS.value,
     max_iter: int = _DEFAULTS.MAX_ITER.value,
     convergence_threshold: float = _DEFAULTS.CONVERGENCE_THRESHOLD.value,
@@ -210,9 +210,9 @@ def optimize_pulse(
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold.
         learning_rate: Learning rate for gradient ascent.
-        # TODO: automate detection of type based on U_0 and C_target IMPORTANT
-        type: Type of fidelity calculation ("unitary" or "state" or "density" or "liouvillian").
-            When to use each type:
+        # TODO: automate detection of evo_type based on U_0 and C_target IMPORTANT
+        evo_type: Type of fidelity calculation ("unitary" or "state" or "density" or "liouvillian").
+            When to use each evo_type:
             - "unitary": For unitary evolution.
             - "state": For state evolution.
             - "density": For density matrix evolution.
@@ -226,7 +226,7 @@ def optimize_pulse(
     if (
         not is_positive_semi_definite(U_0)
         and not is_positive_semi_definite(C_target)
-        and type == "density"
+        and evo_type == "density"
     ):
         raise TypeError(
             'your initial and target rhos must be positive semi-definite.'
@@ -243,7 +243,7 @@ def optimize_pulse(
 
     def _loss(control_amplitudes):
         # TODO: see how to do dissipation for states/unitary
-        if type == "density" and c_ops != []:
+        if evo_type == "density" and c_ops != []:
             Hs, _ = build_parameterized_hamiltonian(
                 control_amplitudes, H_drift, H_control_array, delta_t
             )
@@ -257,7 +257,7 @@ def optimize_pulse(
                     delta_t,
                     control_amplitudes,
                     U_0,
-                    type,
+                    evo_type,
                 )
             else:
                 U_final = _compute_forward_evolution_memory_efficient(
@@ -266,13 +266,13 @@ def optimize_pulse(
                     delta_t,
                     control_amplitudes,
                     U_0,
-                    type,
+                    evo_type,
                 )
 
         return -1 * fidelity(
             C_target=C_target,
             U_final=U_final,
-            type=type,
+            evo_type=evo_type,
         )
 
     control_amplitudes, iter_idx = train(
@@ -293,7 +293,7 @@ def optimize_pulse(
         control_amplitudes=control_amplitudes,
         delta_t=delta_t,
         iter_idx=iter_idx,
-        type=type,
+        evo_type=evo_type,
         propcomp=propcomp,
         total_evo_time=total_evo_time,
         num_t_slots=num_t_slots,
@@ -311,12 +311,12 @@ def evaluate(
     control_amplitudes,
     delta_t,
     iter_idx,
-    type,
+    evo_type,
     propcomp,
     total_evo_time,
     num_t_slots,
 ):
-    if type == "density" and c_ops != []:
+    if evo_type == "density" and c_ops != []:
         Hs, _ = build_parameterized_hamiltonian(
             control_amplitudes, H_drift, H_control_array, delta_t
         )
@@ -330,7 +330,7 @@ def evaluate(
                 delta_t,
                 control_amplitudes,
                 U_0,
-                type,
+                evo_type,
             )
         elif propcomp == "memory-efficient":
             rho_final = _compute_forward_evolution_memory_efficient(
@@ -339,7 +339,7 @@ def evaluate(
                 delta_t,
                 control_amplitudes,
                 U_0,
-                type,
+                evo_type,
             )
         else:
             raise ValueError(
@@ -349,7 +349,7 @@ def evaluate(
     final_fidelity = fidelity(
         C_target=C_target,
         U_final=rho_final,
-        type=type,
+        evo_type=evo_type,
     )
     final_res = result(
         control_amplitudes,

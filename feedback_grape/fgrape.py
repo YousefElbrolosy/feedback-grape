@@ -122,7 +122,7 @@ def _calculate_time_step(
     rnn_state=None,
     lut=None,
     measurement_history=None,
-    type,
+    evo_type,
     time_step_key,
 ):
     """
@@ -169,7 +169,7 @@ def _calculate_time_step(
                 rho_final,
                 gate,
                 extracted_params[i],
-                type,
+                evo_type,
                 gate_param_constraints=param_constraints[i]
                 if param_constraints != []
                 else [],
@@ -225,7 +225,7 @@ def _calculate_time_step(
                     rho_final,
                     gate,
                     extracted_lut_params[i],
-                    type,
+                    evo_type,
                     gate_param_constraints=param_constraints[i]
                     if param_constraints != []
                     else []
@@ -288,7 +288,7 @@ def _calculate_time_step(
                     rho_final,
                     gate,
                     updated_params[i],
-                    type,
+                    evo_type,
                     gate_param_constraints=param_constraints[i]
                     if param_constraints != []
                     else [],
@@ -318,7 +318,7 @@ def calculate_trajectory(
     rnn_params=None,
     rnn_state=None,
     lut=None,
-    type,
+    evo_type,
     batch_size,
     rng_key,
 ):
@@ -336,7 +336,7 @@ def calculate_trajectory(
         rnn_model: rnn model for feedback.
         rnn_params: Parameters of the rnn model.
         rnn_state: Initial state of the rnn model.
-        type: Type of quantum system representation (e.g., "density").
+        evo_type: Type of quantum system representation (e.g., "density").
 
     Returns:
         Final state, log probability, array of POVM parameters
@@ -369,7 +369,7 @@ def calculate_trajectory(
                     decay=decay,
                     initial_params=new_params[i],
                     param_shapes=param_shapes,
-                    type=type,
+                    evo_type=evo_type,
                     time_step_key=time_step_keys[i],
                 )
 
@@ -393,7 +393,7 @@ def calculate_trajectory(
                     param_shapes=param_shapes,
                     lut=lut,
                     measurement_history=measurement_history,
-                    type=type,
+                    evo_type=evo_type,
                     time_step_key=time_step_keys[i],
                 )
                 # Thus, during - Refer to Eq(3) in fgrape paper
@@ -425,7 +425,7 @@ def calculate_trajectory(
                     rnn_model=rnn_model,
                     rnn_params=rnn_params,
                     rnn_state=new_hidden_state,
-                    type=type,
+                    evo_type=evo_type,
                     time_step_key=time_step_keys[i],
                 )
 
@@ -449,7 +449,7 @@ def optimize_pulse_with_feedback(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
+    evo_type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
     goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -469,7 +469,7 @@ def optimize_pulse_with_feedback(
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
-        type (str): The type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
+        evo_type (str): The evo_type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
                     This is primarily used for fidelity calculation.
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
@@ -487,7 +487,7 @@ def optimize_pulse_with_feedback(
 
     if (
         goal in ["fidelity", "both"]
-        and type == "density"
+        and evo_type == "density"
         and (
             not is_positive_semi_definite(U_0)
             or not is_positive_semi_definite(C_target)
@@ -643,7 +643,7 @@ def optimize_pulse_with_feedback(
             rnn_params=rnn_params,
             rnn_state=h_initial_state,
             lut=lookup_table_params,
-            type=type,
+            evo_type=evo_type,
             batch_size=batch_size,
             rng_key=rng_key,
         )
@@ -658,14 +658,18 @@ def optimize_pulse_with_feedback(
                     "C_target must be provided for fidelity calculation."
                 )
             fidelity_value = jax.vmap(
-                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+                lambda rf: fidelity(
+                    C_target=C_target, U_final=rf, evo_type=evo_type
+                )
             )(rho_final)
             loss1 = jnp.mean(-fidelity_value)
             loss2 = jnp.mean(log_prob * jax.lax.stop_gradient(-fidelity_value))
 
         elif goal == "both":
             fidelity_value = jax.vmap(
-                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+                lambda rf: fidelity(
+                    C_target=C_target, U_final=rf, evo_type=evo_type
+                )
             )(rho_final)
             purity_values = jax.vmap(purity)(rho=rho_final)
             loss1 = jnp.mean(-(fidelity_value + purity_values))
@@ -698,7 +702,7 @@ def optimize_pulse_with_feedback(
         best_model_params=best_model_params,
         mode=mode,
         num_time_steps=num_time_steps,
-        type=type,
+        evo_type=evo_type,
         eval_batch_size=eval_batch_size,
         prng_key=eval_key,
         h_initial_state=h_initial_state,
@@ -748,7 +752,7 @@ def _evaluate(
     best_model_params,
     mode,
     num_time_steps,
-    type,
+    evo_type,
     eval_batch_size,
     prng_key,
     h_initial_state,
@@ -769,7 +773,7 @@ def _evaluate(
             initial_params=best_model_params,
             param_shapes=param_shapes,
             time_steps=num_time_steps,
-            type=type,
+            evo_type=evo_type,
             batch_size=eval_batch_size,
             rng_key=prng_key,
         )
@@ -786,7 +790,7 @@ def _evaluate(
             rnn_model=rnn_model,
             rnn_params=best_model_params['rnn_params'],
             rnn_state=h_initial_state,
-            type=type,
+            evo_type=evo_type,
             batch_size=eval_batch_size,
             rng_key=prng_key,
         )
@@ -801,7 +805,7 @@ def _evaluate(
             param_shapes=param_shapes,
             time_steps=num_time_steps,
             lut=best_model_params['lookup_table'],
-            type=type,
+            evo_type=evo_type,
             batch_size=eval_batch_size,
             rng_key=prng_key,
         )
@@ -816,7 +820,9 @@ def _evaluate(
     if goal in ["fidelity", "both"]:
         final_fidelity = jnp.mean(
             jax.vmap(
-                lambda rf: fidelity(C_target=C_target, U_final=rf, type=type)
+                lambda rf: fidelity(
+                    C_target=C_target, U_final=rf, evo_type=evo_type
+                )
             )(rho_final)
         )
 

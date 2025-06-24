@@ -58,7 +58,7 @@ def test_mem():
         psi_target,
         num_t_slots=num_of_intervals,
         total_evo_time=T,
-        type="state",
+        evo_type="state",
         optimizer="l-bfgs",
         propcomp="memory-efficient",
     )
@@ -89,7 +89,7 @@ def test_time():
         psi_target,
         num_t_slots=num_of_intervals,
         total_evo_time=T,
-        type="state",
+        evo_type="state",
         optimizer="l-bfgs",
         propcomp="time-efficient",
     )

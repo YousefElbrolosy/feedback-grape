@@ -80,7 +80,7 @@ def clip_params(params, gate_param_constraints):
     return jnp.array(mapped_params)
 
 
-def apply_gate(rho_cav, gate, params, type, gate_param_constraints):
+def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
     """
     Apply a gate to the given state. This also clips the parameters
     to be within the specified constraints specified by the user.
@@ -98,7 +98,7 @@ def apply_gate(rho_cav, gate, params, type, gate_param_constraints):
     # For non-measurement gates, apply the gate without measurement
     params = clip_params(params, gate_param_constraints)
     operator = gate(*params)
-    if type == "density":
+    if evo_type == "density":
         rho_meas = operator @ rho_cav @ operator.conj().T
     else:
         rho_meas = operator @ rho_cav

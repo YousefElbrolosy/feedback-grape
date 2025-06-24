@@ -79,7 +79,7 @@ def test_time_dep():
         learning_rate=1e-3,
         time_dep=True,
         delta_ts=delta_ts,
-        type="state",
+        evo_type="state",
     )
     # print(result.final_fidelity)
     return result

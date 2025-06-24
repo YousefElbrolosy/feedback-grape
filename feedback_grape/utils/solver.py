@@ -11,7 +11,7 @@ from .operators import identity
 import dynamiqs as dq
 
 
-def sesolve(Hs, initial_state, delta_ts, type="density"):
+def sesolve(Hs, initial_state, delta_ts, evo_type="density"):
     """
 
     Args:
@@ -25,7 +25,7 @@ def sesolve(Hs, initial_state, delta_ts, type="density"):
     """
 
     U_final = initial_state
-    if type == "density":
+    if evo_type == "density":
         for _, (H, delta_t) in enumerate(zip(Hs, delta_ts)):
             U_final = (
                 jax.scipy.linalg.expm(-1j * delta_t * (H))

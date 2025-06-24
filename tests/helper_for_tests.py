@@ -20,7 +20,15 @@ from feedback_grape.utils.operators import (
 import jax.numpy as jnp
 from feedback_grape.grape import optimize_pulse
 from feedback_grape.utils.gates import cnot, hadamard
-from feedback_grape.utils.operators import identity, sigmax, sigmay, sigmaz, sigmap, sigmam, destroy
+from feedback_grape.utils.operators import (
+    identity,
+    sigmax,
+    sigmay,
+    sigmaz,
+    sigmap,
+    sigmam,
+    destroy,
+)
 from feedback_grape.utils.states import basis
 from feedback_grape.utils.superoperator import liouvillian, sprepost
 from feedback_grape.utils.tensor import tensor
@@ -36,7 +44,7 @@ from qutip.core.superoperator import (
 
 
 # State to state transfer example
-def get_targets_for_qubit_in_cavity_problem(type="state"):
+def get_targets_for_qubit_in_cavity_problem(evo_type="state"):
     N_cav = 10
     chi = 0.2385 * (2 * jnp.pi)
     mu_qub = 4.0
@@ -82,9 +90,9 @@ def get_targets_for_qubit_in_cavity_problem(type="state"):
     H0, H_ctrl = build_ham(e_qub, e_cav)
 
     psi0 = tensor(basis(2), basis(N_cav))
-    if type == "density":
+    if evo_type == "density":
         psi0 = psi0 @ psi0.conj().T
-    psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts, type=type)
+    psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts, evo_type=evo_type)
     # Using qutip QTRL
 
     def build_ham_qt(e_qub, e_cav):
@@ -133,7 +141,7 @@ def get_targets_for_qubit_in_cavity_problem(type="state"):
     e_qub_qt = np.repeat(np.array(e_qub), time_subintervals_num_qt)
     e_cav_qt = np.repeat(np.array(e_cav), time_subintervals_num_qt)
     H_qt = build_ham_qt(e_qub_qt, e_cav_qt)
-    if type == "density":
+    if evo_type == "density":
         psi0_qt = psi0_qt * psi0_qt.dag()
         psi_qt = qt.mesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
     else:
@@ -238,7 +246,7 @@ def get_results_for_qubit_in_cavity_problem(optimizer, propcomp):
         # when you decrease convergence threshold, it is more accurate
         convergence_threshold=1e-3,
         learning_rate=1e-2,
-        type="state",
+        evo_type="state",
         optimizer=optimizer,
         propcomp=propcomp,
     )
@@ -353,7 +361,7 @@ def get_results_for_cnot_problem(optimizer, propcomp):
         C_target,
         num_t_slots,
         total_evo_time,
-        type="unitary",
+        evo_type="unitary",
         max_iter=100,
         learning_rate=1e-2,
         optimizer=optimizer,
@@ -463,7 +471,7 @@ def get_results_for_hadamard_problen(optimizer, propcomp):
         U_targ,
         n_ts,
         evo_time,
-        type="unitary",
+        evo_type="unitary",
         max_iter=max_iter,
         learning_rate=1e-2,
         optimizer=optimizer,
@@ -601,7 +609,7 @@ def get_results_for_dissipation_problem(optimizer, propcomp):
         C_target_fg,
         n_ts,
         evo_time,
-        type="liouvillian",
+        evo_type="liouvillian",
         optimizer=optimizer,
         convergence_threshold=1e-16,
         max_iter=1000,
@@ -678,7 +686,7 @@ def get_results_for_dissipation_problem(optimizer, propcomp):
 
 def get_targets_for_density_example():
     # Representation for time dependent Hamiltonian
-    return get_targets_for_qubit_in_cavity_problem(type="density")
+    return get_targets_for_qubit_in_cavity_problem(evo_type="density")
 
 
 def get_results_for_density_example(optimizer, propcomp):
@@ -785,7 +793,7 @@ def get_results_for_density_example(optimizer, propcomp):
             # when you decrease convergence threshold, it is more accurate
             convergence_threshold=1e-3,
             learning_rate=1e-2,
-            type="density",
+            evo_type="density",
             optimizer=optimizer,
             propcomp=propcomp,
         )
@@ -914,7 +922,7 @@ def get_results_for_new_dissipation_problem(optimizer, propcomp):
         c_ops=l_ops,
         num_t_slots=n_ts,
         total_evo_time=evo_time,
-        type="density",
+        evo_type="density",
         optimizer=optimizer,
         propcomp=propcomp,
         convergence_threshold=1e-16,
