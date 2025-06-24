@@ -1,8 +1,11 @@
+import jax
 import jax.numpy as jnp
 import pytest
 import qutip as qt
 
 from feedback_grape.utils.states import basis, coherent
+
+jax.config.update("jax_enable_x64", True)
 
 
 def test_basis():
@@ -24,7 +27,12 @@ def test_coherent_parametrized(n, alpha):
     Test the coherent function with parametrized inputs.
     """
     result = coherent(n, alpha)
-    expected = qt.coherent(n, alpha, method="analytic").full().flatten()
+    expected = (
+        qt.coherent(n, alpha, method="analytic")
+        .full()
+        .flatten()
+        .reshape(-1, 1)
+    )
     print(f"result: {result}, \n expected: {expected}")
     assert jnp.allclose(result, expected, atol=1e-4), (
         "The coherent state is not close enough to qutip's."

@@ -5,7 +5,8 @@ import qutip_qip.operations.gates as qip
 
 import jax.numpy as jnp
 import jax
-from feedback_grape.grape import optimize_pulse, sesolve
+from feedback_grape.grape import optimize_pulse
+from feedback_grape.utils.solver import sesolve
 from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     identity,
@@ -16,6 +17,21 @@ from feedback_grape.utils.operators import (
     sigmam,
     destroy,
 )
+import jax.numpy as jnp
+from feedback_grape.grape import optimize_pulse
+from feedback_grape.utils.gates import cnot, hadamard
+from feedback_grape.utils.operators import (
+    identity,
+    sigmax,
+    sigmay,
+    sigmaz,
+    sigmap,
+    sigmam,
+    destroy,
+)
+from feedback_grape.utils.states import basis
+from feedback_grape.utils.superoperator import liouvillian, sprepost
+from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.superoperator import liouvillian, sprepost
 from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis
@@ -28,7 +44,7 @@ from qutip.core.superoperator import (
 
 
 # State to state transfer example
-def get_targets_for_qubit_in_cavity_problem(type="density"):
+def get_targets_for_qubit_in_cavity_problem(evo_type="state"):
     N_cav = 10
     chi = 0.2385 * (2 * jnp.pi)
     mu_qub = 4.0
@@ -74,13 +90,9 @@ def get_targets_for_qubit_in_cavity_problem(type="density"):
     H0, H_ctrl = build_ham(e_qub, e_cav)
 
     psi0 = tensor(basis(2), basis(N_cav))
-    if type == "density":
-        psi_fg = (
-            sesolve(H0 + H_ctrl, psi0, delta_ts)
-            @ sesolve(H0 + H_ctrl, psi0, delta_ts).conj().T
-        )
-    else:
-        psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts)
+    if evo_type == "density":
+        psi0 = psi0 @ psi0.conj().T
+    psi_fg = sesolve(H0 + H_ctrl, psi0, delta_ts, evo_type=evo_type)
     # Using qutip QTRL
 
     def build_ham_qt(e_qub, e_cav):
@@ -129,7 +141,11 @@ def get_targets_for_qubit_in_cavity_problem(type="density"):
     e_qub_qt = np.repeat(np.array(e_qub), time_subintervals_num_qt)
     e_cav_qt = np.repeat(np.array(e_cav), time_subintervals_num_qt)
     H_qt = build_ham_qt(e_qub_qt, e_cav_qt)
-    psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
+    if evo_type == "density":
+        psi0_qt = psi0_qt * psi0_qt.dag()
+        psi_qt = qt.mesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
+    else:
+        psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
 
     return psi_fg, psi_qt
 
@@ -230,7 +246,7 @@ def get_results_for_qubit_in_cavity_problem(optimizer, propcomp):
         # when you decrease convergence threshold, it is more accurate
         convergence_threshold=1e-3,
         learning_rate=1e-2,
-        type="state",
+        evo_type="state",
         optimizer=optimizer,
         propcomp=propcomp,
     )
@@ -345,6 +361,7 @@ def get_results_for_cnot_problem(optimizer, propcomp):
         C_target,
         num_t_slots,
         total_evo_time,
+        evo_type="unitary",
         max_iter=100,
         learning_rate=1e-2,
         optimizer=optimizer,
@@ -454,6 +471,7 @@ def get_results_for_hadamard_problen(optimizer, propcomp):
         U_targ,
         n_ts,
         evo_time,
+        evo_type="unitary",
         max_iter=max_iter,
         learning_rate=1e-2,
         optimizer=optimizer,
@@ -591,7 +609,7 @@ def get_results_for_dissipation_problem(optimizer, propcomp):
         C_target_fg,
         n_ts,
         evo_time,
-        type="superoperator",
+        evo_type="liouvillian",
         optimizer=optimizer,
         convergence_threshold=1e-16,
         max_iter=1000,
@@ -668,7 +686,7 @@ def get_results_for_dissipation_problem(optimizer, propcomp):
 
 def get_targets_for_density_example():
     # Representation for time dependent Hamiltonian
-    return get_targets_for_qubit_in_cavity_problem()
+    return get_targets_for_qubit_in_cavity_problem(evo_type="density")
 
 
 def get_results_for_density_example(optimizer, propcomp):
@@ -775,7 +793,7 @@ def get_results_for_density_example(optimizer, propcomp):
             # when you decrease convergence threshold, it is more accurate
             convergence_threshold=1e-3,
             learning_rate=1e-2,
-            type="density",
+            evo_type="density",
             optimizer=optimizer,
             propcomp=propcomp,
         )
@@ -784,7 +802,6 @@ def get_results_for_density_example(optimizer, propcomp):
     result_fg = test_time_dep(optimizer, propcomp)
 
     ###
-
     def build_ham_qt(e_qub, e_cav):
         a = qt.tensor(qt.identity(2), qt.destroy(N_cav))
         adag = a.dag()
@@ -831,6 +848,7 @@ def get_results_for_density_example(optimizer, propcomp):
     e_qub_qt = np.repeat(np.array(e_qub), time_subintervals_num_qt)
     e_cav_qt = np.repeat(np.array(e_cav), time_subintervals_num_qt)
     H_qt = build_ham_qt(e_qub_qt, e_cav_qt)
+    # only for state vectors and unitary operators
     psi_qt = qt.sesolve(H_qt, psi0_qt, t_grid_qt).states[-1]
 
     # Extract just the control operators from H_qt[1:] (not the coefficient arrays) (but that just completely discards the time dep part!)
@@ -861,3 +879,55 @@ def get_finals(result_fg, result_qt):
     final_operator_qt = result_qt.evo_full_final
 
     return final_operator_fg, final_operator_qt
+
+
+def get_results_for_new_dissipation_problem(optimizer, propcomp):
+    """
+    Get the results for the new dissipation problem.
+    """
+
+    Sx = sigmax()
+    Sz = sigmaz()
+    Sm = sigmam()
+    # Hamiltonian
+    Del = 0.1  # Tunnelling term
+    wq = 1.0  # Energy of the 2-level system.
+    H0 = 0.5 * wq * sigmaz() + 0.5 * Del * sigmax()
+
+    # Amplitude damping#
+    # Damping rate:
+    gamma = 0.01
+    l_ops = [jnp.sqrt(gamma) * Sm]
+    # Kraus operators
+    # Drift
+    drift = H0
+    # Controls - different combinations can be tried
+    ctrls = [Sz, Sx]
+    # Number of time slots
+    n_ts = 10
+    # Time allowed for the evolution
+    evo_time = 2
+
+    from feedback_grape.utils.states import basis, coherent
+
+    psi0 = basis(2)  # Initial state
+    psi_target = coherent(2, 1.5)  # Target state
+
+    res = optimize_pulse(
+        H_drift=drift,
+        H_control=ctrls,
+        U_0=psi0 @ psi0.conj().T,  # Initial state as a density matrix
+        C_target=psi_target
+        @ psi_target.conj().T,  # Target state as a density matrix
+        c_ops=l_ops,
+        num_t_slots=n_ts,
+        total_evo_time=evo_time,
+        evo_type="density",
+        optimizer=optimizer,
+        propcomp=propcomp,
+        convergence_threshold=1e-16,
+        max_iter=1000,
+        learning_rate=0.1,
+    )
+
+    return res

@@ -3,11 +3,14 @@ Tests for the GRAPE package.
 """
 
 # ruff: noqa
+import jax
 import jax.numpy as jnp
 import pytest
 import qutip as qt
 
-from feedback_grape.grape import fidelity
+from feedback_grape.utils.fidelity import fidelity
+from feedback_grape.utils.fidelity import sqrtm_eig
+from feedback_grape.utils.fidelity import is_positive_semi_definite
 from tests.helper_for_tests import (
     get_finals,
     get_results_for_cnot_problem,
@@ -20,15 +23,13 @@ from tests.helper_for_tests import (
     get_targets_for_dissipation_problem,
     get_targets_for_hadamard_problem,
     get_targets_for_qubit_in_cavity_problem,
+    get_results_for_new_dissipation_problem,
 )
 
 # Check documentation for pytest for more decorators
 
 
 # Testing target Operator transformations
-
-# TODO: check if the parameterize synatx is correct for different optimizers and propcomps
-# TODO: test more thoroughly, not just using differences in fidelity with qutip, because that may be faulty
 
 
 def test_cnot(optimizer="l-bfgs", propcomp="time-efficient"):
@@ -104,6 +105,21 @@ def test_dissipative_model(optimizer, propcomp):
     ), "The fidelities are not close enough."
 
 
+def test_new_dissipative_model():
+    """
+    Test the new dissipative model.
+    """
+    # This test is not parametrized because it is a specific test for the new dissipative model
+    # that does not require different optimizers or propcomps.
+    result_fg = get_results_for_new_dissipation_problem(
+        "adam", "memory-efficient"
+    )
+    print("result_fg.final_fidelity: ", result_fg.final_fidelity)
+    assert result_fg.final_fidelity > 0.99, (
+        "The final fidelity is not high enough."
+    )
+
+
 @pytest.mark.parametrize(
     "optimizer, propcomp",
     [
@@ -125,7 +141,6 @@ def test_density_example(optimizer, propcomp):
     ), "The fidelities are not close enough."
 
 
-# TODO:
 @pytest.mark.parametrize(
     "fid_type, target, final",
     [
@@ -160,10 +175,12 @@ def test_density_example(optimizer, propcomp):
             )[0],
         ),
         (
-            "superoperator",
+            "liouvillian",
             get_targets_for_dissipation_problem()[0],
             get_finals(
-                *get_results_for_dissipation_problem("adam", "time-efficient")
+                *get_results_for_dissipation_problem(
+                    "adam", "memory-efficient"
+                )
             )[0],
         ),
     ],
@@ -175,8 +192,8 @@ def test_fidelity_fn(fid_type, target, final):
 
     # Normalize the target and final states
 
-    fidelity_fg = fidelity(C_target=target, U_final=final, type=fid_type)
-    if fid_type == "superoperator":
+    fidelity_fg = fidelity(C_target=target, U_final=final, evo_type=fid_type)
+    if fid_type == "liouvillian":
         fidelity_qt = qt.tracedist(
             qt.Qobj(target).unit(), qt.Qobj(final).unit()
         )
@@ -196,12 +213,51 @@ def test_fidelity_fn(fid_type, target, final):
     )
 
 
-# TODO:
+@pytest.mark.parametrize(
+    "A",
+    [
+        jnp.array([[2, 0], [0, 3]]),
+        jnp.array([[4, 2], [2, 4]]),
+        jnp.array([[1, 0], [0, 0]]),
+        jnp.array([[5, 4], [4, 5]]),
+        jnp.array([[3, 0], [0, 7]]),
+    ],
+)
+def test_sqrtm_eig(A):
+    """Test that verifies mathematical correctness for positive semidefinite matrices."""
+    # Check Hermitian
+    assert is_positive_semi_definite(A), "A is not positive semi definite"
+
+    sqrt_A = sqrtm_eig(A)
+
+    sqrtm_jax = jax.scipy.linalg.sqrtm(A)
+
+    assert jnp.allclose(sqrt_A, sqrtm_jax, atol=1e-9), (
+        "Square root matrices are not close enough."
+    )
+
+    reconstructed = sqrt_A @ sqrt_A
+    assert jnp.allclose(reconstructed, A, atol=1e-9), (
+        "Square root verification failed: sqrt(A) @ sqrt(A) != A"
+    )
+
+
 def test_sesolve():
     """
     Test the sesolve function from qutip.
     """
     psi_fg, psi_qt = get_targets_for_qubit_in_cavity_problem("state")
+    psi_fg_2, psi_qt_2 = get_targets_for_qubit_in_cavity_problem("density")
     assert jnp.allclose(psi_fg, psi_qt.full(), atol=1e-2), (
+        "The states are not close enough."
+    )
+
+    # NOTE: qt.sesolve(does not solve for density matrices)
+    # Schrodinger equation evolution of a state vector or unitary matrix
+    # for a given Hamiltonian.
+    # that's why we use internally when state == "density" the mesolve function
+    print("psi_fg_2: ", psi_fg_2)
+    print("psi_qt_2: ", psi_qt_2.full())
+    assert jnp.allclose(psi_fg_2, psi_qt_2.full(), atol=1e-2), (
         "The states are not close enough."
     )

@@ -10,7 +10,7 @@ def basis(n, k=0):
     """
     Basis state in n-dimensional Hilbert space.
     """
-    one_hot = jax.nn.one_hot(k, n, dtype=jnp.complex64)
+    one_hot = jax.nn.one_hot(k, n, dtype=jnp.complex128)
     return one_hot.reshape(n, 1)
 
 
@@ -54,4 +54,11 @@ def coherent(n: int, alpha: complex) -> jnp.ndarray:
 
     coherent_state = coeffs * norm_factor
 
-    return coherent_state
+    return coherent_state.reshape(-1, 1).astype(jnp.complex128)
+
+
+def fock(n_cav: int, n: int) -> jnp.ndarray:
+    """
+    Creates a Fock state `|n_cav⟩` in an n-dimensional Hilbert space.
+    """
+    return basis(n_cav, n)

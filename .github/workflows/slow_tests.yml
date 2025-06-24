@@ -1,0 +1,29 @@
+name: Weekly Slow Tests
+
+on:
+  schedule:
+    - cron: '0 19 * * 1'  # Every Monday at 19:00 UTC
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  slow-tests:
+    runs-on: macos-latest 
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements_dev.txt
+      - name: Run slow tests with tox
+        run: tox -e slow
