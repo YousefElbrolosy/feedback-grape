@@ -40,7 +40,7 @@ def sesolve(Hs, initial_state, delta_ts, evo_type="density"):
 
 
 # TODO: see how to make it compatible with liouvillian superoperator
-def mesolve(H, jump_ops, rho0, tsave):
+def mesolve(*, jump_ops, rho0, H=None, tsave=jnp.linspace(0, 1, 2)):
     """
     an optional set of collapse operators, or a Liouvillian. A Liouvillian is a
     superoperator that accounts for hamiltonian and collapse operators.
