@@ -227,7 +227,7 @@ def convert_system_params(system_params):
     for i, gate_config in enumerate(system_params):
         if "c_ops" in gate_config:
             c_ops.append(gate_config["c_ops"])
-            decay_indices.append(i)
+            decay_indices.append(len(parameterized_gates))
         else:
             gate_func = gate_config["gate"]
             params = gate_config["initial_params"]

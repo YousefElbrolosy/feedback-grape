@@ -157,6 +157,9 @@ def _calculate_time_step(
         for i, gate in enumerate(parameterized_gates):
             # TODO: see what would happen if this is a state --> because it will still output rho
             if i in decay_indices:
+                print("decay_indices: ", decay_indices)
+                print("Applying decay operator at time step", i)
+                print("length of jump operators:", len(jump_operators))
                 if len(jump_operators) == 0:
                     raise ValueError(
                         "No Corressponding collapse operators for this time step."
@@ -167,6 +170,7 @@ def _calculate_time_step(
                 )
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
+                print("Applying measurement at time step", i)
                 rho_final, measurement, log_prob = povm(
                     rho_final,
                     gate,
@@ -186,6 +190,7 @@ def _calculate_time_step(
                 )
                 total_log_prob += log_prob
             else:
+                print("Applying gate at time step", i)
                 rho_final = apply_gate(
                     rho_final,
                     gate,
