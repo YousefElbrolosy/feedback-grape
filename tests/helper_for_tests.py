@@ -18,12 +18,12 @@ from feedback_grape.utils.operators import (
     destroy,
 )
 import jax.numpy as jnp
-from feedback_grape.grape import *
-from feedback_grape.utils.gates import *
-from feedback_grape.utils.operators import *
-from feedback_grape.utils.states import *
-from feedback_grape.utils.superoperator import *
-from feedback_grape.utils.tensor import *
+from feedback_grape.grape import optimize_pulse
+from feedback_grape.utils.gates import cnot, hadamard
+from feedback_grape.utils.operators import identity, sigmax, sigmay, sigmaz, sigmap, sigmam, destroy
+from feedback_grape.utils.states import basis
+from feedback_grape.utils.superoperator import liouvillian, sprepost
+from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.superoperator import liouvillian, sprepost
 from feedback_grape.utils.tensor import tensor
 from feedback_grape.utils.states import basis

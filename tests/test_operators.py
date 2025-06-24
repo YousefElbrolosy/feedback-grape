@@ -112,40 +112,38 @@ def test_destroy():
     assert jnp.allclose(result, expected)
 
 
-def test_cosm_and_sinm():
-    def povm_measure_operator(measurement_outcome, gamma, delta):
-        number_operator = create(4) @ destroy(4)
-        angle = (gamma * number_operator) + delta / 2
-        return jnp.where(
-            measurement_outcome == 1,
-            cosm(angle),
-            sinm(angle),
-        )
 
-    def test_cosm():
-        """
-        Test the cosm function.
-        """
-        result = cosm(povm_measure_operator(1, 1.0, 0.5))
-        expected = qt.Qobj(povm_measure_operator(1, 1.0, 0.5)).cosm().full()
-        print(f"result: {result}")
-        print(f"expected: {expected}")
-        assert jnp.allclose(result, expected), (
-            f"cosm result: {result}, expected: {expected}"
-        )
+def povm_measure_operator(measurement_outcome, gamma, delta):
+    number_operator = create(4) @ destroy(4)
+    angle = (gamma * number_operator) + delta / 2
+    return jnp.where(
+        measurement_outcome == 1,
+        cosm(angle),
+        sinm(angle),
+    )
 
-    def test_sinm():
-        """
-        Test the sinm function.
-        """
-        result = sinm(povm_measure_operator(1, 1.0, 0.5))
-        expected = qt.Qobj(povm_measure_operator(1, 1.0, 0.5)).sinm().full()
-        print(f"result: {result}")
-        print(f"expected: {expected}")
-        assert jnp.allclose(result, expected), "Not Close enough"
+def test_cosm():
+    """
+    Test the cosm function.
+    """
+    result = cosm(povm_measure_operator(1, 1.0, 0.5))
+    expected = qt.Qobj(povm_measure_operator(1, 1.0, 0.5)).cosm().full()
+    print(f"result: {result}")
+    print(f"expected: {expected}")
+    assert jnp.allclose(result, expected), (
+        f"cosm result: {result}, expected: {expected}"
+    )
 
-    test_cosm()
-    test_sinm()
+def test_sinm():
+    """
+    Test the sinm function.
+    """
+    result = sinm(povm_measure_operator(1, 1.0, 0.5))
+    expected = qt.Qobj(povm_measure_operator(1, 1.0, 0.5)).sinm().full()
+    print(f"result: {result}")
+    print(f"expected: {expected}")
+    assert jnp.allclose(result, expected), "Not Close enough"
+
 
 
 @pytest.mark.parametrize(

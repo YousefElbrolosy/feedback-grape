@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.abspath("../.."))
 project = "feedbackGRAPE"
 copyright = "2025, Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 author = "Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
+# CD: the version of the package
 release = "0.0.0rc0"
 
 # -- General configuration ---------------------------------------------------
