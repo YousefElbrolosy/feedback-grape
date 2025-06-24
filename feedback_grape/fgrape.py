@@ -152,7 +152,7 @@ def _calculate_time_step(
         extracted_params = initial_params
         # Apply each gate in sequence
         for i, gate in enumerate(parameterized_gates):
-            # TODO: see what would happen if this is a state --> because it will still output rho
+            # TODO: see what would happen if this is a state --> because it will still output rho, Pavlo: in the docs add such a comment
             if decay is not None:
                 if i in decay['decay_indices']:
                     if len(res) == 0:
@@ -483,7 +483,7 @@ def optimize_pulse_with_feedback(
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
-    # TODO: check if user enters states here, should we convert them to density matrices?
+    # TODO: check if user enters states here, should we convert them to density matrices? --> YES
 
     if (
         goal in ["fidelity", "both"]

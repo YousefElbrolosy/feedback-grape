@@ -1,8 +1,6 @@
 import jax.numpy as jnp
 
 
-# TODO + QUESTION: ask pavlo if purity of a liouvillian is something
-# important
 def purity(*, rho):
     """
     Computes the purity of a density matrix.

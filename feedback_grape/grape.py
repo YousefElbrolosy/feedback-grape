@@ -51,7 +51,7 @@ class _DEFAULTS(Enum):
 
 
 # TODO: for next 3 functions related to propagator computation, Confirm if for a Lioviliian (superoperator) the same evolution technique
-# can be used or should it be different?
+# can be used or should it be different? --> QUESTION
 def _compute_propagators(
     H_drift,
     H_control_array,
