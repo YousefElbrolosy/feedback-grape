@@ -128,6 +128,8 @@ def _calculate_time_step(
 
     jump_operators = c_ops.copy()
 
+    decay_count_so_far = 0
+
     if rnn_model is None and lut is None:
         extracted_params = initial_params
         # Apply each gate in sequence
@@ -164,9 +166,11 @@ def _calculate_time_step(
         extracted_lut_params = initial_params
 
         # Apply each gate in sequence
-        for i, gate in enumerate(parameterized_gates):
+        for i in range(len(parameterized_gates) + len(decay_indices)):
             # TODO: see what would happen if this is a state --> because it will still output rho
+            key, subkey = jax.random.split(key)
             if i in decay_indices:
+                decay_count_so_far += 1
                 if len(jump_operators) == 0:
                     raise ValueError(
                         "No Corressponding collapse operators for this time step."
@@ -175,19 +179,18 @@ def _calculate_time_step(
                     jump_ops=jump_operators.pop(0),
                     rho0=rho_final,
                 )
-            key, subkey = jax.random.split(key)
-            if i in measurement_indices:
+            elif i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
                     rho_final,
-                    gate,
-                    extracted_lut_params[i],
-                    gate_param_constraints=param_constraints[i]
+                    parameterized_gates[i - decay_count_so_far],
+                    extracted_lut_params[i - decay_count_so_far],
+                    gate_param_constraints=param_constraints[i - decay_count_so_far]
                     if param_constraints != []
                     else [],
                     rng_key=subkey,
                 )
                 measurement_history.append(measurement)
-                applied_params.append(extracted_lut_params[i])
+                applied_params.append(extracted_lut_params[i - decay_count_so_far])
                 extracted_lut_params = extract_from_lut(
                     lut, measurement_history
                 )
@@ -198,16 +201,14 @@ def _calculate_time_step(
             else:
                 rho_final = apply_gate(
                     rho_final,
-                    gate,
-                    extracted_lut_params[i],
+                    parameterized_gates[i - decay_count_so_far],
+                    extracted_lut_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i]
+                    gate_param_constraints=param_constraints[i - decay_count_so_far]
                     if param_constraints != []
                     else []
-                    if param_constraints != []
-                    else [],
                 )
-                applied_params.append(extracted_lut_params[i])
+                applied_params.append(extracted_lut_params[i - decay_count_so_far])
 
         return (
             rho_final,

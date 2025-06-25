@@ -227,7 +227,7 @@ def convert_system_params(system_params):
     for i, gate_config in enumerate(system_params):
         if hasattr(gate_config, "c_ops"):
             c_ops.append(gate_config.c_ops)
-            decay_indices.append(len(parameterized_gates))
+            decay_indices.append(i)
         else:
             gate_func = gate_config.gate
             params = gate_config.initial_params
@@ -238,7 +238,7 @@ def convert_system_params(system_params):
 
             # If this is a measurement gate, add its index
             if is_measurement:
-                measurement_indices.append(i - len(decay_indices))
+                measurement_indices.append(i)
 
             param_name = f"gate_{i}"
 
