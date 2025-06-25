@@ -26,7 +26,7 @@ NOTE: If you want to optimize complex prameters, you need to divide your complex
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
 
-#TODO: Make sure that a global variable isn't being changed in the process
+# TODO: Make sure that a global variable isn't being changed in the process
 # Just like what happened with the c_ops.copy
 
 
@@ -79,13 +79,14 @@ class Gate(NamedTuple):
     """
     Flag indicating if the gate is used for measurement.
     """
-    param_constraints: list[float] = None
+    param_constraints: list[float] | None = None
     # TODO: IMPORTANT Is that what florian wanted?
     """
     This constraints the initialization of the parameters to be withing the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
     sigmoid function.
     """
+
 
 class Decay(NamedTuple):
     """
@@ -148,13 +149,15 @@ def _calculate_time_step(
                     jump_ops=jump_operators.pop(0),
                     rho0=rho_final,
                 )
-            else: 
+            else:
                 rho_final = apply_gate(
                     rho_final,
                     parameterized_gates[i - decay_count_so_far],
                     extracted_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i - decay_count_so_far]
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                 )
@@ -188,13 +191,17 @@ def _calculate_time_step(
                     rho_final,
                     parameterized_gates[i - decay_count_so_far],
                     extracted_lut_params[i - decay_count_so_far],
-                    gate_param_constraints=param_constraints[i - decay_count_so_far]
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                     rng_key=subkey,
                 )
                 measurement_history.append(measurement)
-                applied_params.append(extracted_lut_params[i - decay_count_so_far])
+                applied_params.append(
+                    extracted_lut_params[i - decay_count_so_far]
+                )
                 extracted_lut_params = extract_from_lut(
                     lut, measurement_history
                 )
@@ -208,11 +215,15 @@ def _calculate_time_step(
                     parameterized_gates[i - decay_count_so_far],
                     extracted_lut_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i - decay_count_so_far]
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
-                    else []
+                    else [],
                 )
-                applied_params.append(extracted_lut_params[i - decay_count_so_far])
+                applied_params.append(
+                    extracted_lut_params[i - decay_count_so_far]
+                )
 
         return (
             rho_final,
@@ -245,7 +256,9 @@ def _calculate_time_step(
                     rho_final,
                     parameterized_gates[i - decay_count_so_far],
                     updated_params[i - decay_count_so_far],
-                    gate_param_constraints=param_constraints[i - decay_count_so_far]
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                     rng_key=meas_key,
@@ -266,7 +279,9 @@ def _calculate_time_step(
                     parameterized_gates[i - decay_count_so_far],
                     updated_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i - decay_count_so_far]
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                 )
@@ -719,7 +734,7 @@ def _train(
         learning_rate,
         convergence_threshold,
         prng_key,
-        progress
+        progress,
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted

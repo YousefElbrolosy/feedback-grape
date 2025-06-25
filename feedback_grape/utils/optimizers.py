@@ -38,7 +38,7 @@ def _optimize_adam_feedback(
             and abs(losses[-1] - losses[-2]) < convergence_threshold
         ):
             break
-        
+
         if progress:
             if iter_idx % 10 == 0:
                 print(f"Iteration {iter_idx}, Loss: {loss:.6f}")

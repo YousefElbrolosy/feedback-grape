@@ -199,7 +199,7 @@ def construct_ragged_row(
         return res
 
 
-def convert_system_params(system_params):       
+def convert_system_params(system_params):
     """
     Convert system_params format to (initial_params, parameterized_gates, measurement_indices) format.
 
@@ -246,9 +246,7 @@ def convert_system_params(system_params):
 
             # Add parameter constraints if provided
             if gate_config.param_constraints is not None:
-                param_constraints.append(
-                    gate_config.param_constraints
-                )
+                param_constraints.append(gate_config.param_constraints)
 
             if len(param_constraints) > 0 and (
                 len(param_constraints) != len(parameterized_gates)

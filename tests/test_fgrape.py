@@ -1,5 +1,6 @@
 # ruff: noqa
 import pytest
+from feedback_grape.fgrape import Gate, Decay
 
 
 def example_A_body():
@@ -18,7 +19,8 @@ def example_A_body():
 
     N_cav = 30
 
-    def qubit_unitary(alpha_re, alpha_im):
+    def qubit_unitary(alphas):
+        alpha_re, alpha_im = alphas
         alpha = alpha_re + 1j * alpha_im
         return tensor(
             identity(N_cav),
@@ -50,32 +52,32 @@ def example_A_body():
 
     key = jax.random.PRNGKey(42)
     # not provideing param_constraints just propagates the same initial_parameters for each time step
-    qub_unitary = {
-        "gate": qubit_unitary,
-        "initial_params": jax.random.uniform(
+    qub_unitary = Gate(
+        gate=qubit_unitary,
+        initial_params=jax.random.uniform(
             key,
             shape=(1, 2),  # 2 for gamma and delta
             minval=-jnp.pi,
             maxval=jnp.pi,
         )[0].tolist(),
-        "measurement_flag": False,
-        "param_constraints": [
+        measurement_flag=False,
+        param_constraints=[
             [-2 * jnp.pi, 2 * jnp.pi],
             [-2 * jnp.pi, 2 * jnp.pi],
         ],
-    }
+    )
 
-    qub_cav = {
-        "gate": qubit_cavity_unitary,
-        "initial_params": jax.random.uniform(
+    qub_cav = Gate(
+        gate=qubit_cavity_unitary,
+        initial_params=jax.random.uniform(
             key,
-            shape=(1, 1),  # 2 for gamma and delta
+            shape=(1, 1),  # 1 parameter for beta_re
             minval=-jnp.pi,
             maxval=jnp.pi,
         )[0].tolist(),
-        "measurement_flag": False,
-        "param_constraints": [[-2 * jnp.pi, 2 * jnp.pi]],
-    }
+        measurement_flag=False,
+        param_constraints=[[-2 * jnp.pi, 2 * jnp.pi]],
+    )
 
     system_params = [qub_unitary, qub_cav]
 
@@ -119,11 +121,12 @@ def example_B_body():
     from feedback_grape.utils.operators import create, destroy
     import jax
 
-    def povm_measure_operator(measurement_outcome, gamma, delta):
+    def povm_measure_operator(measurement_outcome, params):
         """
         POVM for the measurement of the cavity state.
         returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
         """
+        gamma, delta = params
         number_operator = create(N_cavity) @ destroy(N_cavity)
         angle = (gamma * number_operator) + delta / 2
         return jnp.where(
@@ -132,13 +135,13 @@ def example_B_body():
             sinm(angle),
         )
 
-    measure = {
-        "gate": povm_measure_operator,
-        "initial_params": jax.random.uniform(
+    measure = Gate(
+        gate=povm_measure_operator,
+        initial_params=jax.random.uniform(
             key=jax.random.PRNGKey(42), shape=(1, 2), minval=0.0, maxval=jnp.pi
         )[0].tolist(),
-        "measurement_flag": True,
-    }
+        measurement_flag=True,
+    )
 
     system_params = [measure]
 
@@ -186,14 +189,16 @@ def example_C_body():
 
     N_cav = 20
 
-    def qubit_unitary(alpha_re, alpha_im):
+    def qubit_unitary(alphas):
+        alpha_re, alpha_im = alphas
         alpha = alpha_re + 1j * alpha_im
         return tensor(
             identity(N_cav),
             expm(-1j * (alpha * sigmap() + alpha.conjugate() * sigmam()) / 2),
         )
 
-    def qubit_cavity_unitary(beta_re, beta_im):
+    def qubit_cavity_unitary(betas):
+        beta_re, beta_im = betas
         beta = beta_re + 1j * beta_im
         return expm(
             -1j
@@ -206,11 +211,12 @@ def example_C_body():
 
     from feedback_grape.utils.operators import create, destroy
 
-    def povm_measure_operator(measurement_outcome, gamma, delta):
+    def povm_measure_operator(measurement_outcome, params):
         """
         POVM for the measurement of the cavity state.
         returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
         """
+        gamma, delta = params
         number_operator = tensor(create(N_cav) @ destroy(N_cav), identity(2))
         angle = (gamma * number_operator) + delta / 2
         meas_op = jnp.where(
@@ -246,41 +252,41 @@ def example_C_body():
     num_of_iterations = 1000
     learning_rate = 0.05
     key = jax.random.PRNGKey(0)
-    measure = {
-        "gate": povm_measure_operator,
-        "initial_params": jax.random.uniform(
+    measure = Gate(
+        gate=povm_measure_operator,
+        initial_params=jax.random.uniform(
             key,
             shape=(1, 2),  # 2 for gamma and delta
             minval=-jnp.pi,
             maxval=jnp.pi,
         )[0].tolist(),
-        "measurement_flag": True,
-        # "param_constraints": [[0, jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
-    }
+        measurement_flag=True,
+        # param_constraints=[[0, jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
+    )
 
-    qub_unitary = {
-        "gate": qubit_unitary,
-        "initial_params": jax.random.uniform(
+    qub_unitary = Gate(
+        gate=qubit_unitary,
+        initial_params=jax.random.uniform(
             key,
             shape=(1, 2),  # 2 for gamma and delta
             minval=-jnp.pi,
             maxval=jnp.pi,
         )[0].tolist(),
-        "measurement_flag": False,
-        # "param_constraints": [[-2*jnp.pi, 2*jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
-    }
+        measurement_flag=False,
+        # param_constraints=[[-2*jnp.pi, 2*jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
+    )
 
-    qub_cav = {
-        "gate": qubit_cavity_unitary,
-        "initial_params": jax.random.uniform(
+    qub_cav = Gate(
+        gate=qubit_cavity_unitary,
+        initial_params=jax.random.uniform(
             key,
             shape=(1, 2),  # 2 for gamma and delta
             minval=-jnp.pi,
             maxval=jnp.pi,
         )[0].tolist(),
-        "measurement_flag": False,
-        # "param_constraints": [[-jnp.pi, jnp.pi], [-jnp.pi, jnp.pi]],
-    }
+        measurement_flag=False,
+        # param_constraints=[[-jnp.pi, jnp.pi], [-jnp.pi, jnp.pi]],
+    )
 
     system_params = [measure, qub_unitary, qub_cav]
 
@@ -357,11 +363,12 @@ def example_D_body():
 
     from feedback_grape.utils.operators import create, destroy
 
-    def povm_measure_operator(measurement_outcome, gamma, delta):
+    def povm_measure_operator(measurement_outcome, params):
         """
         POVM for the measurement of the cavity state.
         returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
         """
+        gamma, delta = params
         number_operator = tensor(create(N_cav) @ destroy(N_cav), identity(2))
         angle = (gamma * number_operator) + delta / 2
         meas_op = jnp.where(
@@ -389,26 +396,26 @@ def example_D_body():
     # Here the loss directly corressponds to the -fidelity (when converging) because log(1) is 0 and
 
     # the algorithm is choosing params that makes the POVM generate prob = 1
-    measure = {
-        "gate": povm_measure_operator,
-        "initial_params": [0.058, jnp.pi / 2],  # gamma and delta
-        "measurement_flag": True,
-        # "param_constraints": [[0, 0.5], [-1, 1]],
-    }
+    measure = Gate(
+        gate=povm_measure_operator,
+        initial_params=[0.058, jnp.pi / 2],  # gamma and delta
+        measurement_flag=True,
+        # param_constraints=[[0, 0.5], [-1, 1]],
+    )
 
-    qub_unitary = {
-        "gate": qubit_unitary,
-        "initial_params": [jnp.pi / 3],
-        "measurement_flag": False,
-        # "param_constraints": [[0, 0.5], [-1, 1]],
-    }
+    qub_unitary = Gate(
+        gate=qubit_unitary,
+        initial_params=[jnp.pi / 3],
+        measurement_flag=False,
+        # param_constraints=[[0, 0.5], [-1, 1]],
+    )
 
-    qub_cav = {
-        "gate": qubit_cavity_unitary,
-        "initial_params": [jnp.pi / 3],
-        "measurement_flag": False,
-        # "param_constraints": [[0, 0.5], [-1, 1]],
-    }
+    qub_cav = Gate(
+        gate=qubit_cavity_unitary,
+        initial_params=[jnp.pi / 3],
+        measurement_flag=False,
+        # param_constraints=[[0, 0.5], [-1, 1]],
+    )
 
     system_params = [measure, qub_unitary, qub_cav]
     result = optimize_pulse_with_feedback(
@@ -430,17 +437,15 @@ def example_D_body():
 
     # Now we add dissipation
 
+    decay = Decay(
+        c_ops=[tensor(identity(N_cav), jnp.sqrt(0.15) * sigmam())],
+    )
+    # not supported to have decay at very end, not supported to have multiple consecutive decays
+    # TODO: use system_params in calculate time step instead:
+    system_params = [decay, measure, qub_unitary, qub_cav]
     result = optimize_pulse_with_feedback(
         U_0=rho_target,
         C_target=rho_target,
-        decay={
-            "decay_indices": [0],
-            "c_ops": {
-                "tm": [tensor(identity(N_cav), jnp.sqrt(0.15) * sigmam())],
-            },
-            "tsave": jnp.linspace(0, 1, 2),  # time grid for decay
-            "Hamiltonian": None,
-        },
         system_params=system_params,
         num_time_steps=1,
         mode="lookup",
@@ -494,16 +499,18 @@ def example_E_body():
     from feedback_grape.utils.operators import create, destroy
 
     ## Initialize the parameterized Gates
-    def displacement_gate(alpha_re, alpha_im):
+    def displacement_gate(alphas):
         """Displacement operator for a coherent state."""
+        alpha_re, alpha_im = alphas
         alpha = alpha_re + 1j * alpha_im
         gate = jax.scipy.linalg.expm(
             alpha * create(N_cav) - alpha.conj() * destroy(N_cav)
         )
         return tensor(gate, identity(2))
 
-    def displacement_gate_dag(alpha_re, alpha_im):
+    def displacement_gate_dag(alphas):
         """Displacement operator for a coherent state."""
+        alpha_re, alpha_im = alphas
         alpha = alpha_re + 1j * alpha_im
         gate = (
             jax.scipy.linalg.expm(
@@ -514,40 +521,7 @@ def example_E_body():
         )
         return tensor(gate, identity(2))
 
-    def snap_gate(
-        phase0,
-        phase1,
-        phase2,
-        phase3,
-        phase4,
-        phase5,
-        phase6,
-        phase7,
-        phase8,
-        phase9,
-        phase10,
-        phase11,
-        phase12,
-        phase13,
-        phase14,
-    ):
-        phase_list = [
-            phase0,
-            phase1,
-            phase2,
-            phase3,
-            phase4,
-            phase5,
-            phase6,
-            phase7,
-            phase8,
-            phase9,
-            phase10,
-            phase11,
-            phase12,
-            phase13,
-            phase14,
-        ]
+    def snap_gate(phase_list):
         diags = jnp.ones(shape=(N_cav - len(phase_list)))
         exponentiated = jnp.exp(1j * jnp.array(phase_list))
         diags = jnp.concatenate((exponentiated, diags))
@@ -555,11 +529,12 @@ def example_E_body():
 
     from feedback_grape.utils.operators import create, destroy
 
-    def povm_measure_operator(measurement_outcome, gamma, delta):
+    def povm_measure_operator(measurement_outcome, params):
         """
         POVM for the measurement of the cavity state.
         returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
         """
+        gamma, delta = params
         number_operator = tensor(create(N_cav) @ destroy(N_cav), identity(2))
         angle = (gamma * number_operator) + delta / 2
         meas_op = jnp.where(
@@ -634,57 +609,48 @@ def example_E_body():
     # TODO/QUESTION: In documentation, clarify that the initial_params are the params up to the
     # point where measurement occurs, compared with other modes where the initial_params
     # are the initial params for the entire system for all time steps.
-    measure = {
-        "gate": povm_measure_operator,
-        "initial_params": jax.random.uniform(
+    measure = Gate(
+        gate=povm_measure_operator,
+        initial_params=jax.random.uniform(
             key,
             shape=(1, 2),  # 2 for gamma and delta
             minval=-jnp.pi,
             maxval=jnp.pi,
         )[0].tolist(),
-        "measurement_flag": True,
-        # "param_constraints": [[0, 0.5], [-1, 1]],
-    }
+        measurement_flag=True,
+        # param_constraints=[[0, 0.5], [-1, 1]],
+    )
 
-    displacement = {
-        "gate": displacement_gate,
-        "initial_params": jax.random.uniform(
+    displacement = Gate(
+        gate=displacement_gate,
+        initial_params=jax.random.uniform(
             key, shape=(1, 2), minval=-jnp.pi, maxval=jnp.pi
         )[0].tolist(),
-        "measurement_flag": False,
-    }
+        measurement_flag=False,
+    )
 
-    snap = {
-        "gate": snap_gate,
-        "initial_params": snap_init.tolist(),
-        "measurement_flag": False,
-    }
+    snap = Gate(
+        gate=snap_gate,
+        initial_params=snap_init.tolist(),
+        measurement_flag=False,
+    )
 
-    displacement_dag = {
-        "gate": displacement_gate_dag,
-        "initial_params": jax.random.uniform(
+    displacement_dag = Gate(
+        gate=displacement_gate_dag,
+        initial_params=jax.random.uniform(
             key, shape=(1, 2), minval=-jnp.pi, maxval=jnp.pi
         )[0].tolist(),
-        "measurement_flag": False,
-    }
+        measurement_flag=False,
+    )
 
-    system_params = [measure, displacement, snap, displacement_dag]
+    decay = Decay(
+        c_ops=[tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())]
+    )
+    system_params = [decay, measure, decay, displacement, snap, displacement_dag]
 
     result = optimize_pulse_with_feedback(
         U_0=rho_target,
         C_target=rho_target,
-        decay={
-            "decay_indices": [
-                0,
-                1,
-            ],  # indices of gates before which decay occurs
-            "c_ops": {
-                "tm": [tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())],
-                "tc": [tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())],
-            },
-            "tsave": jnp.linspace(0, 1, 2),  # time grid for decay
-            "Hamiltonian": None,
-        },
         system_params=system_params,
         num_time_steps=2,
         mode="nn",

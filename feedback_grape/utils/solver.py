@@ -57,7 +57,10 @@ def mesolve(*, jump_ops, rho0, H=None, tsave=jnp.linspace(0, 1, 2)):
     dq.set_progress_meter(False)
 
     if H is None:
-        H = [jnp.zeros(shape=(rho0.shape[-1], rho0.shape[-1])) for _ in range(len(tsave))]
+        H = [
+            jnp.zeros(shape=(rho0.shape[-1], rho0.shape[-1]))
+            for _ in range(len(tsave))
+        ]
     rho0 = jnp.asarray(rho0, dtype=jnp.complex128)
     # TODO: understand why there is the dimension of the length of the hamiltonian
     # the first [-1] gets the last hamiltonian?
