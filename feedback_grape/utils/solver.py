@@ -7,7 +7,6 @@ import jax
 import jax.numpy as jnp
 
 from dynamiqs import mesolve as mesolve_dynamiqs
-from .operators import identity
 import dynamiqs as dq
 
 
@@ -41,7 +40,7 @@ def sesolve(Hs, initial_state, delta_ts, evo_type="density"):
 
 
 # TODO: see how to make it compatible with liouvillian superoperator
-def mesolve(H, jump_ops, rho0, tsave):
+def mesolve(*, jump_ops, rho0, H=None, tsave=jnp.linspace(0, 1, 2)):
     """
     an optional set of collapse operators, or a Liouvillian. A Liouvillian is a
     superoperator that accounts for hamiltonian and collapse operators.
@@ -56,8 +55,12 @@ def mesolve(H, jump_ops, rho0, tsave):
         rho_final: Evolved density matrix after applying the time-dependent Hamiltonians.
     """
     dq.set_progress_meter(False)
+
     if H is None:
-        H = [identity(rho0.shape[0]) for _ in range(len(tsave))]
+        H = [
+            jnp.zeros(shape=(rho0.shape[-1], rho0.shape[-1]))
+            for _ in range(len(tsave))
+        ]
     rho0 = jnp.asarray(rho0, dtype=jnp.complex128)
     # TODO: understand why there is the dimension of the length of the hamiltonian
     # the first [-1] gets the last hamiltonian?

@@ -26,6 +26,9 @@ NOTE: If you want to optimize complex prameters, you need to divide your complex
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
 
+# TODO: Make sure that a global variable isn't being changed in the process
+# Just like what happened with the c_ops.copy
+
 
 # TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
 class FgResult(NamedTuple):
@@ -59,32 +62,9 @@ class FgResult(NamedTuple):
     """
 
 
-class decay(NamedTuple):
+class Gate(NamedTuple):
     """
-    decay class to store the decay parameters.
-    """
-
-    c_ops: List[jnp.ndarray]
-    """
-    Collapse operators for the decay process.
-    """
-    decay_indices: List[int]
-    """
-    Indices of the gates that are used for decay.
-    """
-    tsave: List[float]
-    """
-    Time grid for the decay process.
-    """
-    Hamiltonian: jnp.ndarray | None = None
-    """
-    Hamiltonian for the decay process, if applicable.
-    """
-
-
-class Input(NamedTuple):
-    """
-    Input class to store the parameters for each gate.
+    Gate class to store the parameters for each gate.
     """
 
     gate: callable  # type: ignore
@@ -99,12 +79,23 @@ class Input(NamedTuple):
     """
     Flag indicating if the gate is used for measurement.
     """
-    param_constraints: list[float]
+    param_constraints: list[float] | None = None
     # TODO: IMPORTANT Is that what florian wanted?
     """
     This constraints the initialization of the parameters to be withing the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
     sigmoid function.
+    """
+
+
+class Decay(NamedTuple):
+    """
+    Decay class to store the parameters for each decay.
+    """
+
+    c_ops: list[jnp.ndarray]
+    """
+    Collapse operators for the decay.
     """
 
 
@@ -116,7 +107,8 @@ def _calculate_time_step(
     initial_params,
     param_shapes,
     param_constraints,
-    decay,
+    c_ops,
+    decay_indices,
     rnn_model=None,
     rnn_params=None,
     rnn_state=None,
@@ -127,14 +119,6 @@ def _calculate_time_step(
 ):
     """
     Calculate the time step for the optimization process.
-
-    Args:
-        rho_cav: Density matrix of the cavity.
-        povm_measure_operator: POVM measurement operator.
-        initial_povm_params: Initial parameters for the POVM measurement operator.
-
-    Returns:
-
     """
     rho_final = rho_cav
     total_log_prob = 0.0
@@ -145,36 +129,39 @@ def _calculate_time_step(
     # directly within the same time step
     # or new parameters are together within the same time step
     key = time_step_key
-    if decay is not None:
-        res, _ = prepare_parameters_from_dict(decay['c_ops'])
+
+    jump_operators = c_ops.copy()
+
+    decay_count_so_far = 0
 
     if rnn_model is None and lut is None:
         extracted_params = initial_params
         # Apply each gate in sequence
-        for i, gate in enumerate(parameterized_gates):
-            # TODO: see what would happen if this is a state --> because it will still output rho
-            if decay is not None:
-                if i in decay['decay_indices']:
-                    if len(res) == 0:
-                        raise ValueError(
-                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
-                        )
-                    rho_final = mesolve(
-                        H=decay['Hamiltonian'],
-                        jump_ops=res.pop(0),
-                        rho0=rho_final,
-                        tsave=decay['tsave'],
+        for i in range(len(parameterized_gates) + len(decay_indices)):
+            # TODO: see what would happen if this is a state --> because it will still output rho, Pavlo: in the docs add such a comment
+            if i in decay_indices:
+                decay_count_so_far += 1
+                if len(jump_operators) == 0:
+                    raise ValueError(
+                        "No Corressponding collapse operators for this time step."
                     )
-            rho_final = apply_gate(
-                rho_final,
-                gate,
-                extracted_params[i],
-                evo_type,
-                gate_param_constraints=param_constraints[i]
-                if param_constraints != []
-                else [],
-            )
-            applied_params.append(extracted_params[i])
+                rho_final = mesolve(
+                    jump_ops=jump_operators.pop(0),
+                    rho0=rho_final,
+                )
+            else:
+                rho_final = apply_gate(
+                    rho_final,
+                    parameterized_gates[i - decay_count_so_far],
+                    extracted_params[i - decay_count_so_far],
+                    evo_type,
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
+                    if param_constraints != []
+                    else [],
+                )
+                applied_params.append(extracted_params[i - decay_count_so_far])
         return (
             rho_final,
             total_log_prob,
@@ -186,33 +173,35 @@ def _calculate_time_step(
         extracted_lut_params = initial_params
 
         # Apply each gate in sequence
-        for i, gate in enumerate(parameterized_gates):
+        for i in range(len(parameterized_gates) + len(decay_indices)):
             # TODO: see what would happen if this is a state --> because it will still output rho
-            if decay is not None:
-                if i in decay['decay_indices']:
-                    if len(res) == 0:
-                        raise ValueError(
-                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
-                        )
-                    rho_final = mesolve(
-                        H=decay['Hamiltonian'],
-                        jump_ops=res.pop(0),
-                        rho0=rho_final,
-                        tsave=decay['tsave'],
-                    )
             key, subkey = jax.random.split(key)
-            if i in measurement_indices:
+            if i in decay_indices:
+                decay_count_so_far += 1
+                if len(jump_operators) == 0:
+                    raise ValueError(
+                        "No Corressponding collapse operators for this time step."
+                    )
+                rho_final = mesolve(
+                    jump_ops=jump_operators.pop(0),
+                    rho0=rho_final,
+                )
+            elif i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
                     rho_final,
-                    gate,
-                    extracted_lut_params[i],
-                    gate_param_constraints=param_constraints[i]
+                    parameterized_gates[i - decay_count_so_far],
+                    extracted_lut_params[i - decay_count_so_far],
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                     rng_key=subkey,
                 )
                 measurement_history.append(measurement)
-                applied_params.append(extracted_lut_params[i])
+                applied_params.append(
+                    extracted_lut_params[i - decay_count_so_far]
+                )
                 extracted_lut_params = extract_from_lut(
                     lut, measurement_history
                 )
@@ -223,16 +212,18 @@ def _calculate_time_step(
             else:
                 rho_final = apply_gate(
                     rho_final,
-                    gate,
-                    extracted_lut_params[i],
+                    parameterized_gates[i - decay_count_so_far],
+                    extracted_lut_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i]
-                    if param_constraints != []
-                    else []
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                 )
-                applied_params.append(extracted_lut_params[i])
+                applied_params.append(
+                    extracted_lut_params[i - decay_count_so_far]
+                )
 
         return (
             rho_final,
@@ -246,34 +237,33 @@ def _calculate_time_step(
         new_hidden_state = rnn_state
 
         # Apply each gate in sequence
-        for i, gate in enumerate(parameterized_gates):
+        for i in range(len(parameterized_gates) + len(decay_indices)):
             # TODO: see what would happen if this is a state --> because it will still output rho
-            if decay is not None:
-                if i in decay['decay_indices']:
-                    if len(res) == 0:
-                        raise ValueError(
-                            "Decay indices provided, but no corressponding collapse operators found in decay parameters."
-                        )
-                    rho_final = mesolve(
-                        H=decay['Hamiltonian'],
-                        jump_ops=res.pop(0),
-                        rho0=rho_final,
-                        tsave=decay['tsave'],
-                    )
-
             key, subkey = jax.random.split(key)
             meas_key, dropout_key = jax.random.split(subkey)
-            if i in measurement_indices:
+            if i in decay_indices:
+                decay_count_so_far += 1
+                if len(jump_operators) == 0:
+                    raise ValueError(
+                        "No Corressponding collapse operators for this time step."
+                    )
+                rho_final = mesolve(
+                    jump_ops=jump_operators.pop(0),
+                    rho0=rho_final,
+                )
+            elif i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
                     rho_final,
-                    gate,
-                    updated_params[i],
-                    gate_param_constraints=param_constraints[i]
+                    parameterized_gates[i - decay_count_so_far],
+                    updated_params[i - decay_count_so_far],
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                     rng_key=meas_key,
                 )
-                applied_params.append(updated_params[i])
+                applied_params.append(updated_params[i - decay_count_so_far])
                 updated_params, new_hidden_state = rnn_model.apply(
                     rnn_params,
                     jnp.array([measurement]),
@@ -286,14 +276,16 @@ def _calculate_time_step(
             else:
                 rho_final = apply_gate(
                     rho_final,
-                    gate,
-                    updated_params[i],
+                    parameterized_gates[i - decay_count_so_far],
+                    updated_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i]
+                    gate_param_constraints=param_constraints[
+                        i - decay_count_so_far
+                    ]
                     if param_constraints != []
                     else [],
                 )
-                applied_params.append(updated_params[i])
+                applied_params.append(updated_params[i - decay_count_so_far])
 
         return (
             rho_final,
@@ -312,8 +304,9 @@ def calculate_trajectory(
     initial_params,
     param_shapes,
     param_constraints,
+    c_ops,
+    decay_indices,
     time_steps,
-    decay=None,
     rnn_model=None,
     rnn_params=None,
     rnn_state=None,
@@ -329,7 +322,6 @@ def calculate_trajectory(
         rho_cav: Initial density matrix of the cavity.
         parameterized_gates: List of parameterized gates.
         measurement_indices: Indices of gates used for measurements.
-        decay: Decay parameters, if applicable.
         initial_params: Initial parameters for all gates.
         param_shapes: List of shapes for each gate's parameters.
         time_steps: Number of time steps within a trajectory.
@@ -366,7 +358,8 @@ def calculate_trajectory(
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
                     param_constraints=param_constraints,
-                    decay=decay,
+                    c_ops=c_ops,
+                    decay_indices=decay_indices,
                     initial_params=new_params[i],
                     param_shapes=param_shapes,
                     evo_type=evo_type,
@@ -388,7 +381,8 @@ def calculate_trajectory(
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
                     param_constraints=param_constraints,
-                    decay=decay,
+                    c_ops=c_ops,
+                    decay_indices=decay_indices,
                     initial_params=new_params,
                     param_shapes=param_shapes,
                     lut=lut,
@@ -419,7 +413,8 @@ def calculate_trajectory(
                     parameterized_gates=parameterized_gates,
                     measurement_indices=measurement_indices,
                     param_constraints=param_constraints,
-                    decay=decay,
+                    c_ops=c_ops,
+                    decay_indices=decay_indices,
                     initial_params=new_params,
                     param_shapes=param_shapes,
                     rnn_model=rnn_model,
@@ -444,7 +439,7 @@ def calculate_trajectory(
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
-    system_params: list[Input],
+    system_params: list[Gate],
     num_time_steps: int,
     max_iter: int,
     convergence_threshold: float,
@@ -454,9 +449,9 @@ def optimize_pulse_with_feedback(
     batch_size: int = DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
     mode: str = DEFAULTS.MODE.value,  # nn, lookup
-    decay: decay | None = DEFAULTS.DECAY.value,
     rnn: callable = DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
+    progress: bool = DEFAULTS.PROGRESS.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -464,7 +459,7 @@ def optimize_pulse_with_feedback(
     Args:
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
-        system_params: List of Input objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
+        system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
@@ -474,7 +469,6 @@ def optimize_pulse_with_feedback(
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
-        decay (decay | None): Decay parameters, if applicable. If None, no decay is applied.
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
         rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
     Returns:
@@ -483,7 +477,7 @@ def optimize_pulse_with_feedback(
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
-    # TODO: check if user enters states here, should we convert them to density matrices?
+    # TODO: check if user enters states here, should we convert them to density matrices? --> YES
 
     if (
         goal in ["fidelity", "both"]
@@ -502,6 +496,8 @@ def optimize_pulse_with_feedback(
         parameterized_gates,
         measurement_indices,
         param_constraints,
+        c_ops,
+        decay_indices,
     ) = convert_system_params(system_params)
 
     parent_rng_key = jax.random.PRNGKey(0)
@@ -635,7 +631,8 @@ def optimize_pulse_with_feedback(
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
-            decay=decay,
+            c_ops=c_ops,
+            decay_indices=decay_indices,
             initial_params=initial_params_opt,
             param_shapes=param_shapes,
             time_steps=num_time_steps,
@@ -689,6 +686,7 @@ def optimize_pulse_with_feedback(
         learning_rate=learning_rate,
         convergence_threshold=convergence_threshold,
         prng_key=train_key,
+        progress=progress,
     )
 
     result = _evaluate(
@@ -697,7 +695,8 @@ def optimize_pulse_with_feedback(
         parameterized_gates=parameterized_gates,
         measurement_indices=measurement_indices,
         param_constraints=param_constraints,
-        decay=decay,
+        c_ops=c_ops,
+        decay_indices=decay_indices,
         param_shapes=param_shapes,
         best_model_params=best_model_params,
         mode=mode,
@@ -721,6 +720,7 @@ def _train(
     max_iter,
     learning_rate,
     convergence_threshold,
+    progress,
 ):
     """
     Train the model using the specified optimizer.
@@ -734,6 +734,7 @@ def _train(
         learning_rate,
         convergence_threshold,
         prng_key,
+        progress,
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted
@@ -746,9 +747,10 @@ def _evaluate(
     C_target,
     parameterized_gates,
     measurement_indices,
-    decay,
     param_shapes,
     param_constraints,
+    c_ops,
+    decay_indices,
     best_model_params,
     mode,
     num_time_steps,
@@ -769,7 +771,8 @@ def _evaluate(
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
-            decay=decay,
+            c_ops=c_ops,
+            decay_indices=decay_indices,
             initial_params=best_model_params,
             param_shapes=param_shapes,
             time_steps=num_time_steps,
@@ -783,7 +786,8 @@ def _evaluate(
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
-            decay=decay,
+            c_ops=c_ops,
+            decay_indices=decay_indices,
             initial_params=best_model_params['initial_params'],
             param_shapes=param_shapes,
             time_steps=num_time_steps,
@@ -800,7 +804,8 @@ def _evaluate(
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
-            decay=decay,
+            c_ops=c_ops,
+            decay_indices=decay_indices,
             initial_params=best_model_params['initial_params'],
             param_shapes=param_shapes,
             time_steps=num_time_steps,

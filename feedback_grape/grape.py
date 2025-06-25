@@ -51,7 +51,7 @@ class _DEFAULTS(Enum):
 
 
 # TODO: for next 3 functions related to propagator computation, Confirm if for a Lioviliian (superoperator) the same evolution technique
-# can be used or should it be different?
+# can be used or should it be different? --> QUESTION
 def _compute_propagators(
     H_drift,
     H_control_array,
@@ -248,7 +248,7 @@ def optimize_pulse(
                 control_amplitudes, H_drift, H_control_array, delta_t
             )
             tsave = jnp.linspace(0, total_evo_time, num_t_slots)
-            U_final = mesolve(Hs, c_ops, U_0, tsave)
+            U_final = mesolve(H=Hs, jump_ops=c_ops, rho0=U_0, tsave=tsave)
         else:
             if propcomp == "time-efficient":
                 U_final = _compute_forward_evolution_time_efficient(
@@ -321,7 +321,7 @@ def evaluate(
             control_amplitudes, H_drift, H_control_array, delta_t
         )
         tsave = jnp.linspace(0, total_evo_time, num_t_slots)
-        rho_final = mesolve(Hs, c_ops, U_0, tsave)
+        rho_final = mesolve(H=Hs, jump_ops=c_ops, rho0=U_0, tsave=tsave)
     else:
         if propcomp == "time-efficient":
             rho_final = _compute_forward_evolution_time_efficient(

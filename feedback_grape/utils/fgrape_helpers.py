@@ -51,6 +51,7 @@ class DEFAULTS(Enum):
     RNN_HIDDEN_SIZE = 30
     GOAL = "fidelity"
     DECAY = None
+    PROGRESS = False
 
 
 def clip_params(params, gate_param_constraints):
@@ -97,7 +98,7 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
     """
     # For non-measurement gates, apply the gate without measurement
     params = clip_params(params, gate_param_constraints)
-    operator = gate(*params)
+    operator = gate(*[params])
     if evo_type == "density":
         rho_meas = operator @ rho_cav @ operator.conj().T
     else:
@@ -116,7 +117,6 @@ def convert_to_index(measurement_history):
     return int_index
 
 
-@jax.jit
 def extract_from_lut(lut, measurement_history):
     """
     Extract parameters from the lookup table based on the measurement history.
@@ -221,41 +221,47 @@ def convert_system_params(system_params):
     parameterized_gates = []
     measurement_indices = []
     param_constraints = []
+    c_ops = []
+    decay_indices = []
 
     for i, gate_config in enumerate(system_params):
-        gate_func = gate_config["gate"]
-        params = gate_config["initial_params"]
-        is_measurement = gate_config["measurement_flag"]
+        if hasattr(gate_config, "c_ops"):
+            c_ops.append(gate_config.c_ops)
+            decay_indices.append(i)
+        else:
+            gate_func = gate_config.gate
+            params = gate_config.initial_params
+            is_measurement = gate_config.measurement_flag
 
-        # Add gate to parameterized_gates list
-        parameterized_gates.append(gate_func)
+            # Add gate to parameterized_gates list
+            parameterized_gates.append(gate_func)
 
-        # If this is a measurement gate, add its index
-        if is_measurement:
-            measurement_indices.append(i)
+            # If this is a measurement gate, add its index
+            if is_measurement:
+                measurement_indices.append(i)
 
-        param_name = f"gate_{i}"
+            param_name = f"gate_{i}"
 
-        initial_params[param_name] = params
+            initial_params[param_name] = params
 
-        # Add parameter constraints if provided
-        if "param_constraints" in gate_config:
-            param_constraints.append(
-                gate_config.get("param_constraints", None)
-            )
+            # Add parameter constraints if provided
+            if gate_config.param_constraints is not None:
+                param_constraints.append(gate_config.param_constraints)
 
-        if len(param_constraints) > 0 and (
-            len(param_constraints) != len(parameterized_gates)
-        ):
-            raise TypeError(
-                "If you provide parameter constraints for some gates, you need to provide them for all gates."
-            )
+            if len(param_constraints) > 0 and (
+                len(param_constraints) != len(parameterized_gates)
+            ):
+                raise TypeError(
+                    "If you provide parameter constraints for some gates, you need to provide them for all gates."
+                )
 
     return (
         initial_params,
         parameterized_gates,
         measurement_indices,
         param_constraints,
+        c_ops,
+        decay_indices,
     )
 
 
