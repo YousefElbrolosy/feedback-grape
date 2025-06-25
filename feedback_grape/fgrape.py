@@ -26,6 +26,9 @@ NOTE: If you want to optimize complex prameters, you need to divide your complex
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
 
+#TODO: Make sure that a global variable isn't being changed in the process
+# Just like what happened with the c_0ps.copy
+
 
 # TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
 class FgResult(NamedTuple):
@@ -133,10 +136,10 @@ def _calculate_time_step(
     if rnn_model is None and lut is None:
         extracted_params = initial_params
         # Apply each gate in sequence
-        for i, gate in enumerate(parameterized_gates):
+        for i in range(len(parameterized_gates) + len(decay_indices)):
             # TODO: see what would happen if this is a state --> because it will still output rho, Pavlo: in the docs add such a comment
-
             if i in decay_indices:
+                decay_count_so_far += 1
                 if len(jump_operators) == 0:
                     raise ValueError(
                         "No Corressponding collapse operators for this time step."
@@ -145,16 +148,17 @@ def _calculate_time_step(
                     jump_ops=jump_operators.pop(0),
                     rho0=rho_final,
                 )
-            rho_final = apply_gate(
-                rho_final,
-                gate,
-                extracted_params[i],
-                evo_type,
-                gate_param_constraints=param_constraints[i]
-                if param_constraints != []
-                else [],
-            )
-            applied_params.append(extracted_params[i])
+            else: 
+                rho_final = apply_gate(
+                    rho_final,
+                    parameterized_gates[i - decay_count_so_far],
+                    extracted_params[i - decay_count_so_far],
+                    evo_type,
+                    gate_param_constraints=param_constraints[i - decay_count_so_far]
+                    if param_constraints != []
+                    else [],
+                )
+                applied_params.append(extracted_params[i - decay_count_so_far])
         return (
             rho_final,
             total_log_prob,
@@ -222,30 +226,31 @@ def _calculate_time_step(
         new_hidden_state = rnn_state
 
         # Apply each gate in sequence
-        for i, gate in enumerate(parameterized_gates):
+        for i in range(len(parameterized_gates) + len(decay_indices)):
             # TODO: see what would happen if this is a state --> because it will still output rho
-            if len(jump_operators) == 0:
-                raise ValueError(
-                    "No Corressponding collapse operators for this time step."
-                )
-            rho_final = mesolve(
-                jump_ops=jump_operators.pop(0),
-                rho0=rho_final,
-            )
-
             key, subkey = jax.random.split(key)
             meas_key, dropout_key = jax.random.split(subkey)
-            if i in measurement_indices:
+            if i in decay_indices:
+                decay_count_so_far += 1
+                if len(jump_operators) == 0:
+                    raise ValueError(
+                        "No Corressponding collapse operators for this time step."
+                    )
+                rho_final = mesolve(
+                    jump_ops=jump_operators.pop(0),
+                    rho0=rho_final,
+                )
+            elif i in measurement_indices:
                 rho_final, measurement, log_prob = povm(
                     rho_final,
-                    gate,
-                    updated_params[i],
-                    gate_param_constraints=param_constraints[i]
+                    parameterized_gates[i - decay_count_so_far],
+                    updated_params[i - decay_count_so_far],
+                    gate_param_constraints=param_constraints[i - decay_count_so_far]
                     if param_constraints != []
                     else [],
                     rng_key=meas_key,
                 )
-                applied_params.append(updated_params[i])
+                applied_params.append(updated_params[i - decay_count_so_far])
                 updated_params, new_hidden_state = rnn_model.apply(
                     rnn_params,
                     jnp.array([measurement]),
@@ -258,14 +263,14 @@ def _calculate_time_step(
             else:
                 rho_final = apply_gate(
                     rho_final,
-                    gate,
-                    updated_params[i],
+                    parameterized_gates[i - decay_count_so_far],
+                    updated_params[i - decay_count_so_far],
                     evo_type,
-                    gate_param_constraints=param_constraints[i]
+                    gate_param_constraints=param_constraints[i - decay_count_so_far]
                     if param_constraints != []
                     else [],
                 )
-                applied_params.append(updated_params[i])
+                applied_params.append(updated_params[i - decay_count_so_far])
 
         return (
             rho_final,
@@ -431,6 +436,7 @@ def optimize_pulse_with_feedback(
     mode: str = DEFAULTS.MODE.value,  # nn, lookup
     rnn: callable = DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
+    progress: bool = DEFAULTS.PROGRESS.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -665,6 +671,7 @@ def optimize_pulse_with_feedback(
         learning_rate=learning_rate,
         convergence_threshold=convergence_threshold,
         prng_key=train_key,
+        progress=progress,
     )
 
     result = _evaluate(
@@ -698,6 +705,7 @@ def _train(
     max_iter,
     learning_rate,
     convergence_threshold,
+    progress,
 ):
     """
     Train the model using the specified optimizer.
@@ -711,6 +719,7 @@ def _train(
         learning_rate,
         convergence_threshold,
         prng_key,
+        progress
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted

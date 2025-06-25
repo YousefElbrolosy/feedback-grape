@@ -51,6 +51,7 @@ class DEFAULTS(Enum):
     RNN_HIDDEN_SIZE = 30
     GOAL = "fidelity"
     DECAY = None
+    PROGRESS = False
 
 
 def clip_params(params, gate_param_constraints):
@@ -97,6 +98,7 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
     """
     # For non-measurement gates, apply the gate without measurement
     params = clip_params(params, gate_param_constraints)
+    # operator = gate(*[params])
     operator = gate(*params)
     if evo_type == "density":
         rho_meas = operator @ rho_cav @ operator.conj().T
@@ -116,7 +118,6 @@ def convert_to_index(measurement_history):
     return int_index
 
 
-@jax.jit
 def extract_from_lut(lut, measurement_history):
     """
     Extract parameters from the lookup table based on the measurement history.
@@ -247,7 +248,7 @@ def convert_system_params(system_params):
             # Add parameter constraints if provided
             if gate_config.param_constraints is not None:
                 param_constraints.append(
-                    gate_config.get("param_constraints", None)
+                    gate_config.param_constraints
                 )
 
             if len(param_constraints) > 0 and (
