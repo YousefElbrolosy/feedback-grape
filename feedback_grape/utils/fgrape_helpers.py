@@ -98,8 +98,7 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
     """
     # For non-measurement gates, apply the gate without measurement
     params = clip_params(params, gate_param_constraints)
-    # operator = gate(*[params])
-    operator = gate(*params)
+    operator = gate(*[params])
     if evo_type == "density":
         rho_meas = operator @ rho_cav @ operator.conj().T
     else:

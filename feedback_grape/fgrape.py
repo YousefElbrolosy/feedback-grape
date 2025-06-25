@@ -27,7 +27,7 @@ parts and then internaly in your defined function unitaries you need to combine 
 """
 
 #TODO: Make sure that a global variable isn't being changed in the process
-# Just like what happened with the c_0ps.copy
+# Just like what happened with the c_ops.copy
 
 
 # TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
