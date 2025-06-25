@@ -230,7 +230,7 @@ def convert_system_params(system_params):
             decay_indices.append(i)
         else:
             gate_func = gate_config.gate
-            if isinstance(gate_config.initial_params,jnp.ndarray):
+            if isinstance(gate_config.initial_params, jnp.ndarray):
                 # If initial_params is a numpy array, convert it to a list
                 params = gate_config.initial_params.tolist()
             else:

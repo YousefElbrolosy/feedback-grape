@@ -643,10 +643,15 @@ def example_E_body():
         measurement_flag=False,
     )
 
-    decay = Decay(
-        c_ops=[tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())]
-    )
-    system_params = [decay, measure, decay, displacement, snap, displacement_dag]
+    decay = Decay(c_ops=[tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())])
+    system_params = [
+        decay,
+        measure,
+        decay,
+        displacement,
+        snap,
+        displacement_dag,
+    ]
 
     result = optimize_pulse_with_feedback(
         U_0=rho_target,
