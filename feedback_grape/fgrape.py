@@ -59,9 +59,9 @@ class FgResult(NamedTuple):
     """
 
 
-class Input(NamedTuple):
+class Gate(NamedTuple):
     """
-    Input class to store the parameters for each gate.
+    Gate class to store the parameters for each gate.
     """
 
     gate: callable  # type: ignore
@@ -76,12 +76,22 @@ class Input(NamedTuple):
     """
     Flag indicating if the gate is used for measurement.
     """
-    param_constraints: list[float]
+    param_constraints: list[float] = None
     # TODO: IMPORTANT Is that what florian wanted?
     """
     This constraints the initialization of the parameters to be withing the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
     sigmoid function.
+    """
+
+class Decay(NamedTuple):
+    """
+    Decay class to store the parameters for each decay.
+    """
+
+    c_ops: list[jnp.ndarray]
+    """
+    Collapse operators for the decay.
     """
 
 
@@ -157,9 +167,6 @@ def _calculate_time_step(
         for i, gate in enumerate(parameterized_gates):
             # TODO: see what would happen if this is a state --> because it will still output rho
             if i in decay_indices:
-                print("decay_indices: ", decay_indices)
-                print("Applying decay operator at time step", i)
-                print("length of jump operators:", len(jump_operators))
                 if len(jump_operators) == 0:
                     raise ValueError(
                         "No Corressponding collapse operators for this time step."
@@ -170,7 +177,6 @@ def _calculate_time_step(
                 )
             key, subkey = jax.random.split(key)
             if i in measurement_indices:
-                print("Applying measurement at time step", i)
                 rho_final, measurement, log_prob = povm(
                     rho_final,
                     gate,
@@ -190,7 +196,6 @@ def _calculate_time_step(
                 )
                 total_log_prob += log_prob
             else:
-                print("Applying gate at time step", i)
                 rho_final = apply_gate(
                     rho_final,
                     gate,
@@ -413,7 +418,7 @@ def calculate_trajectory(
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
-    system_params: list[Input],
+    system_params: list[Gate],
     num_time_steps: int,
     max_iter: int,
     convergence_threshold: float,
@@ -432,7 +437,7 @@ def optimize_pulse_with_feedback(
     Args:
         U_0: Initial state or /unitary/density/super operator.
         C_target: Target state or /unitary/density/super operator.
-        system_params: List of Input objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
+        system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.

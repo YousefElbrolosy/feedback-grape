@@ -199,7 +199,7 @@ def construct_ragged_row(
         return res
 
 
-def convert_system_params(system_params):
+def convert_system_params(system_params):       
     """
     Convert system_params format to (initial_params, parameterized_gates, measurement_indices) format.
 
@@ -225,13 +225,13 @@ def convert_system_params(system_params):
     decay_indices = []
 
     for i, gate_config in enumerate(system_params):
-        if "c_ops" in gate_config:
-            c_ops.append(gate_config["c_ops"])
+        if hasattr(gate_config, "c_ops"):
+            c_ops.append(gate_config.c_ops)
             decay_indices.append(len(parameterized_gates))
         else:
-            gate_func = gate_config["gate"]
-            params = gate_config["initial_params"]
-            is_measurement = gate_config["measurement_flag"]
+            gate_func = gate_config.gate
+            params = gate_config.initial_params
+            is_measurement = gate_config.measurement_flag
 
             # Add gate to parameterized_gates list
             parameterized_gates.append(gate_func)
@@ -245,7 +245,7 @@ def convert_system_params(system_params):
             initial_params[param_name] = params
 
             # Add parameter constraints if provided
-            if "param_constraints" in gate_config:
+            if gate_config.param_constraints is not None:
                 param_constraints.append(
                     gate_config.get("param_constraints", None)
                 )
