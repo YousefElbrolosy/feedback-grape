@@ -169,7 +169,7 @@ def prepare_parameters_from_dict(params_dict):
     shapes = []
     for value in params_dict.values():
         flat_params = jax.tree_util.tree_leaves(value)
-        res.append(jnp.array(flat_params))
+        res.append(jnp.array(flat_params, dtype=jnp.float64))
         shapes.append(jnp.array(flat_params).shape[0])
     return res, shapes
 
@@ -230,7 +230,11 @@ def convert_system_params(system_params):
             decay_indices.append(i)
         else:
             gate_func = gate_config.gate
-            params = gate_config.initial_params
+            if isinstance(gate_config.initial_params,jnp.ndarray):
+                # If initial_params is a numpy array, convert it to a list
+                params = gate_config.initial_params.tolist()
+            else:
+                params = gate_config.initial_params
             is_measurement = gate_config.measurement_flag
 
             # Add gate to parameterized_gates list
