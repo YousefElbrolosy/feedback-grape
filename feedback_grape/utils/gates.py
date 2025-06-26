@@ -5,7 +5,8 @@ This module define some basic quantum gates and their matrix representations.
 import jax.numpy as jnp
 
 
-# TODO : see if we should give user ability to choose the dtype of the gates
+# Answer : see if we should give user ability to choose the dtype of the gates
+#  --> not for such simple gates
 # TODO : see if we should jit the gates
 def cnot():
     """
