@@ -927,7 +927,7 @@ def get_results_for_new_dissipation_problem(optimizer, propcomp):
         propcomp=propcomp,
         convergence_threshold=1e-16,
         max_iter=1000,
-        learning_rate=0.1,
+        learning_rate=0.01,
     )
 
     return res

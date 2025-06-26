@@ -441,7 +441,6 @@ def example_D_body():
         c_ops=[tensor(identity(N_cav), jnp.sqrt(0.15) * sigmam())],
     )
     # not supported to have decay at very end, not supported to have multiple consecutive decays
-    # TODO: use system_params in calculate time step instead:
     system_params = [decay, measure, qub_unitary, qub_cav]
     result = optimize_pulse_with_feedback(
         U_0=rho_target,
@@ -606,9 +605,7 @@ def example_E_body():
     snap_init = jax.random.uniform(
         key, shape=(N_snap,), minval=-jnp.pi, maxval=jnp.pi
     )
-    # TODO/QUESTION: In documentation, clarify that the initial_params are the params up to the
-    # point where measurement occurs, compared with other modes where the initial_params
-    # are the initial params for the entire system for all time steps.
+
     measure = Gate(
         gate=povm_measure_operator,
         initial_params=jax.random.uniform(

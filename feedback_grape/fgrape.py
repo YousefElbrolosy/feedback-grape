@@ -3,7 +3,12 @@ import jax.numpy as jnp
 from typing import List, NamedTuple
 from .utils.solver import mesolve
 from .utils.optimizers import _optimize_adam_feedback
-from .utils.fidelity import fidelity, is_positive_semi_definite
+from .utils.fidelity import (
+    fidelity,
+    is_positive_semi_definite,
+    isbra,
+    isket,
+)
 from .utils.purity import purity
 from .utils.povm import povm
 from .utils.fgrape_helpers import (
@@ -17,7 +22,9 @@ from .utils.fgrape_helpers import (
     DEFAULTS,
 )
 
-# TODO: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
+# Answer: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
+# Answer: No, both do different things, pmap is for parallelizing over multiple devices, while vmap is for vectorizing over a single device.
+# Answer: Pmap should be used by the user if he has a slurm script that runs grape on multiple devices.
 # ruff: noqa N8
 jax.config.update("jax_enable_x64", True)
 
@@ -125,11 +132,7 @@ def _calculate_time_step(
     rho_final = rho_cav
     total_log_prob = 0.0
     applied_params = []
-    # TODO: throw error based on content of decay indices here
-    # if not (decay_indices is None or decay_indices == []):
 
-    # directly within the same time step
-    # or new parameters are together within the same time step
     key = time_step_key
 
     jump_operators = c_ops.copy()
@@ -140,7 +143,8 @@ def _calculate_time_step(
         extracted_params = initial_params
         # Apply each gate in sequence
         for i in range(len(parameterized_gates) + len(decay_indices)):
-            # TODO: see what would happen if this is a state --> because it will still output rho, Pavlo: in the docs add such a comment
+            # Answer: see what would happen if this is a state --> because it will still output rho
+            # Answer: states are now automatically converted to density matrices
             if i in decay_indices:
                 decay_count_so_far += 1
                 if len(jump_operators) == 0:
@@ -176,7 +180,8 @@ def _calculate_time_step(
 
         # Apply each gate in sequence
         for i in range(len(parameterized_gates) + len(decay_indices)):
-            # TODO: see what would happen if this is a state --> because it will still output rho
+            # Answer: see what would happen if this is a state --> because it will still output rho
+            # Answer: states are now automatically converted to density matrices
             key, subkey = jax.random.split(key)
             if i in decay_indices:
                 decay_count_so_far += 1
@@ -199,6 +204,7 @@ def _calculate_time_step(
                     if param_constraints != []
                     else [],
                     rng_key=subkey,
+                    evo_type=evo_type,
                 )
                 measurement_history.append(measurement)
                 applied_params.append(
@@ -240,7 +246,8 @@ def _calculate_time_step(
 
         # Apply each gate in sequence
         for i in range(len(parameterized_gates) + len(decay_indices)):
-            # TODO: see what would happen if this is a state --> because it will still output rho
+            # Answer: see what would happen if this is a state --> because it will still output rho
+            # Answer: states are now automatically converted to density matrices
             key, subkey = jax.random.split(key)
             meas_key, dropout_key = jax.random.split(subkey)
             if i in decay_indices:
@@ -264,6 +271,7 @@ def _calculate_time_step(
                     if param_constraints != []
                     else [],
                     rng_key=meas_key,
+                    evo_type=evo_type,
                 )
                 applied_params.append(updated_params[i - decay_count_so_far])
                 updated_params, new_hidden_state = rnn_model.apply(
@@ -466,7 +474,7 @@ def optimize_pulse_with_feedback(
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
         learning_rate (float): The learning rate for the optimization algorithm.
-        evo_type (str): The evo_type of quantum system representation, such as 'unitary', 'state', 'density', or 'liouvillian'.
+        evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
                     This is primarily used for fidelity calculation.
         goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
         batch_size (int): The number of trajectories to process in parallel.
@@ -480,7 +488,26 @@ def optimize_pulse_with_feedback(
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
-    # TODO: check if user enters states here, should we convert them to density matrices? --> YES
+    if evo_type not in ["state", "density"]:
+        raise ValueError("Invalid evo_type. Choose 'state' or 'density'.")
+
+    if U_0 is None:
+        raise ValueError("Please provide an initial state U_0.")
+
+    if C_target is None and goal in ["fidelity", "both"]:
+        raise ValueError(
+            "Please provide a target state C_target for fidelity calculation."
+        )
+
+    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
+        raise TypeError(
+            "For evo_type='state', please provide initial and target states as kets (column vectors)."
+        )
+
+    if isbra(U_0) or isbra(C_target):
+        raise TypeError(
+            "Please provide initial and target states as kets (column vectors) or density matrices."
+        )
 
     if (
         goal in ["fidelity", "both"]
@@ -491,7 +518,12 @@ def optimize_pulse_with_feedback(
         )
     ):
         raise TypeError(
-            'Your initial and target rhos must be positive semi-definite.'
+            'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
+        )
+    
+    if(goal == "purity" and evo_type == "state"):
+        raise ValueError(
+            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
         )
 
     (
@@ -502,6 +534,17 @@ def optimize_pulse_with_feedback(
         c_ops,
         decay_indices,
     ) = convert_system_params(system_params)
+
+    if (
+        evo_type == "state" or (isket(U_0) or isket(C_target))
+    ) and decay_indices != []:
+        raise ValueError(
+            "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
+            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
+        )
+        # U_0 = ket2dm(U_0)
+        # C_target = ket2dm(C_target)
+        # evo_type = "density"
 
     parent_rng_key = jax.random.PRNGKey(0)
     train_eval_key, sub_key, rnn_key = jax.random.split(parent_rng_key, 3)
