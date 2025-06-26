@@ -9,18 +9,24 @@ Think of parallelized, highly efficient qutip with feedback control.
 
 ## Installation
 To install dependencies necessary for the package <br>
-`pip install -r requirements.txt` <br>
+`pip install -U -r requirements.txt` <br>
 To install dependencies necessary for testing, linting, formating, ... <br>
-`pip install -r requirements_dev.txt`
+`pip install -U -r requirements_dev.txt` <br>
+To be able to render the jupyter notebooks, make sure to install pandoc, in conda the command is: <br> 
+`conda install conda-forge::pandoc` <br>
+To be able to run your code on GPUs please make sure to install jax[cuda12] using the following command: <br>
+`pip install -U "jax[cuda12]==0.5.2"` or <br>
+`pip install -U -r requirements_gpu.txt` <br>
+
 
 ## Documentation
-For Development: Enter the command `make html` and then open index.html with Live Server to take a look at the Documentaion
+For Development: Enter the command `cd docs` then `make html` and then open index.html in docs/build/html with Live Server to take a look at the Documentaion.
 
 ## Testing
 Simply type `pytest`. This would also generate a coverage report.
 
 ### checking for dynamically typed errors
-Simply type `mypy src`. This would give you type checking errors if any.
+Simply type `mypy feedback_grape`. This would give you type checking errors if any.
 
 ### linting and formating
 For Linting `ruff check` <br>

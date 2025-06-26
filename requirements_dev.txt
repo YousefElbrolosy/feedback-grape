@@ -1,16 +1,27 @@
 # for running the tests
-pytest>=8.3.5
-## for coverage tests
-pytest-cov>=6.0.0
+pytest==8.3.5
+# for coverage tests
+pytest-cov==6.0.0
 # for checking the statically typed code
-mypy>=1.15.0
+mypy==1.15.0
 # for testing on different environments
-tox>=4.25.0
-tox-gh-actions>=3.3.0
-# # for checking the code style
-ruff>=0.11.2
+tox==4.25.0
+tox-gh-actions==3.3.0
+# for checking the code style
+ruff==0.11.2
 # for documentation
-sphinx>=8.2.3
-sphinx_rtd_theme>=3.0.2
-
-
+sphinx==8.2.3
+sphinx_rtd_theme==3.0.2
+sphinx-book-theme==1.1.4
+nbsphinx==0.9.6
+# pre-commit
+pre-commit==4.2.0
+# qutip for comparison
+qutip==5.1.1
+# qutip_qtrl for testing grape
+qutip_qtrl==0.1.5
+qutip_qip==0.4.1
+# for lexer (showing python code in the notebook)
+ipython==9.1.0
+sphinx-design==0.6.1
+myst_nb==1.2.0

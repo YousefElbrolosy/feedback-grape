@@ -4,7 +4,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.mypy]
-mypy_path = "src"
+mypy_path = "feedback_grape"
 check_untyped_defs = true
 disallow_incomplete_defs = true
 warn_no_return = true
@@ -12,12 +12,18 @@ warn_redundant_casts = true
 show_error_code_links = true
 pretty = true
 disallow_any_generics = true
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=grape"
+addopts = "--cov=feedback_grape"
+
 
 testpaths = [
     "tests",
+]
+
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')"
 ]
 
 [tool.ruff]
@@ -49,30 +55,28 @@ exclude = [
     "node_modules",
     "site-packages",
     "venv",
+    "docs",
 ]
 
-# Same as Black.
-line-length = 88
+# PEP8 recommends 79 characters per line
+line-length = 79
 indent-width = 4
 
-# Assume Python 3.11
+# Target Python version
 target-version = "py311"
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-# McCabe complexity (`C901`) by default.
-select = ["E4", "E7", "E9", "F", "D1"]
-ignore = []
+# Enable PEP8 rules (E and W), plus Pyflakes (F)
+select = ["E", "W", "F", "N", "I"]  # Also include pep8-naming (N) and isort (I)
+ignore = [
+    # No ignored rules unless specifically needed
+]
 
-
-
-
-# Allow fix for all enabled rules (when `--fix`) is provided.
+# Allow fix for all enabled rules when --fix is used
 fixable = ["ALL"]
 unfixable = []
 
-# Allow unused variables when underscore-prefixed.
+# Allow unused variables when underscore-prefixed
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.per-file-ignores]
@@ -80,14 +84,11 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 "__init_*.py" = ["ALL"]
 
 [tool.ruff.format]
-# Like Black, use double quotes for strings.
-quote-style = "double"
+# PEP8 does not mandate quote style, so we use 'preserve' instead of 'double'
+quote-style = "preserve"
 
-# Like Black, indent with spaces, rather than tabs.
+# PEP8 prefers spaces over tabs
 indent-style = "space"
 
-# Like Black, respect magic trailing commas.
-skip-magic-trailing-comma = false
-
-# Like Black, automatically detect the appropriate line ending.
+# Auto-detect line ending (LF/CRLF)
 line-ending = "auto"
