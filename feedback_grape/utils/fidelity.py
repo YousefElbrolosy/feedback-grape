@@ -126,7 +126,7 @@ def _state_density_fidelity(A, B):
             B = B / jnp.linalg.norm(B)
             # The fidelity for pure states reduces to the modulus of their
             # inner product.
-            return jnp.abs(jnp.vdot(A, B)) ** 2
+            return jnp.vdot(A, B)
         # Take advantage of the fact that the density operator for A
         # is a projector to avoid a sqrtm call.
         A = A / jnp.linalg.norm(A)
@@ -157,6 +157,7 @@ def _state_density_fidelity(A, B):
     return jnp.real(jnp.sum(jnp.sqrt(eig_vals_non_neg)))
 
 
+# TODO: add to docs: For the Same initial and target, the fidelity of density and state may differ slightly due to the ways in which they are computed.
 def fidelity(*, C_target, U_final, evo_type="unitary"):
     """
     Computes the fidelity of the final state/operator/density matrix/liouvillian
@@ -184,14 +185,15 @@ def fidelity(*, C_target, U_final, evo_type="unitary"):
         trace_diff = 0.5 * jnp.abs(jnp.trace(diff))
         return 1.0 - trace_diff / C_target.shape[0]
     elif evo_type == "unitary":
-        # TODO: check accuracy of this, do we really need vector conjugate or .dot will simply work?
+        # Answer: check accuracy of this, do we really need vector conjugate or .dot will simply work? --> no vdot is essential because we need the first term conjugated
         norm_C_target = C_target / jnp.linalg.norm(C_target)
         norm_U_final = U_final / jnp.linalg.norm(U_final)
-
+        # equivalent to Tr(C_target^† U_final)
+        # overlap = jnp.trace(norm_C_target.conj().T @ norm_U_final)
         overlap = jnp.vdot(norm_C_target, norm_U_final)
     elif evo_type == "density" or evo_type == "state":
         # normalization occurs in the _state_density_fidelity function
-        return _state_density_fidelity(
+        overlap = _state_density_fidelity(
             C_target,
             U_final,
         )
