@@ -520,8 +520,8 @@ def optimize_pulse_with_feedback(
         raise TypeError(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
         )
-    
-    if(goal == "purity" and evo_type == "state"):
+
+    if goal == "purity" and evo_type == "state":
         raise ValueError(
             "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
         )
