@@ -12,7 +12,7 @@ from .utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,
 )
-from .utils.fidelity import fidelity, is_positive_semi_definite
+from .utils.fidelity import fidelity, is_positive_semi_definite, isket
 from .utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
@@ -210,7 +210,6 @@ def optimize_pulse(
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold.
         learning_rate: Learning rate for gradient ascent.
-        # TODO: automate detection of evo_type based on U_0 and C_target IMPORTANT
         evo_type: Type of fidelity calculation ("unitary" or "state" or "density" or "liouvillian").
             When to use each evo_type:
             - "unitary": For unitary evolution.
@@ -232,6 +231,14 @@ def optimize_pulse(
             'your initial and target rhos must be positive semi-definite.'
         )
 
+    if (
+        evo_type == "state" or (isket(U_0) or isket(C_target))
+    ) and c_ops != []:
+        raise ValueError(
+            "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets/=. "
+            "Dissipation requires a density matrix representation of your inital and target states because the solver uses Lindblad equation to evolve the system with dissipation."
+            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
+        )
     # Step 1: Initialize control amplitudes
     control_amplitudes = _init_control_amplitudes(num_t_slots, len(H_control))
     delta_t = total_evo_time / num_t_slots
@@ -242,7 +249,7 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
-        # TODO: see how to do dissipation for states/unitary
+        # TODO: see how to do dissipation for unitary
         if evo_type == "density" and c_ops != []:
             Hs, _ = build_parameterized_hamiltonian(
                 control_amplitudes, H_drift, H_control_array, delta_t
