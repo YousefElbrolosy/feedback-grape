@@ -1,9 +1,9 @@
+# ruff: noqa
 import jax
 import jax.numpy as jnp
 import pytest
 import qutip as qt
-
-from feedback_grape.utils.states import basis, coherent
+from feedback_grape.utils.states import basis, coherent, fock
 
 jax.config.update("jax_enable_x64", True)
 
@@ -36,4 +36,15 @@ def test_coherent_parametrized(n, alpha):
     print(f"result: {result}, \n expected: {expected}")
     assert jnp.allclose(result, expected, atol=1e-4), (
         "The coherent state is not close enough to qutip's."
+    )
+
+
+@pytest.mark.parametrize("n", [2, 10, 4, 29])
+def test_fock(n):
+    N_cav = 30
+    result = fock(N_cav, n)
+    expected = qt.fock(N_cav, n).full().flatten().reshape(-1, 1)
+    print(f"result: {result}, \n expected: {expected}")
+    assert jnp.allclose(result, expected, atol=1e-10), (
+        "The fock state is not close enough to qutip's."
     )
