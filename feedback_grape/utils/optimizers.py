@@ -140,12 +140,15 @@ def _optimize_L_BFGS(
         grad = otu.tree_get(state, 'grad')
         err = otu.tree_l2_norm(grad)
         import jax.numpy as jnp
+
         return jnp.logical_or(
             jnp.logical_and(iter_num == 0, max_iter != 0),
             jnp.logical_and(
                 iter_num < max_iter,
-                jnp.logical_or(err >= convergence_threshold, jnp.logical_not(early_stop))
-            )
+                jnp.logical_or(
+                    err >= convergence_threshold, jnp.logical_not(early_stop)
+                ),
+            ),
         )
 
     init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)

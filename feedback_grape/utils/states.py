@@ -62,7 +62,9 @@ def fock(dimension: int, n: int) -> jnp.ndarray:
     Creates a Fock state `|n⟩` in an n_cav-dimensional Hilbert space.
     """
     if not (0 <= n < dimension):
-        raise ValueError("All basis indices must be integers in the range "
-                          "0 <= n < dimension "
-                         "(got n={n}, dimension={dimension})")
+        raise ValueError(
+            "All basis indices must be integers in the range "
+            "0 <= n < dimension "
+            "(got n={n}, dimension={dimension})"
+        )
     return basis(dimension, n)

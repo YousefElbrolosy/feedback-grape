@@ -504,7 +504,7 @@ def optimize_pulse_with_feedback(
         raise TypeError(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
         )
-    
+
     if evo_type == "density" and (isket(U_0) or isket(C_target)):
         raise TypeError(
             "For evo_type='density', please provide initial and target states as density matrices."
@@ -527,7 +527,7 @@ def optimize_pulse_with_feedback(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
         )
 
-    if goal in ["purity","both"] and evo_type == "state":
+    if goal in ["purity", "both"] and evo_type == "state":
         raise ValueError(
             "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
         )
@@ -580,7 +580,7 @@ def optimize_pulse_with_feedback(
                 "You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'."
             )
     else:
-        if (measurement_indices == [] or measurement_indices is None):
+        if measurement_indices == [] or measurement_indices is None:
             raise ValueError(
                 "For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. "
             )
@@ -780,7 +780,7 @@ def _train(
     learning_rate,
     convergence_threshold,
     progress,
-    early_stop
+    early_stop,
 ):
     """
     Train the model using the specified optimizer.
@@ -795,7 +795,7 @@ def _train(
         convergence_threshold,
         prng_key,
         progress,
-        early_stop
+        early_stop,
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted
