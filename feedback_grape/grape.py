@@ -161,6 +161,7 @@ def build_parameterized_hamiltonian(
 
 # TODO: Why is this controlled by an amplitude (give user option to set those bounds)
 # NOTE: try different seeds for random initialization and choose the best fidelity
+# TODO: Make user supply amplitude bounds in api
 def _init_control_amplitudes(num_t_slots, num_controls):
     """
     Initialize control amplitudes for the optimization process.
