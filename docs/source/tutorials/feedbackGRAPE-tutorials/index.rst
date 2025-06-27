@@ -13,6 +13,7 @@ State Preparation Examples
    :maxdepth: 1
 
    example_A
+   example_A_cat_state
    example_C
 
 State Purification
