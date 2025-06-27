@@ -1,4 +1,7 @@
 # ruff: noqa
+
+# TODO: test for errors (do situations where you expect an error to be raised) and catch that error
+
 import pytest
 from feedback_grape.fgrape import Gate, Decay
 

@@ -503,6 +503,11 @@ def optimize_pulse_with_feedback(
         raise TypeError(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
         )
+    
+    if evo_type == "density" and (isket(U_0) or isket(C_target)):
+        raise TypeError(
+            "For evo_type='density', please provide initial and target states as density matrices."
+        )
 
     if isbra(U_0) or isbra(C_target):
         raise TypeError(
@@ -521,7 +526,7 @@ def optimize_pulse_with_feedback(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
         )
 
-    if goal == "purity" and evo_type == "state":
+    if goal in ["purity","both"] and evo_type == "state":
         raise ValueError(
             "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
         )
@@ -571,7 +576,7 @@ def optimize_pulse_with_feedback(
         )
         if not (measurement_indices == [] or measurement_indices is None):
             raise ValueError(
-                "You provided a measurement indices, but no feedback is used. Please set mode to 'nn' or 'lookup'."
+                "You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'."
             )
     else:
         # Convert dictionary parameters to list[list] structure

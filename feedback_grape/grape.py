@@ -157,7 +157,7 @@ def build_parameterized_hamiltonian(
     return Hs, delta_ts
 
 
-# TODO: Why is this controlled by an amplitude
+# TODO: Why is this controlled by an amplitude (give user option to set those bounds)
 # NOTE: try different seeds for random initialization and choose the best fidelity
 def _init_control_amplitudes(num_t_slots, num_controls):
     """

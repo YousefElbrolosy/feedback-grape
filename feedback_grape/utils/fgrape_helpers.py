@@ -242,6 +242,10 @@ def convert_system_params(system_params):
 
             # If this is a measurement gate, add its index
             if is_measurement:
+                if gate_func.__code__.co_argcount < 2:
+                    raise ValueError("The Positive operator valued measure gate you supplied must have at least two arguments."
+                                     "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
+                                     "of optimizable parameters for the gate.")
                 measurement_indices.append(i)
 
             param_name = f"gate_{i}"
