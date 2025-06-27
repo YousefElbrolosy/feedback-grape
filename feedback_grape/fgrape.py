@@ -462,6 +462,7 @@ def optimize_pulse_with_feedback(
     rnn: callable = DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
     progress: bool = DEFAULTS.PROGRESS.value,
+    early_stop: bool = DEFAULTS.EARLY_STOP.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -579,10 +580,15 @@ def optimize_pulse_with_feedback(
                 "You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'."
             )
     else:
+        if (measurement_indices == [] or measurement_indices is None):
+            raise ValueError(
+                "For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. "
+            )
         # Convert dictionary parameters to list[list] structure
         flat_params, param_shapes = prepare_parameters_from_dict(
             initial_params
         )
+
         # Calculate total number of parameters
         if mode == "nn":
             hidden_size = rnn_hidden_size
@@ -665,6 +671,7 @@ def optimize_pulse_with_feedback(
             rnn_params = None
             lookup_table_params = None
             initial_params_opt = trainable_params
+            # jax.debug.print("trainable params: {} \n", trainable_params)
         elif mode == "nn":
             # reseting hidden state at end of every trajectory ( does not really change the purity tho)
             h_initial_state = jnp.zeros((1, hidden_size))
@@ -738,6 +745,7 @@ def optimize_pulse_with_feedback(
         convergence_threshold=convergence_threshold,
         prng_key=train_key,
         progress=progress,
+        early_stop=early_stop,
     )
 
     result = _evaluate(
@@ -772,6 +780,7 @@ def _train(
     learning_rate,
     convergence_threshold,
     progress,
+    early_stop
 ):
     """
     Train the model using the specified optimizer.
@@ -786,6 +795,7 @@ def _train(
         convergence_threshold,
         prng_key,
         progress,
+        early_stop
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted

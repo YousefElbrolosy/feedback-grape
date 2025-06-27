@@ -48,6 +48,8 @@ class _DEFAULTS(Enum):
     LEARNING_RATE = 0.01
     OPTIMIZER = "adam"
     PROPCOMP = "time-efficient"
+    PROGRESS = False
+    EARLY_STOP = True
 
 
 # TODO: for next 3 functions related to propagator computation, Confirm if for a Lioviliian (superoperator) the same evolution technique
@@ -195,6 +197,8 @@ def optimize_pulse(
     learning_rate: float = _DEFAULTS.LEARNING_RATE.value,
     optimizer: str = _DEFAULTS.OPTIMIZER.value,
     propcomp: str = _DEFAULTS.PROPCOMP.value,
+    progress: bool = _DEFAULTS.PROGRESS.value,
+    early_stop: bool = _DEFAULTS.EARLY_STOP.value,
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
@@ -289,6 +293,8 @@ def optimize_pulse(
         convergence_threshold,
         learning_rate,
         optimizer,
+        progress,
+        early_stop,
     )
 
     final_res = evaluate(
@@ -375,6 +381,8 @@ def train(
     convergence_threshold,
     learning_rate,
     optimizer,
+    progress,
+    early_stop,
 ):
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
@@ -385,6 +393,8 @@ def train(
             max_iter,
             convergence_threshold,
             learning_rate,
+            progress,
+            early_stop,
         )
     elif optimizer.upper() == "ADAM":
         control_amplitudes, iter_idx = _optimize_adam(
@@ -393,6 +403,8 @@ def train(
             max_iter,
             learning_rate,
             convergence_threshold,
+            progress,
+            early_stop,
         )
     else:
         raise ValueError(
