@@ -4,6 +4,7 @@ from feedback_grape.utils.operators import sigmax, sigmay
 import qutip as qt
 import jax.numpy as jnp
 
+
 def test_sprepost():
     """
     Test the sprepost function.

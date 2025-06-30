@@ -49,7 +49,6 @@ class _DEFAULTS(Enum):
     OPTIMIZER = "adam"
     PROPCOMP = "time-efficient"
     PROGRESS = False
-    EARLY_STOP = True
 
 
 def _compute_propagators(
@@ -197,7 +196,6 @@ def optimize_pulse(
     optimizer: str = _DEFAULTS.OPTIMIZER.value,
     propcomp: str = _DEFAULTS.PROPCOMP.value,
     progress: bool = _DEFAULTS.PROGRESS.value,
-    early_stop: bool = _DEFAULTS.EARLY_STOP.value,
 ) -> result:
     """
     Uses GRAPE to optimize a pulse.
@@ -211,7 +209,7 @@ def optimize_pulse(
         total_evo_time: Total evolution time.
         c_ops: List of collapse operators (optional, used for dissipative evolution).
         max_iter: Maximum number of iterations.
-        convergence_threshold: Convergence threshold.
+        convergence_threshold: Convergence threshold provide 0.0 or None to enforce max iterations.
         learning_rate: Learning rate for gradient ascent.
         evo_type: Type of fidelity and evolution calculation ("unitary" or "state" or "density").
             When to use each evo_type:
@@ -223,9 +221,15 @@ def optimize_pulse(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
+    if convergence_threshold == 0.0 or convergence_threshold == None:
+        early_stop = False
+    else:
+        early_stop = True
 
     if evo_type not in ["state", "density", "unitary"]:
-        raise ValueError("Invalid evo_type. Choose 'state' or 'density' or 'unitary'.")
+        raise ValueError(
+            "Invalid evo_type. Choose 'state' or 'density' or 'unitary'."
+        )
 
     if (
         not is_positive_semi_definite(U_0)

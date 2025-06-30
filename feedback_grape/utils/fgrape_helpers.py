@@ -52,7 +52,6 @@ class DEFAULTS(Enum):
     GOAL = "fidelity"
     DECAY = None
     PROGRESS = False
-    EARLY_STOP = True
 
 
 def clip_params(params, gate_param_constraints):

@@ -82,6 +82,7 @@ def test_qubit_in_cavity(optimizer, propcomp):
         1 - result_fg.final_fidelity, result_qt.fid_err, atol=1e-1
     ), "The fidelities are not close enough."
 
+
 def test_new_dissipative_model():
     """
     Test the new dissipative model.
@@ -150,7 +151,7 @@ def test_density_example(optimizer, propcomp):
             get_finals(
                 *get_results_for_hadamard_problen("adam", "time-efficient")
             )[0],
-        )
+        ),
     ],
 )
 def test_fidelity_fn(fid_type, target, final):

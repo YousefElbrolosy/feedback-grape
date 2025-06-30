@@ -96,7 +96,7 @@ def example_A_body():
         system_params=system_params,
         num_time_steps=time_steps,
         max_iter=3000,
-        convergence_threshold=1e-16,
+        convergence_threshold=None,
         evo_type="state",
         mode="no-measurement",
         goal="fidelity",
@@ -104,7 +104,6 @@ def example_A_body():
         batch_size=10,
         eval_batch_size=1,
         progress=True,
-        early_stop=False,
     )
 
     if result.final_fidelity > 0.99:
