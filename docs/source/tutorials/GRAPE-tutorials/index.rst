@@ -40,8 +40,7 @@ Open Systems
 .. toctree::
    :maxdepth: 1
 
-   dissipative_tutorial
    dissipative_tutorial_2
 
 .. note::
-   The first dissipative_tutorial shows you how to prepare a gate in the presence of dissipation using Liouvillian superoperators, while the second example shows how to optimize control pulses for dissipative state preparation by passing hamiltonians and jump operators.
+   The dissipative_tutorial shows how to optimize control pulses for dissipative state preparation by passing hamiltonians and jump operators.

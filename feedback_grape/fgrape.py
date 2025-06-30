@@ -446,6 +446,7 @@ def calculate_trajectory(
     )(batch_keys)
 
 
+# TODO: say in the docs what the defaults are for the parameters
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
@@ -454,7 +455,7 @@ def optimize_pulse_with_feedback(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    evo_type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
+    evo_type: str,  # state, density (used now mainly for fidelity calculation)
     goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -467,12 +468,12 @@ def optimize_pulse_with_feedback(
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
 
     Args:
-        U_0: Initial state or /unitary/density/super operator.
-        C_target: Target state or /unitary/density/super operator.
+        U_0: Initial state or density matrix.
+        C_target: Target state or density matrix.
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
-        convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
+        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide 0.0 or None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
                     This is primarily used for fidelity calculation.
@@ -485,6 +486,10 @@ def optimize_pulse_with_feedback(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
+    if convergence_threshold == 0.0 or convergence_threshold == None:
+        early_stop = False
+    else:
+        early_stop = True
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
@@ -504,6 +509,11 @@ def optimize_pulse_with_feedback(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
         )
 
+    if evo_type == "density" and (isket(U_0) or isket(C_target)):
+        raise TypeError(
+            "For evo_type='density', please provide initial and target states as density matrices."
+        )
+
     if isbra(U_0) or isbra(C_target):
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices."
@@ -521,7 +531,7 @@ def optimize_pulse_with_feedback(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
         )
 
-    if goal == "purity" and evo_type == "state":
+    if goal in ["purity", "both"] and evo_type == "state":
         raise ValueError(
             "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
         )
@@ -571,13 +581,18 @@ def optimize_pulse_with_feedback(
         )
         if not (measurement_indices == [] or measurement_indices is None):
             raise ValueError(
-                "You provided a measurement indices, but no feedback is used. Please set mode to 'nn' or 'lookup'."
+                "You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'."
             )
     else:
+        if measurement_indices == [] or measurement_indices is None:
+            raise ValueError(
+                "For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. "
+            )
         # Convert dictionary parameters to list[list] structure
         flat_params, param_shapes = prepare_parameters_from_dict(
             initial_params
         )
+
         # Calculate total number of parameters
         if mode == "nn":
             hidden_size = rnn_hidden_size
@@ -660,6 +675,7 @@ def optimize_pulse_with_feedback(
             rnn_params = None
             lookup_table_params = None
             initial_params_opt = trainable_params
+            # jax.debug.print("trainable params: {} \n", trainable_params)
         elif mode == "nn":
             # reseting hidden state at end of every trajectory ( does not really change the purity tho)
             h_initial_state = jnp.zeros((1, hidden_size))
@@ -733,6 +749,7 @@ def optimize_pulse_with_feedback(
         convergence_threshold=convergence_threshold,
         prng_key=train_key,
         progress=progress,
+        early_stop=early_stop,
     )
 
     result = _evaluate(
@@ -767,6 +784,7 @@ def _train(
     learning_rate,
     convergence_threshold,
     progress,
+    early_stop,
 ):
     """
     Train the model using the specified optimizer.
@@ -781,6 +799,7 @@ def _train(
         convergence_threshold,
         prng_key,
         progress,
+        early_stop,
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted

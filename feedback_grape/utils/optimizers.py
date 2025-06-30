@@ -13,6 +13,7 @@ def _optimize_adam_feedback(
     convergence_threshold,
     key,
     progress,
+    early_stop,
 ):
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(control_amplitudes)
@@ -33,11 +34,12 @@ def _optimize_adam_feedback(
     for iter_idx in range(max_iter):
         params, opt_state, loss, key = step(params, opt_state, key)
         losses.append(loss)
-        if (
-            iter_idx > 0
-            and abs(losses[-1] - losses[-2]) < convergence_threshold
-        ):
-            break
+        if early_stop:
+            if (
+                iter_idx > 0
+                and abs(losses[-1] - losses[-2]) < convergence_threshold
+            ):
+                break
 
         if progress:
             if iter_idx % 10 == 0:
@@ -53,6 +55,8 @@ def _optimize_adam(
     max_iter,
     learning_rate,
     convergence_threshold,
+    progress,
+    early_stop,
 ):
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(control_amplitudes)
@@ -73,12 +77,15 @@ def _optimize_adam(
         params, opt_state, loss = step(params, opt_state)
 
         losses.append(loss)
-
-        if (
-            iter_idx > 0
-            and abs(losses[-1] - losses[-2]) < convergence_threshold
-        ):
-            break
+        if early_stop:
+            if (
+                iter_idx > 0
+                and abs(losses[-1] - losses[-2]) < convergence_threshold
+            ):
+                break
+        if progress:
+            if iter_idx % 10 == 0:
+                print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
 
     return params, iter_idx + 1
 
@@ -91,6 +98,8 @@ def _optimize_L_BFGS(
     max_iter,
     convergence_threshold,
     learning_rate,
+    progress,
+    early_stop,
 ):
     """
     Uses L-BFGS to optimize the control amplitudes.
@@ -121,6 +130,8 @@ def _optimize_L_BFGS(
             value_fn=loss_fn,
         )
         control_amplitudes = optax.apply_updates(control_amplitudes, updates)
+        if progress and (iter_idx % 10 == 0):
+            print(f"Iteration {iter_idx}, Loss: {value:.6f}")
         return control_amplitudes, state, iter_idx + 1
 
     def continuing_criterion(carry):
@@ -128,8 +139,16 @@ def _optimize_L_BFGS(
         iter_num = otu.tree_get(state, 'count')
         grad = otu.tree_get(state, 'grad')
         err = otu.tree_l2_norm(grad)
-        return ((iter_num == 0) & (max_iter != 0)) | (iter_num < max_iter) & (
-            err >= convergence_threshold
+        import jax.numpy as jnp
+
+        return jnp.logical_or(
+            jnp.logical_and(iter_num == 0, max_iter != 0),
+            jnp.logical_and(
+                iter_num < max_iter,
+                jnp.logical_or(
+                    err >= convergence_threshold, jnp.logical_not(early_stop)
+                ),
+            ),
         )
 
     init_carry = (control_amplitudes, opt.init(control_amplitudes), 0)
