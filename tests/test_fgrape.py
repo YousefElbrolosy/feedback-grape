@@ -48,6 +48,7 @@ def example_A_body():
             identity(N_cav),
             expm(-1j * (alpha * sigmap() + alpha.conjugate() * sigmam()) / 2),
         )
+
     def qubit_cavity_unitary(beta_re):
         beta = beta_re
         return expm(
@@ -66,8 +67,8 @@ def example_A_body():
         initial_params=jax.random.uniform(
             key,
             shape=(2,),  # 2 for gamma and delta
-            minval=-2*jnp.pi,
-            maxval=2*jnp.pi,
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
             dtype=jnp.float64,
         ),
         measurement_flag=False,
@@ -78,8 +79,8 @@ def example_A_body():
         initial_params=jax.random.uniform(
             key,
             shape=(1,),
-            minval=-2*jnp.pi,
-            maxval=2*jnp.pi,
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
             dtype=jnp.float64,
         ),
         measurement_flag=False,
@@ -148,7 +149,11 @@ def example_B_body():
     measure = Gate(
         gate=povm_measure_operator,
         initial_params=jax.random.uniform(
-            key=jax.random.PRNGKey(42), shape=(2,), minval=0.0, maxval=jnp.pi, dtype=jnp.float64
+            key=jax.random.PRNGKey(42),
+            shape=(2,),
+            minval=0.0,
+            maxval=jnp.pi,
+            dtype=jnp.float64,
         ),
         measurement_flag=True,
     )
@@ -269,8 +274,8 @@ def example_C_body():
         initial_params=jax.random.uniform(
             key1,
             shape=(2,),  # 2 for gamma and delta
-            minval=-2*jnp.pi,
-            maxval=2*jnp.pi,
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
         ),
         measurement_flag=True,
         # param_constraints=[[0, jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
@@ -281,8 +286,8 @@ def example_C_body():
         initial_params=jax.random.uniform(
             key2,
             shape=(2,),  # 2 for gamma and delta
-            minval=-2*jnp.pi,
-            maxval=2*jnp.pi,
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
         ),
         measurement_flag=False,
         # param_constraints=[[-2*jnp.pi, 2*jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
@@ -293,8 +298,8 @@ def example_C_body():
         initial_params=jax.random.uniform(
             key3,
             shape=(2,),  # 2 for gamma and delta
-            minval=-2*jnp.pi,
-            maxval=2*jnp.pi,
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
         ),
         measurement_flag=False,
         # param_constraints=[[-jnp.pi, jnp.pi], [-jnp.pi, jnp.pi]],
@@ -633,8 +638,8 @@ def example_E_body():
         initial_params=jax.random.uniform(
             key,
             shape=(2,),  # 2 for gamma and delta
-            minval=-jnp.pi/2,
-            maxval=jnp.pi/2,
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
             dtype=jnp.float64,
         ),
         measurement_flag=True,
@@ -644,7 +649,11 @@ def example_E_body():
     displacement = Gate(
         gate=displacement_gate,
         initial_params=jax.random.uniform(
-            key, shape=(2,), minval=-jnp.pi/2, maxval=jnp.pi/2, dtype=jnp.float64
+            key,
+            shape=(2,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
         ),
         measurement_flag=False,
     )
@@ -652,7 +661,11 @@ def example_E_body():
     snap = Gate(
         gate=snap_gate,
         initial_params=jax.random.uniform(
-            key, shape=(N_snap,), minval=-jnp.pi/2, maxval=jnp.pi/2, dtype=jnp.float64
+            key,
+            shape=(N_snap,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
         ),
         measurement_flag=False,
     )
@@ -660,14 +673,25 @@ def example_E_body():
     displacement_dag = Gate(
         gate=displacement_gate_dag,
         initial_params=jax.random.uniform(
-            key, shape=(2,), minval=-jnp.pi/2, maxval=jnp.pi/2, dtype=jnp.float64
+            key,
+            shape=(2,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
         ),
         measurement_flag=False,
     )
 
     decay = Decay(c_ops=[tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())])
 
-    system_params = [decay, measure, decay, displacement, snap, displacement_dag]
+    system_params = [
+        decay,
+        measure,
+        decay,
+        displacement,
+        snap,
+        displacement_dag,
+    ]
 
     result = optimize_pulse_with_feedback(
         U_0=rho_target,
@@ -708,7 +732,7 @@ def example_E_body():
     #     if fid_val > 0.9:
     #         return True
     print(f"Final fidelity: {result.final_fidelity}")
-    if(result.final_fidelity > 0.95):
+    if result.final_fidelity > 0.95:
         return True
     return False
 
