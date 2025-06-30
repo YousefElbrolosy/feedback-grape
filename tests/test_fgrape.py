@@ -17,13 +17,32 @@ def example_A_body():
     )
     from feedback_grape.utils.states import basis, fock
     from feedback_grape.utils.tensor import tensor
+    from feedback_grape.fgrape import Gate
+    from feedback_grape.utils.states import coherent
     import jax.numpy as jnp
     from jax.scipy.linalg import expm
+    import jax
 
-    N_cav = 30
+    # -- Initialize intitial state --
+    N_cav = 40
+    psi0 = tensor(basis(N_cav), basis(2))
+    psi0 = psi0 / jnp.linalg.norm(psi0)
 
+    # -- Initialize Target state --
+    average_photon_number = 9
+    cat = (
+        coherent(N_cav, 3)
+        + coherent(N_cav, -3)
+        + coherent(N_cav, 1j * 3)
+        + coherent(N_cav, -1j * 3)
+    )
+    psi_target = tensor(cat, basis(2))
+    psi_target = psi_target / jnp.linalg.norm(psi_target)
+
+    # -- Initialize Parameterized Gates --
     def qubit_unitary(alphas):
-        alpha_re, alpha_im = alphas
+        alpha_re = alphas[0]
+        alpha_im = alphas[1]
         alpha = alpha_re + 1j * alpha_im
         return tensor(
             identity(N_cav),
@@ -41,62 +60,51 @@ def example_A_body():
             / 2
         )
 
-    time_steps = 5
-
-    psi0 = tensor(basis(N_cav), basis(2))
-    psi0 = psi0 / jnp.linalg.norm(psi0)
-    psi_target = tensor(
-        (fock(N_cav, 1) + fock(N_cav, 3)) / jnp.sqrt(2), basis(2)
-    )
-    psi_target = psi_target / jnp.linalg.norm(psi_target)
-
-    from feedback_grape.utils.fidelity import ket2dm
-    import jax
-
+    # -- Initialize System Parameters --
     key = jax.random.PRNGKey(42)
-    # not provideing param_constraints just propagates the same initial_parameters for each time step
     qub_unitary = Gate(
         gate=qubit_unitary,
         initial_params=jax.random.uniform(
             key,
-            shape=(1, 2),  # 2 for gamma and delta
-            minval=-jnp.pi,
-            maxval=jnp.pi,
-        )[0].tolist(),
+            shape=(2,),  # 2 for gamma and delta
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
+            dtype=jnp.float64,
+        ),
         measurement_flag=False,
-        param_constraints=[
-            [-2 * jnp.pi, 2 * jnp.pi],
-            [-2 * jnp.pi, 2 * jnp.pi],
-        ],
     )
 
     qub_cav = Gate(
         gate=qubit_cavity_unitary,
         initial_params=jax.random.uniform(
             key,
-            shape=(1, 1),  # 1 parameter for beta_re
-            minval=-jnp.pi,
-            maxval=jnp.pi,
-        )[0].tolist(),
+            shape=(1,),
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
+            dtype=jnp.float64,
+        ),
         measurement_flag=False,
-        param_constraints=[[-2 * jnp.pi, 2 * jnp.pi]],
     )
 
     system_params = [qub_unitary, qub_cav]
 
+    # -- Optimization --
+    time_steps = 20
     result = optimize_pulse_with_feedback(
-        U_0=ket2dm(psi0),
-        C_target=ket2dm(psi_target),
+        U_0=psi0,
+        C_target=psi_target,
         system_params=system_params,
         num_time_steps=time_steps,
-        max_iter=1000,
+        max_iter=3000,
         convergence_threshold=1e-16,
-        evo_type="density",
+        evo_type="state",
         mode="no-measurement",
         goal="fidelity",
-        learning_rate=0.02,
+        learning_rate=0.01,
         batch_size=10,
-        eval_batch_size=2,
+        eval_batch_size=1,
+        progress=True,
+        early_stop=False,
     )
 
     if result.final_fidelity > 0.99:
@@ -141,8 +149,12 @@ def example_B_body():
     measure = Gate(
         gate=povm_measure_operator,
         initial_params=jax.random.uniform(
-            key=jax.random.PRNGKey(42), shape=(1, 2), minval=0.0, maxval=jnp.pi
-        )[0].tolist(),
+            key=jax.random.PRNGKey(42),
+            shape=(2,),
+            minval=0.0,
+            maxval=jnp.pi,
+            dtype=jnp.float64,
+        ),
         measurement_flag=True,
     )
 
@@ -165,10 +177,12 @@ def example_B_body():
     from feedback_grape.utils.purity import purity
 
     print("initial purity:", purity(rho=rho_cav))
-    for i, state in enumerate(result.final_state):
-        print(f"Purity of state {i}:", purity(rho=state))
-        if purity(rho=state) > 0.9:
-            return True
+    # for i, state in enumerate(result.final_state):
+    #     print(f"Purity of state {i}:", purity(rho=state))
+    #     if purity(rho=state) > 0.9:
+    #         return True
+    if result.final_purity > 0.9:
+        return True
     return False
 
 
@@ -253,16 +267,16 @@ def example_C_body():
 
     num_time_steps = 5
     num_of_iterations = 1000
-    learning_rate = 0.05
-    key = jax.random.PRNGKey(0)
+    learning_rate = 0.02
+    key1, key2, key3 = jax.random.split(jax.random.PRNGKey(42), 3)
     measure = Gate(
         gate=povm_measure_operator,
         initial_params=jax.random.uniform(
-            key,
-            shape=(1, 2),  # 2 for gamma and delta
-            minval=-jnp.pi,
-            maxval=jnp.pi,
-        )[0].tolist(),
+            key1,
+            shape=(2,),  # 2 for gamma and delta
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
+        ),
         measurement_flag=True,
         # param_constraints=[[0, jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
     )
@@ -270,11 +284,11 @@ def example_C_body():
     qub_unitary = Gate(
         gate=qubit_unitary,
         initial_params=jax.random.uniform(
-            key,
-            shape=(1, 2),  # 2 for gamma and delta
-            minval=-jnp.pi,
-            maxval=jnp.pi,
-        )[0].tolist(),
+            key2,
+            shape=(2,),  # 2 for gamma and delta
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
+        ),
         measurement_flag=False,
         # param_constraints=[[-2*jnp.pi, 2*jnp.pi], [-2*jnp.pi, 2*jnp.pi]],
     )
@@ -282,11 +296,11 @@ def example_C_body():
     qub_cav = Gate(
         gate=qubit_cavity_unitary,
         initial_params=jax.random.uniform(
-            key,
-            shape=(1, 2),  # 2 for gamma and delta
-            minval=-jnp.pi,
-            maxval=jnp.pi,
-        )[0].tolist(),
+            key3,
+            shape=(2,),  # 2 for gamma and delta
+            minval=-2 * jnp.pi,
+            maxval=2 * jnp.pi,
+        ),
         measurement_flag=False,
         # param_constraints=[[-jnp.pi, jnp.pi], [-jnp.pi, jnp.pi]],
     )
@@ -306,7 +320,7 @@ def example_C_body():
         evo_type="density",
         batch_size=10,
     )
-    print(result.final_fidelity)
+    print("result.final_fidelity: ", result.final_fidelity)
     from feedback_grape.utils.fidelity import fidelity
 
     print(
@@ -318,7 +332,7 @@ def example_C_body():
             C_target=rho_target, U_final=state, evo_type="density"
         )
         print(f"fidelity of state {i}:", fid_val)
-        if fid_val > 0.8:
+        if fid_val > 0.9:
             return True
 
     return False
@@ -399,25 +413,39 @@ def example_D_body():
     # Here the loss directly corressponds to the -fidelity (when converging) because log(1) is 0 and
 
     # the algorithm is choosing params that makes the POVM generate prob = 1
+    key = jax.random.PRNGKey(42)
+
     measure = Gate(
         gate=povm_measure_operator,
-        initial_params=[0.058, jnp.pi / 2],  # gamma and delta
+        initial_params=jax.random.uniform(
+            key,
+            shape=(2,),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        ),
         measurement_flag=True,
-        # param_constraints=[[0, 0.5], [-1, 1]],
     )
 
     qub_unitary = Gate(
         gate=qubit_unitary,
-        initial_params=[jnp.pi / 3],
+        initial_params=jax.random.uniform(
+            key,
+            shape=(1,),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        ),
         measurement_flag=False,
-        # param_constraints=[[0, 0.5], [-1, 1]],
     )
 
     qub_cav = Gate(
         gate=qubit_cavity_unitary,
-        initial_params=[jnp.pi / 3],
+        initial_params=jax.random.uniform(
+            key,
+            shape=(1,),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        ),
         measurement_flag=False,
-        # param_constraints=[[0, 0.5], [-1, 1]],
     )
 
     system_params = [measure, qub_unitary, qub_cav]
@@ -430,20 +458,20 @@ def example_D_body():
         goal="fidelity",
         max_iter=1000,
         convergence_threshold=1e-16,
-        learning_rate=0.02,
+        learning_rate=0.025,
         evo_type="density",
         batch_size=1,
     )
 
-    if result.final_fidelity > 0.99:
+    if result.final_fidelity > 0.95:
         no_dissipation_flag = True
 
     # Now we add dissipation
 
     decay = Decay(
-        c_ops=[tensor(identity(N_cav), jnp.sqrt(0.15) * sigmam())],
+        c_ops=[tensor(identity(N_cav), jnp.sqrt(0.10) * sigmam())],
     )
-    # not supported to have decay at very end, not supported to have multiple consecutive decays
+
     system_params = [decay, measure, qub_unitary, qub_cav]
     result = optimize_pulse_with_feedback(
         U_0=rho_target,
@@ -454,12 +482,12 @@ def example_D_body():
         goal="fidelity",
         max_iter=1000,
         convergence_threshold=1e-6,
-        learning_rate=0.02,
+        learning_rate=0.025,
         evo_type="density",
         batch_size=1,
     )
 
-    if result.final_fidelity < 0.99:
+    if result.final_fidelity < 0.95 and result.final_fidelity > 0.8:
         dissipation_flag = True
 
     if no_dissipation_flag and dissipation_flag:
@@ -481,7 +509,6 @@ def example_E_body():
     import jax.numpy as jnp
     import jax
 
-    jax.config.update("jax_enable_x64", True)
     ## Initialize states
     from feedback_grape.utils.fidelity import ket2dm
 
@@ -605,18 +632,16 @@ def example_E_body():
     # Note if tsave = jnp.linspace(0, 1, 1) = [0.0] then the decay is not applied ?
     # because the first time step has the original non decayed state
     key = jax.random.PRNGKey(42)
-    snap_init = jax.random.uniform(
-        key, shape=(N_snap,), minval=-jnp.pi, maxval=jnp.pi
-    )
 
     measure = Gate(
         gate=povm_measure_operator,
         initial_params=jax.random.uniform(
             key,
-            shape=(1, 2),  # 2 for gamma and delta
-            minval=-jnp.pi,
-            maxval=jnp.pi,
-        )[0].tolist(),
+            shape=(2,),  # 2 for gamma and delta
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
         measurement_flag=True,
         # param_constraints=[[0, 0.5], [-1, 1]],
     )
@@ -624,26 +649,41 @@ def example_E_body():
     displacement = Gate(
         gate=displacement_gate,
         initial_params=jax.random.uniform(
-            key, shape=(1, 2), minval=-jnp.pi, maxval=jnp.pi
-        )[0].tolist(),
+            key,
+            shape=(2,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
         measurement_flag=False,
     )
 
     snap = Gate(
         gate=snap_gate,
-        initial_params=snap_init.tolist(),
+        initial_params=jax.random.uniform(
+            key,
+            shape=(N_snap,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
         measurement_flag=False,
     )
 
     displacement_dag = Gate(
         gate=displacement_gate_dag,
         initial_params=jax.random.uniform(
-            key, shape=(1, 2), minval=-jnp.pi, maxval=jnp.pi
-        )[0].tolist(),
+            key,
+            shape=(2,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
         measurement_flag=False,
     )
 
     decay = Decay(c_ops=[tensor(identity(N_cav), jnp.sqrt(0.005) * sigmam())])
+
     system_params = [
         decay,
         measure,
@@ -662,7 +702,7 @@ def example_E_body():
         goal="fidelity",
         max_iter=1000,
         convergence_threshold=1e-6,
-        learning_rate=0.09,
+        learning_rate=0.01,
         evo_type="density",
         batch_size=16,
         rnn=RNN,
@@ -682,16 +722,18 @@ def example_E_body():
     rho_target = ket2dm(psi_target)
 
     rho_target = tensor(rho_target, ket2dm(basis(2)))
-    from feedback_grape.utils.fidelity import fidelity
+    # from feedback_grape.utils.fidelity import fidelity
 
-    for i, state in enumerate(result.final_state):
-        fid_val = fidelity(
-            C_target=rho_target, U_final=state, evo_type="density"
-        )
-        print(f"fidelity of state {i}:", fid_val)
-        if fid_val > 0.9:
-            return True
-
+    # for i, state in enumerate(result.final_state):
+    #     fid_val = fidelity(
+    #         C_target=rho_target, U_final=state, evo_type="density"
+    #     )
+    #     print(f"fidelity of state {i}:", fid_val)
+    #     if fid_val > 0.9:
+    #         return True
+    print(f"Final fidelity: {result.final_fidelity}")
+    if result.final_fidelity > 0.95:
+        return True
     return False
 
 
