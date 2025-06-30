@@ -160,31 +160,22 @@ def _state_density_fidelity(A, B):
 # TODO: add to docs: For the Same initial and target, the fidelity of density and state may differ slightly due to the ways in which they are computed.
 def fidelity(*, C_target, U_final, evo_type="unitary"):
     """
-    Computes the fidelity of the final state/operator/density matrix/liouvillian
-    with respect to the target state/operator/density matrix/liouvillian.
+    Computes the fidelity of the final state/operator/density matrix
+    with respect to the target state/operator/density matrix.
 
-    For calculating the fidelity of liouvillians, the tracediff method is used.
     The fidelity is calculated as:
     - For unitary: ``Tr(C_target^† U_final) / dim``
     - For state: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
     - For density: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
-    - For liouvillian: ``1 - (0.5 * Tr(|C_target - U_final|)) / C_target.dim``
 
     Args:
         C_target: Target operator.
         U_final: Final operator after evolution.
-        evo_type: Type of fidelity calculation ("unitary", "state", "density", or "liouvillian (using tracediff method)")
+        evo_type: Type of fidelity calculation ("unitary", "state", "density")."
     Returns:
         fidelity: Fidelity value.
     """
-    if evo_type == "liouvillian":
-        # TRACEDIFF fidelity: 1 - 0.5*Tr(|C_target - U_final|)
-        # Where |A| is the matrix absolute value (element-wise)
-        diff = C_target - U_final
-        # Alternative approach: use the trace of the absolute value directly
-        trace_diff = 0.5 * jnp.abs(jnp.trace(diff))
-        return 1.0 - trace_diff / C_target.shape[0]
-    elif evo_type == "unitary":
+    if evo_type == "unitary":
         # Answer: check accuracy of this, do we really need vector conjugate or .dot will simply work? --> no vdot is essential because we need the first term conjugated
         norm_C_target = C_target / jnp.linalg.norm(C_target)
         norm_U_final = U_final / jnp.linalg.norm(U_final)
@@ -199,6 +190,6 @@ def fidelity(*, C_target, U_final, evo_type="unitary"):
         )
     else:
         raise ValueError(
-            "Invalid evo_type. Choose 'unitary', 'state', 'density', 'liouvillian'."
+            "Invalid evo_type. Choose 'unitary', 'state', 'density'."
         )
     return jnp.abs(overlap) ** 2

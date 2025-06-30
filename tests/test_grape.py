@@ -15,12 +15,10 @@ from tests.helper_for_tests import (
     get_finals,
     get_results_for_cnot_problem,
     get_results_for_density_example,
-    get_results_for_dissipation_problem,
     get_results_for_hadamard_problen,
     get_results_for_qubit_in_cavity_problem,
     get_targets_for_cnot_problem,
     get_targets_for_density_example,
-    get_targets_for_dissipation_problem,
     get_targets_for_hadamard_problem,
     get_targets_for_qubit_in_cavity_problem,
     get_results_for_new_dissipation_problem,
@@ -83,27 +81,6 @@ def test_qubit_in_cavity(optimizer, propcomp):
     assert jnp.allclose(
         1 - result_fg.final_fidelity, result_qt.fid_err, atol=1e-1
     ), "The fidelities are not close enough."
-
-
-@pytest.mark.parametrize(
-    "optimizer, propcomp",
-    [
-        ("adam", "memory-efficient"),
-        ("l-bfgs", "memory-efficient"),
-        ("adam", "time-efficient"),
-        ("l-bfgs", "time-efficient"),
-    ],
-)
-def test_dissipative_model(optimizer, propcomp):
-    result_fg, result_qt = get_results_for_dissipation_problem(
-        optimizer, propcomp
-    )
-    print("result_qt.fid_err: ", result_qt.fid_err)
-    print("result_fg.final_fidelity: ", result_fg.final_fidelity)
-    assert jnp.allclose(
-        1 - result_fg.final_fidelity, result_qt.fid_err, atol=1e-1
-    ), "The fidelities are not close enough."
-
 
 def test_new_dissipative_model():
     """
@@ -173,16 +150,7 @@ def test_density_example(optimizer, propcomp):
             get_finals(
                 *get_results_for_hadamard_problen("adam", "time-efficient")
             )[0],
-        ),
-        (
-            "liouvillian",
-            get_targets_for_dissipation_problem()[0],
-            get_finals(
-                *get_results_for_dissipation_problem(
-                    "adam", "memory-efficient"
-                )
-            )[0],
-        ),
+        )
     ],
 )
 def test_fidelity_fn(fid_type, target, final):
@@ -193,11 +161,8 @@ def test_fidelity_fn(fid_type, target, final):
     # Normalize the target and final states
 
     fidelity_fg = fidelity(C_target=target, U_final=final, evo_type=fid_type)
-    if fid_type == "liouvillian":
-        fidelity_qt = qt.tracedist(
-            qt.Qobj(target).unit(), qt.Qobj(final).unit()
-        )
-    elif fid_type == "state" or fid_type == "density":
+
+    if fid_type == "state" or fid_type == "density":
         fidelity_qt = qt.fidelity(
             qt.Qobj(target).unit(), qt.Qobj(final).unit()
         )

@@ -454,7 +454,7 @@ def optimize_pulse_with_feedback(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    evo_type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
+    evo_type: str,  # state, density (used now mainly for fidelity calculation)
     goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -468,8 +468,8 @@ def optimize_pulse_with_feedback(
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
 
     Args:
-        U_0: Initial state or /unitary/density/super operator.
-        C_target: Target state or /unitary/density/super operator.
+        U_0: Initial state or density matrix.
+        C_target: Target state or density matrix.
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
