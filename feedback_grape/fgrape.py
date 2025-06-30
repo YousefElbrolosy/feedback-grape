@@ -446,6 +446,7 @@ def calculate_trajectory(
     )(batch_keys)
 
 
+# TODO: say in the docs what the defaults are for the parameters
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
@@ -454,7 +455,7 @@ def optimize_pulse_with_feedback(
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
-    evo_type: str,  # unitary, state, density, liouvillian (used now mainly for fidelity calculation)
+    evo_type: str,  # state, density (used now mainly for fidelity calculation)
     goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -462,18 +463,17 @@ def optimize_pulse_with_feedback(
     rnn: callable = DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
     progress: bool = DEFAULTS.PROGRESS.value,
-    early_stop: bool = DEFAULTS.EARLY_STOP.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
 
     Args:
-        U_0: Initial state or /unitary/density/super operator.
-        C_target: Target state or /unitary/density/super operator.
+        U_0: Initial state or density matrix.
+        C_target: Target state or density matrix.
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
-        convergence_threshold (float): The threshold for convergence to determine when to stop optimization.
+        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide 0.0 or None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
                     This is primarily used for fidelity calculation.
@@ -486,6 +486,10 @@ def optimize_pulse_with_feedback(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
+    if convergence_threshold == 0.0 or convergence_threshold == None:
+        early_stop = False
+    else:
+        early_stop = True
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
