@@ -130,8 +130,11 @@ def _optimize_L_BFGS(
             value_fn=loss_fn,
         )
         control_amplitudes = optax.apply_updates(control_amplitudes, updates)
-        if progress and (iter_idx % 10 == 0):
-            print(f"Iteration {iter_idx}, Loss: {value:.6f}")
+        jax.lax.cond(
+            jax.numpy.logical_and(progress, iter_idx % 10 == 0),
+            lambda: jax.debug.print("Iteration {iter_idx}, Loss: {value:.6f}", iter_idx=iter_idx, value=value),
+            lambda: None
+        )
         return control_amplitudes, state, iter_idx + 1
 
     def continuing_criterion(carry):
