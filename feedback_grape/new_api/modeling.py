@@ -1,3 +1,5 @@
+import jax
+
 from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     create,
@@ -10,6 +12,8 @@ from feedback_grape.utils.operators import (
     sigmaz,
 )
 from feedback_grape.utils.tensor import tensor
+
+jax.config.update("jax_enable_x64", True)
 
 
 def embed(op, idx, dims):
