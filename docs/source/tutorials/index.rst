@@ -3,7 +3,7 @@ Tutorials
 
 Welcome to the feedbackGRAPE tutorials! These interactive notebooks will guide you through the key concepts and practical applications of GRAPE (Gradient Ascent Pulse Engineering) optimization.
 
-.. grid:: 2
+.. grid:: 3
    :gutter: 2
 
    .. grid-item-card:: GRAPE Tutorials
@@ -21,12 +21,20 @@ Welcome to the feedbackGRAPE tutorials! These interactive notebooks will guide y
 
       Explore advanced feedback-based GRAPE techniques for enhanced quantum control with real-time optimization.
 
+   .. grid-item-card:: QubitCavity API Tutorials  
+      :link: QubitCavity_api_tutorials/index
+      :link-type: doc
+      :class-header: bg-success text-white
+
+      Use an easier more intuitive way to model your qubit in a cavity systems.
+
 .. toctree::
    :maxdepth: 2
-   :hidden:
-   
+   :hidden:   
+
    GRAPE-tutorials/index
    feedbackGRAPE-tutorials/index
+   QubitCavity_api_tutorials/index
 
 Quick Start Guide
 -----------------

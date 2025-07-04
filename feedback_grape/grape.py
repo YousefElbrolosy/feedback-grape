@@ -218,6 +218,7 @@ def optimize_pulse(
             - "density": For density matrix evolution.
         optimizer: Optimizer to use ("adam" or "L-BFGS").
         propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
+        progress: Whether to show progress during optimization. (for debugging purposes) This may significantly slow down the optimization process.
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """

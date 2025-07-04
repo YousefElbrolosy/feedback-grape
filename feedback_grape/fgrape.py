@@ -482,7 +482,7 @@ def optimize_pulse_with_feedback(
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
         rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
-        progress (bool): Whether to show progress of the loss each ten iterations during the optimization process.
+        progress (bool): Whether to show progress of the loss each ten iterations during the optimization process. (for debugging purposes) This may significantly slow down the optimization process.
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """

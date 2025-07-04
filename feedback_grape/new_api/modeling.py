@@ -1,8 +1,11 @@
-# type: ignore
+import jax
+
+from feedback_grape.utils.gates import cnot, hadamard
 from feedback_grape.utils.operators import (
     create,
     destroy,
     identity,
+    sigmam,
     sigmap,
     sigmax,
     sigmay,
@@ -10,106 +13,100 @@ from feedback_grape.utils.operators import (
 )
 from feedback_grape.utils.tensor import tensor
 
+jax.config.update("jax_enable_x64", True)
 
-class _Qubit:
-    sigmax = None
-    sigmay = None
-    sigmaz = None
-    identity = None
-    dim_left = None
-    dim_right = None
 
-    def __init__(self, dim_left, dim_right):
-        """
-        Qubit constructor. Initialixes the Pauli operators and identity
-        operator for a qubit.
+def embed(op, idx, dims):
+    """
+    Embed operator `op` at position `idx` in total Hilbert space of `dims`.
+    """
 
-        Args:
-            dim_left (int): Dimension of the left side.
-            dim_right (int): Dimension of the right side.
-        """
-        self.dim_left = dim_left
-        self.dim_right = dim_right
-        self.sigmax = tensor(
-            identity(2**dim_left), sigmax(), identity(2**dim_right)
-        )
-        self.sigmay = tensor(
-            identity(2**dim_left), sigmay(), identity(2**dim_right)
-        )
-        self.sigmaz = tensor(
-            identity(2**dim_left), sigmaz(), identity(2**dim_right)
-        )
-        self.sigmap = tensor(
-            identity(2**dim_left), sigmap(), identity(2**dim_right)
-        )
-        self.identity = tensor(
-            identity(2**dim_left), identity(2), identity(2**dim_right)
+    ops = [op if i == idx else identity(d) for i, d in enumerate(dims)]
+    return tensor(*ops)
+
+
+class Qubit:
+    def __init__(self, index, dims):
+        self.index = index
+        self.dims = (
+            dims  # full Hilbert space dims (including qubits and cavities)
         )
 
+    @property
+    def identity(self):
+        return embed(identity(2), self.index, self.dims)
 
-class _QubitRegister:
-    qubits = None
-    num_of_qubits = None
+    # Pauli operators
+    @property
+    def sigmax(self):
+        return embed(sigmax(), self.index, self.dims)
 
-    def __init__(self, num_of_qubits, qubits):
-        """
-        QubitRegister constructor.
-        Args:
-            num_of_qubits (int): Number of qubits.
-            qubits (list): List of Qubit objects.
-        """
-        self.num_of_qubits = num_of_qubits
-        self.qubits = qubits
+    @property
+    def sigmay(self):
+        return embed(sigmay(), self.index, self.dims)
 
-    def __getitem__(self, index):
-        return self.qubits[index]
+    @property
+    def sigmaz(self):
+        return embed(sigmaz(), self.index, self.dims)
+
+    @property
+    def sigmap(self):
+        return embed(sigmap(), self.index, self.dims)
+
+    @property
+    def sigmam(self):
+        return embed(sigmam(), self.index, self.dims)
+
+    # gates
+    @property
+    def cnot(self):
+        return embed(cnot(), self.index, self.dims)
+
+    @property
+    def hadamard(self):
+        return embed(hadamard(), self.index, self.dims)
 
 
 class Cavity:
-    destroy = None
-    create = None
-    dim = None
-
-    def __init__(self, dim: int):
-        """
-        Cavity constructor.
-
-        Args:
-            dim (int): Dimension of the cavity.
-        """
+    def __init__(self, index, dim, dims):
+        self.index = index
         self.dim = dim
-        self.destroy = destroy(dim)
-        self.create = create(dim)
+        self.dims = dims
+
+    @property
+    def identity(self):
+        return embed(identity(self.dim), self.index, self.dims)
+
+    @property
+    def a(self):
+        return embed(destroy(self.dim), self.index, self.dims)
+
+    @property
+    def adag(self):
+        return embed(create(self.dim), self.index, self.dims)
 
 
-class HilbertSpace:
-    qubit_register = None
-    cavities = None
-    num_of_cavities = None
-
-    def __init__(self, num_of_qubits: int, *cavities: Cavity):
+class QubitCavity:
+    def __init__(self, num_qubits: int, *cavity_dims: int):
         """
-        HilbertSpace constructor.
+
+        Qubit comes first in the Hilbert space, followed by cavities.
 
         Args:
-            num_of_qubits (int): Number of qubits.
-            *cavities (Cavity): Cavity objects.
+            num_qubits (int): Number of qubits.
+            *cavity_dims (int): Dimensions of each cavity.
         """
-        self.qubit_register = _QubitRegister(
-            num_of_qubits,
-            [_Qubit(i, num_of_qubits - i - 1) for i in range(num_of_qubits)],
-        )
-        self.cavities = cavities
-        self.num_of_cavities = len(cavities)
+        self.num_qubits = num_qubits
+        self.num_cavities = len(cavity_dims)
 
+        # Full dimension list: qubits first, then cavities
+        dims = [2] * num_qubits + list(cavity_dims)
 
-if __name__ == "__main__":
-    # Example usage
-    g = 0.1  # Coupling strength
-    hilbert_space = HilbertSpace(2, Cavity(4), Cavity(4))
-    q_reg = hilbert_space.qubit_register
-    cav1 = hilbert_space.cavities[0]
-    H = g * cav1.destroy * q_reg[1].identity
-    print("H: using the interface: \n", H)
+        # Build qubits
+        self.qubits = [Qubit(i, dims) for i in range(num_qubits)]
 
-    ##############################
+        # Build cavities
+        self.cavities = [
+            Cavity(num_qubits + i, cavity_dims[i], dims)
+            for i in range(self.num_cavities)
+        ]
