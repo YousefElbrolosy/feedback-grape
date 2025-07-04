@@ -43,8 +43,8 @@ Click here to get started with some example tutorials for feedbackGRAPE: :doc:`t
    :caption: Contents:
    :maxdepth: 2
    
-   fgrape.rst
    grape.rst
+   fgrape.rst
    qubit_cavity.rst
    utils.rst
    tutorials/index.rst

@@ -1,5 +1,5 @@
-Qubit Cavity
-==============
+QubitCavity (Modeling API)
+==========================
 
 .. automodule:: feedback_grape.new_api.modeling
     :members:
