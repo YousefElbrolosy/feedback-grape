@@ -10,6 +10,7 @@ jax.config.update("jax_enable_x64", True)
 # Answer: add in docs an example of how they can construct their own `Network to use it.`
 # --> the example E nn is suitable enough to show how to use it
 # TODO: add this in docs to see the default RNN
+# Question: make all these functions private? or just not include them in the docs?
 class RNN(nn.Module):
     hidden_size: int  # number of features in the hidden state
     output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
