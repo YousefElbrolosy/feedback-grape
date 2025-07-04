@@ -1,13 +1,17 @@
+"""
+GRadient Ascent Pulse Engineering (GRAPE) with feedback.
+"""
 import jax
+from enum import Enum
 import jax.numpy as jnp
-from typing import List, NamedTuple
 from .utils.solver import mesolve
+from typing import List, NamedTuple
 from .utils.optimizers import _optimize_adam_feedback
 from .utils.fidelity import (
-    fidelity,
-    is_positive_semi_definite,
     isbra,
     isket,
+    fidelity,
+    is_positive_semi_definite,
 )
 from .utils.purity import purity
 from .utils.povm import povm
@@ -19,7 +23,7 @@ from .utils.fgrape_helpers import (
     extract_from_lut,
     reshape_params,
     apply_gate,
-    DEFAULTS,
+    RNN
 )
 
 # Answer: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
@@ -69,6 +73,17 @@ class FgResult(NamedTuple):
     """
     Final fidelity of the optimized control.
     """
+
+
+class _DEFAULTS(Enum):
+    BATCH_SIZE = 1
+    EVAL_BATCH_SIZE = 10
+    MODE = "lookup"
+    RNN = RNN
+    RNN_HIDDEN_SIZE = 30
+    GOAL = "fidelity"
+    DECAY = None
+    PROGRESS = False
 
 
 class Gate(NamedTuple):
@@ -446,7 +461,7 @@ def calculate_trajectory(
     )(batch_keys)
 
 
-# TODO: say in the docs what the defaults are for the parameters
+# TODO: make docstring refer to the predefined RNN
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
@@ -456,13 +471,13 @@ def optimize_pulse_with_feedback(
     convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
-    batch_size: int = DEFAULTS.BATCH_SIZE.value,
-    eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
-    mode: str = DEFAULTS.MODE.value,  # nn, lookup
-    rnn: callable = DEFAULTS.RNN.value,  # type: ignore
-    rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
-    progress: bool = DEFAULTS.PROGRESS.value,
+    goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
+    batch_size: int = _DEFAULTS.BATCH_SIZE.value,
+    eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
+    mode: str = _DEFAULTS.MODE.value,  # nn, lookup
+    rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
+    rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
+    progress: bool = _DEFAULTS.PROGRESS.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -476,13 +491,20 @@ def optimize_pulse_with_feedback(
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
-                    This is primarily used for fidelity calculation.
-        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
-        batch_size (int): The number of trajectories to process in parallel.
-        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
-        rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
-        rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
-        progress (bool): Whether to show progress of the loss each ten iterations during the optimization process. (for debugging purposes) This may significantly slow down the optimization process.
+        goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n 
+            - (default: fidelity)
+        batch_size (int): The number of trajectories to process in parallel \n 
+            - (default: 1)
+        eval_batch_size (int): The number of trajectories to process in parallel during evaluation \n
+            - (default: 10)
+        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table) \n
+            - (default: lookup)
+        rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'. \n
+            - (default: _DEFAULTS.RNN)
+        rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters) \n
+            - (default: 30)
+        progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes). This may significantly slow down the optimization process \n
+            - (default: False).
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """

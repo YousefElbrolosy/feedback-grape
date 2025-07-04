@@ -1,5 +1,5 @@
 """
-Gradient Ascent Pulse Engineering (GRAPE)
+GRadient Ascent Pulse Engineering (GRAPE)
 """
 
 # ruff: noqa N8
@@ -178,7 +178,6 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     )
 
 
-# TODO: make sure you make it require positional parameters
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
@@ -201,22 +200,29 @@ def optimize_pulse(
     Args:
         H_drift: Drift Hamiltonian.
         H_control: List of Control Hamiltonians.
-        U_0: Initial state or /unitary/density.
-        C_target: Target state or /unitary/density.
+        U_0: Initial state or unitary/density matrix.
+        C_target: Target state or unitary/density matrix.
         num_t_slots: Number of time slots.
         total_evo_time: Total evolution time.
-        c_ops: List of collapse operators (optional, used for dissipative evolution).
-        max_iter: Maximum number of iterations.
-        convergence_threshold: Convergence threshold provide None to enforce max iterations.
-        learning_rate: Learning rate for gradient ascent.
-        evo_type: Type of fidelity and evolution calculation ("unitary" or "state" or "density").
-            When to use each evo_type:
-            - "unitary": For unitary evolution.
-            - "state": For state evolution.
-            - "density": For density matrix evolution.
-        optimizer: Optimizer to use ("adam" or "L-BFGS").
-        propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
-        progress: Whether to show progress during optimization. (for debugging purposes) This may significantly slow down the optimization process.
+        evo_type: Type of fidelity and evolution calculation ("unitary" or "state" or "density"). \n
+            Options:
+                - "unitary": For unitary evolution.
+                - "state": For state evolution.
+                - "density": For density matrix evolution.
+        c_ops: List of collapse operators (optional, used for dissipative evolution) \n
+            - (default: []).
+        max_iter: Maximum number of iterations \n
+            - (default: 1000).
+        convergence_threshold: Convergence threshold provide None to enforce max iterations \n
+            - (default: 1e-6).
+        learning_rate: Learning rate for gradient ascent \n
+            - (default: 0.01)
+        optimizer: Optimizer to use ("adam" or "L-BFGS") \n 
+            - (default: "adam")
+        propcomp: Propagator computation method ("time-efficient" or "memory-efficient") \n
+            - (default: "time-efficient").
+        progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes) This may significantly slow down the optimization process \n
+            - (default: False).
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """

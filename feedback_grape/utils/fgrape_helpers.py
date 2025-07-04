@@ -1,6 +1,5 @@
 import jax
 import numpy as np
-from enum import Enum
 import flax.linen as nn
 import jax.numpy as jnp
 # ruff: noqa N8
@@ -10,6 +9,7 @@ jax.config.update("jax_enable_x64", True)
 
 # Answer: add in docs an example of how they can construct their own `Network to use it.`
 # --> the example E nn is suitable enough to show how to use it
+# TODO: add this in docs to see the default RNN
 class RNN(nn.Module):
     hidden_size: int  # number of features in the hidden state
     output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
@@ -41,17 +41,6 @@ class RNN(nn.Module):
         output = nn.relu(output)
         # output = jnp.asarray(output)
         return output[0], new_hidden_state
-
-
-class DEFAULTS(Enum):
-    BATCH_SIZE = 1
-    EVAL_BATCH_SIZE = 10
-    MODE = "lookup"
-    RNN = RNN
-    RNN_HIDDEN_SIZE = 30
-    GOAL = "fidelity"
-    DECAY = None
-    PROGRESS = False
 
 
 def clip_params(params, gate_param_constraints):
