@@ -156,8 +156,6 @@ def build_parameterized_hamiltonian(
     return Hs, delta_ts
 
 
-# TODO: Why is this controlled by an amplitude (give user option to set those bounds)
-# NOTE: try different seeds for random initialization and choose the best fidelity
 # TODO: Make user supply amplitude bounds in api
 def _init_control_amplitudes(num_t_slots, num_controls):
     """
@@ -267,7 +265,6 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
-        # TODO: see how to do dissipation for unitary
         if evo_type == "density" and c_ops != []:
             Hs, _ = build_parameterized_hamiltonian(
                 control_amplitudes, H_drift, H_control_array, delta_t

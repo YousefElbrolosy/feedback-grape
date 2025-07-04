@@ -47,7 +47,7 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
             raise TypeError(
                 "rho_cav must be a density matrix for evo_type 'density'."
             )
-        # TODO:QUESTION: would jnp.real be useful here?
+        # ANSWER: would jnp.real be useful here? --> it is essential for jnp.grad to work
         prob = jnp.real(jnp.trace(Em @ rho_cav))
     else:
         raise ValueError(f"Invalid evo_type: {evo_type}.")
