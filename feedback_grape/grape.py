@@ -12,7 +12,7 @@ from .utils.optimizers import (
     _optimize_adam,
     _optimize_L_BFGS,
 )
-from .utils.fidelity import fidelity, is_positive_semi_definite, isket
+from .utils.fidelity import fidelity, is_positive_semi_definite, isbra, isket
 from .utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
@@ -209,7 +209,7 @@ def optimize_pulse(
         total_evo_time: Total evolution time.
         c_ops: List of collapse operators (optional, used for dissipative evolution).
         max_iter: Maximum number of iterations.
-        convergence_threshold: Convergence threshold provide 0.0 or None to enforce max iterations.
+        convergence_threshold: Convergence threshold provide None to enforce max iterations.
         learning_rate: Learning rate for gradient ascent.
         evo_type: Type of fidelity and evolution calculation ("unitary" or "state" or "density").
             When to use each evo_type:
@@ -222,7 +222,7 @@ def optimize_pulse(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
-    if convergence_threshold == 0.0 or convergence_threshold == None:
+    if convergence_threshold == None:
         early_stop = False
     else:
         early_stop = True
@@ -230,6 +230,14 @@ def optimize_pulse(
     if evo_type not in ["state", "density", "unitary"]:
         raise ValueError(
             "Invalid evo_type. Choose 'state' or 'density' or 'unitary'."
+        )
+    
+    if U_0 is None:
+        raise ValueError("Please provide an initial state/density matrix/unitary gate U_0.")
+    
+    if isbra(U_0) or isbra(C_target):
+        raise TypeError(
+            "Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices."
         )
 
     if (

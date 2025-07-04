@@ -473,7 +473,7 @@ def optimize_pulse_with_feedback(
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
-        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide 0.0 or None to enforce max iterations.
+        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
                     This is primarily used for fidelity calculation.
@@ -486,7 +486,7 @@ def optimize_pulse_with_feedback(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
-    if convergence_threshold == 0.0 or convergence_threshold == None:
+    if convergence_threshold == None:
         early_stop = False
     else:
         early_stop = True
