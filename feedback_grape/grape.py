@@ -2,6 +2,9 @@
 GRadient Ascent Pulse Engineering (GRAPE)
 """
 
+# TODO: add support for supplying qutip objects (e.g. qutip.Qobj) as inputs and internally convert them to jax.numpy arrays.
+
+
 # ruff: noqa N8
 from enum import Enum
 import jax
@@ -158,7 +161,9 @@ def build_parameterized_hamiltonian(
     return Hs, delta_ts
 
 
-def _init_control_amplitudes(num_t_slots, num_controls, ctrl_amp_lower_bound, ctrl_amp_upper_bound):
+def _init_control_amplitudes(
+    num_t_slots, num_controls, ctrl_amp_lower_bound, ctrl_amp_upper_bound
+):
     """
     Initialize control amplitudes for the optimization process.
     Args:
@@ -273,7 +278,9 @@ def optimize_pulse(
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )
     # Step 1: Initialize control amplitudes
-    control_amplitudes = _init_control_amplitudes(num_t_slots, len(H_control), ctrl_amp_lower_bound, ctrl_amp_upper_bound)
+    control_amplitudes = _init_control_amplitudes(
+        num_t_slots, len(H_control), ctrl_amp_lower_bound, ctrl_amp_upper_bound
+    )
     delta_t = total_evo_time / num_t_slots
 
     # Convert H_control to array for easier manipulation
