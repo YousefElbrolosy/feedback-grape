@@ -462,7 +462,6 @@ def calculate_trajectory(
     )(batch_keys)
 
 
-# TODO: make docstring refer to the predefined RNN
 def optimize_pulse_with_feedback(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
