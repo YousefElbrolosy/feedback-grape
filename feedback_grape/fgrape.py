@@ -1,6 +1,7 @@
 """
 GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
+
 import jax
 from enum import Enum
 import jax.numpy as jnp
@@ -23,7 +24,7 @@ from .utils.fgrape_helpers import (
     extract_from_lut,
     reshape_params,
     apply_gate,
-    RNN
+    RNN,
 )
 
 # Answer: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
@@ -491,16 +492,16 @@ def optimize_pulse_with_feedback(
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
-        goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n 
+        goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n
             - (default: fidelity)
-        batch_size (int): The number of trajectories to process in parallel \n 
+        batch_size (int): The number of trajectories to process in parallel \n
             - (default: 1)
         eval_batch_size (int): The number of trajectories to process in parallel during evaluation \n
             - (default: 10)
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table) \n
             - (default: lookup)
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'. \n
-            - (default: _DEFAULTS.RNN)
+            - (default: RNN)
         rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters) \n
             - (default: 30)
         progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes). This may significantly slow down the optimization process \n
@@ -574,9 +575,6 @@ def optimize_pulse_with_feedback(
             "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )
-        # U_0 = ket2dm(U_0)
-        # C_target = ket2dm(C_target)
-        # evo_type = "density"
 
     parent_rng_key = jax.random.PRNGKey(0)
     train_eval_key, sub_key, rnn_key = jax.random.split(parent_rng_key, 3)

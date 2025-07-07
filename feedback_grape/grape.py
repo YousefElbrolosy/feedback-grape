@@ -217,7 +217,7 @@ def optimize_pulse(
             - (default: 1e-6).
         learning_rate: Learning rate for gradient ascent \n
             - (default: 0.01)
-        optimizer: Optimizer to use ("adam" or "L-BFGS") \n 
+        optimizer: Optimizer to use ("adam" or "L-BFGS") \n
             - (default: "adam")
         propcomp: Propagator computation method ("time-efficient" or "memory-efficient") \n
             - (default: "time-efficient").
@@ -235,10 +235,12 @@ def optimize_pulse(
         raise ValueError(
             "Invalid evo_type. Choose 'state' or 'density' or 'unitary'."
         )
-    
+
     if U_0 is None:
-        raise ValueError("Please provide an initial state/density matrix/unitary gate U_0.")
-    
+        raise ValueError(
+            "Please provide an initial state/density matrix/unitary gate U_0."
+        )
+
     if isbra(U_0) or isbra(C_target):
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices."

@@ -169,6 +169,7 @@ def fidelity(*, C_target, U_final, evo_type="unitary"):
         Final operator, state, or density matrix after evolution.
     evo_type : str, optional
         Type of fidelity calculation. Must be one of:
+        
         - "unitary": Uses normalized overlap for operators.
         - "state": Uses normalized overlap for state vectors.
         - "density": Uses Uhlmann fidelity for density matrices.
@@ -182,9 +183,10 @@ def fidelity(*, C_target, U_final, evo_type="unitary"):
     -----
     - For ``evo_type="unitary"`` or ``"state"``, fidelity is the squared magnitude of the normalized overlap:
         - :math:`|\langle C_\mathrm{target} | U_\mathrm{final} \rangle|^2`
+
     - For ``evo_type="density"``, fidelity is computed using the Uhlmann formula:
-        - :math:`\left(\mathrm{Tr}\left[\sqrt{\sqrt{\rho}\, \sigma\, \sqrt{\rho}}\right]\right)^2`
-        where :math:`\rho` and :math:`\sigma` are density matrices.
+        - :math:`\left(\mathrm{Tr}\left[\sqrt{\sqrt{\rho}\, \sigma\, \sqrt{\rho}}\right]\right)^2` where :math:`\rho` and :math:`\sigma` are density matrices.
+        
     - Note that, for the same initial and target states/density matrices, the fidelity of state and density may differ slightly due to the computation method.
 
     """
