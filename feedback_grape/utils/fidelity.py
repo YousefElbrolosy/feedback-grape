@@ -157,23 +157,36 @@ def _state_density_fidelity(A, B):
     return jnp.real(jnp.sum(jnp.sqrt(eig_vals_non_neg)))
 
 
-# TODO: add to docs: For the Same initial and target, the fidelity of density and state may differ slightly due to the ways in which they are computed.
 def fidelity(*, C_target, U_final, evo_type="unitary"):
-    """
-    Computes the fidelity of the final state/operator/density matrix
-    with respect to the target state/operator/density matrix.
+    r"""
+    Computes the fidelity between the final and target state/operator/density matrix.
 
-    The fidelity is calculated as:
-    - For unitary: ``Tr(C_target^† U_final) / dim``
-    - For state: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
-    - For density: ``|<C_target|U_final>|^2`` where ``C_target`` and ``U_final`` are normalized
+    Parameters
+    ----------
+    C_target : jnp.ndarray
+        Target operator, state, or density matrix.
+    U_final : jnp.ndarray
+        Final operator, state, or density matrix after evolution.
+    evo_type : str, optional
+        Type of fidelity calculation. Must be one of:
+        - "unitary": Uses normalized overlap for operators.
+        - "state": Uses normalized overlap for state vectors.
+        - "density": Uses Uhlmann fidelity for density matrices.
 
-    Args:
-        C_target: Target operator.
-        U_final: Final operator after evolution.
-        evo_type: Type of fidelity calculation ("unitary", "state", "density")."
-    Returns:
-        fidelity: Fidelity value.
+    Returns
+    -------
+    fidelity : float
+        Fidelity value in [0, 1].
+
+    Notes
+    -----
+    - For ``evo_type="unitary"`` or ``"state"``, fidelity is the squared magnitude of the normalized overlap:
+        - :math:`|\langle C_\mathrm{target} | U_\mathrm{final} \rangle|^2`
+    - For ``evo_type="density"``, fidelity is computed using the Uhlmann formula:
+        - :math:`\left(\mathrm{Tr}\left[\sqrt{\sqrt{\rho}\, \sigma\, \sqrt{\rho}}\right]\right)^2`
+        where :math:`\rho` and :math:`\sigma` are density matrices.
+    - Note that, for the same initial and target states/density matrices, the fidelity of state and density may differ slightly due to the computation method.
+
     """
     if evo_type == "unitary":
         # Answer: check accuracy of this, do we really need vector conjugate or .dot will simply work? --> no vdot is essential because we need the first term conjugated

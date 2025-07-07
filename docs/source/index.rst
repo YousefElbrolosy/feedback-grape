@@ -22,10 +22,7 @@ then simply import as follows:
 .. code-block:: python
 
    from feedback_grape.grape import (
-    optimize_pulse,
-    plot_control_amplitudes,
-    sesolve,
-    fidelity
+    optimize_pulse
    )
    
    from feedback_grape.utils.operators import identity, destroy, sigmap, sigmaz

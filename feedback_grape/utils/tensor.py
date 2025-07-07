@@ -12,7 +12,7 @@ import jax.numpy as jnp
 
 def tensor(*args: jnp.ndarray) -> jnp.ndarray:
     """
-    Compute the tensor/Kronecker product of two quantum objects.
+    Compute the tensor/Kronecker product of two or more quantum objects.
 
     Args:
         *args (jnp.ndarray): Arrays to be tensored together.
