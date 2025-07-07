@@ -106,7 +106,7 @@ class Gate(NamedTuple):
     param_constraints: list[float] | None = None
     # TODO: IMPORTANT Is that what florian wanted?
     """
-    This constraints the initialization of the parameters to be withing the specified range.
+    This constraints the initialization of the parameters to be within the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
     sigmoid function.
     """
