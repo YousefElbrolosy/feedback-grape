@@ -42,6 +42,8 @@ class result(NamedTuple):
 
 
 class _DEFAULTS(Enum):
+    ctrl_amp_lower_bound = -2 * jnp.pi * 0.05
+    ctrl_amp_upper_bound = 2 * jnp.pi * 0.05
     C_OPS = []  # type: ignore
     MAX_ITER = 1000
     CONVERGENCE_THRESHOLD = 1e-6
@@ -156,13 +158,14 @@ def build_parameterized_hamiltonian(
     return Hs, delta_ts
 
 
-# TODO: Make user supply amplitude bounds in api
-def _init_control_amplitudes(num_t_slots, num_controls):
+def _init_control_amplitudes(num_t_slots, num_controls, ctrl_amp_lower_bound, ctrl_amp_upper_bound):
     """
     Initialize control amplitudes for the optimization process.
     Args:
         num_t_slots: Number of time slots.
         num_controls: Number of control Hamiltonians.
+        ctrl_amp_lower_bound: Lower bound for control amplitudes.
+        ctrl_amp_upper_bound: Upper bound for control amplitudes.
     Returns:
         init_control_amplitudes: Initialized control amplitudes.
     """
@@ -173,8 +176,8 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     return jax.random.uniform(
         key,
         (num_t_slots, num_controls),
-        minval=-(2 * jnp.pi * 0.05),
-        maxval=(2 * jnp.pi * 0.05),
+        minval=ctrl_amp_lower_bound,
+        maxval=ctrl_amp_upper_bound,
     )
 
 
@@ -186,6 +189,8 @@ def optimize_pulse(
     num_t_slots: int,
     total_evo_time: float,
     evo_type: str,
+    ctrl_amp_lower_bound: float = _DEFAULTS.ctrl_amp_lower_bound.value,
+    ctrl_amp_upper_bound: float = _DEFAULTS.ctrl_amp_upper_bound.value,
     c_ops: list[jnp.ndarray] = _DEFAULTS.C_OPS.value,
     max_iter: int = _DEFAULTS.MAX_ITER.value,
     convergence_threshold: float = _DEFAULTS.CONVERGENCE_THRESHOLD.value,
@@ -209,6 +214,10 @@ def optimize_pulse(
                 - "unitary": For unitary evolution.
                 - "state": For state evolution.
                 - "density": For density matrix evolution.
+        ctrl_amp_lower_bound: Lower bound for control amplitudes initialization \n
+            - (default: -2 * jnp.pi * 0.05).
+        ctrl_amp_upper_bound: Upper bound for control amplitudes initialization \n
+            - (default: 2 * jnp.pi * 0.05).
         c_ops: List of collapse operators (optional, used for dissipative evolution) \n
             - (default: []).
         max_iter: Maximum number of iterations \n
@@ -264,7 +273,7 @@ def optimize_pulse(
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )
     # Step 1: Initialize control amplitudes
-    control_amplitudes = _init_control_amplitudes(num_t_slots, len(H_control))
+    control_amplitudes = _init_control_amplitudes(num_t_slots, len(H_control), ctrl_amp_lower_bound, ctrl_amp_upper_bound)
     delta_t = total_evo_time / num_t_slots
 
     # Convert H_control to array for easier manipulation
