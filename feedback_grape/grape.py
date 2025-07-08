@@ -4,7 +4,6 @@ GRadient Ascent Pulse Engineering (GRAPE)
 
 # TODO: add support for supplying qutip objects (e.g. qutip.Qobj) as inputs and internally convert them to jax.numpy arrays.
 
-
 # ruff: noqa N8
 from enum import Enum
 import jax

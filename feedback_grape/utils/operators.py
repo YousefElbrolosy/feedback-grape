@@ -9,6 +9,7 @@ gates.py are more predefined in terms of dimensions I think?
 
 import jax
 import jax.numpy as jnp
+import qutip as qt
 
 
 def sigmax(dtype=jnp.complex128):
@@ -101,3 +102,16 @@ def sinm(a: jnp.ndarray) -> jnp.ndarray:
     return (jax.scipy.linalg.expm(1j * a) - jax.scipy.linalg.expm(-1j * a)) / (
         2j
     )
+
+
+def jaxify(a: qt.Qobj) -> jnp.ndarray:
+    """
+    Convert a QuTiP Qobj to a JAX array.
+
+    Args:
+        a (qt.Qobj): The QuTiP Qobj to convert.
+
+    Returns:
+        jnp.ndarray: The JAX array representation of the Qobj.
+    """
+    return jnp.array(a.full())
