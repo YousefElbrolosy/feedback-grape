@@ -7,7 +7,7 @@ from feedback_grape.fgrape import Gate, Decay
 
 
 def example_A_body():
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -90,7 +90,7 @@ def example_A_body():
 
     # -- Optimization --
     time_steps = 20
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=psi0,
         C_target=psi_target,
         system_params=system_params,
@@ -115,7 +115,7 @@ def example_A_body():
 
 def example_B_body():
     # B. State purification with qubit-mediated measurement
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     import jax.numpy as jnp
 
     # initial state is a thermal state
@@ -159,7 +159,7 @@ def example_B_body():
 
     system_params = [measure]
 
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_cav,
         C_target=None,
         system_params=system_params,
@@ -187,7 +187,7 @@ def example_B_body():
 
 def example_C_body():
     # C. State preparation from a thermal state with Jaynes-Cummings controls
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -306,7 +306,7 @@ def example_C_body():
 
     system_params = [measure, qub_unitary, qub_cav]
 
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho0,
         C_target=rho_target,
         system_params=system_params,
@@ -341,7 +341,7 @@ def example_D_body():
     no_dissipation_flag = False
     dissipation_flag = False
 
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -448,7 +448,7 @@ def example_D_body():
     )
 
     system_params = [measure, qub_unitary, qub_cav]
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_target,
         C_target=rho_target,
         system_params=system_params,
@@ -472,7 +472,7 @@ def example_D_body():
     )
 
     system_params = [decay, measure, qub_unitary, qub_cav]
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_target,
         C_target=rho_target,
         system_params=system_params,
@@ -501,7 +501,7 @@ def example_D_body():
 def example_E_body():
     # E: State stabilization with SNAP gates and displacement gates
     # ruff: noqa
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import sigmam, identity, cosm, sinm
     from feedback_grape.utils.states import coherent, basis
     from feedback_grape.utils.tensor import tensor
@@ -692,7 +692,7 @@ def example_E_body():
         displacement_dag,
     ]
 
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_target,
         C_target=rho_target,
         system_params=system_params,

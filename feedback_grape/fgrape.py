@@ -462,7 +462,7 @@ def calculate_trajectory(
     )(batch_keys)
 
 
-def optimize_pulse_with_feedback(
+def optimize_pulse(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     system_params: list[Gate],
