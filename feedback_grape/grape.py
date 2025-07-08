@@ -2,8 +2,6 @@
 GRadient Ascent Pulse Engineering (GRAPE)
 """
 
-# TODO: add support for supplying qutip objects (e.g. qutip.Qobj) as inputs and internally convert them to jax.numpy arrays.
-
 # ruff: noqa N8
 from enum import Enum
 import jax
@@ -11,8 +9,8 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from .utils.optimizers import (
-    _optimize_adam,
-    _optimize_L_BFGS,
+    optimize_adam,
+    optimize_L_BFGS,
 )
 from .utils.fidelity import fidelity, is_positive_semi_definite, isbra, isket
 from .utils.solver import mesolve, sesolve
@@ -421,7 +419,7 @@ def train(
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
-        control_amplitudes, iter_idx = _optimize_L_BFGS(
+        control_amplitudes, iter_idx = optimize_L_BFGS(
             _loss,
             control_amplitudes,
             max_iter,
@@ -431,7 +429,7 @@ def train(
             early_stop,
         )
     elif optimizer.upper() == "ADAM":
-        control_amplitudes, iter_idx = _optimize_adam(
+        control_amplitudes, iter_idx = optimize_adam(
             _loss,
             control_amplitudes,
             max_iter,

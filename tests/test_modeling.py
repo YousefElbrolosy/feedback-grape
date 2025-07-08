@@ -1,6 +1,6 @@
 # comparing the new modeling API with the old one and seeing if they indeed match
 # ruff: noqa
-from feedback_grape.new_api.modeling import QubitCavity
+from feedback_grape.utils.modeling import QubitCavity
 import jax.numpy as jnp
 from jax.scipy.linalg import expm
 from feedback_grape.utils.operators import (

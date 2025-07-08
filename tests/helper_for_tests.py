@@ -36,6 +36,8 @@ from feedback_grape.utils.states import basis
 
 import qutip_qtrl.pulseoptim as qtrl
 
+jax.config.update("jax_enable_x64", True)
+
 
 # State to state transfer example
 def get_targets_for_qubit_in_cavity_problem(evo_type="state"):

@@ -1,6 +1,7 @@
 """
 Tests for the GRAPE package.
 """
+
 # ruff: noqa
 import jax
 import jax.numpy as jnp

@@ -5,11 +5,20 @@ used to generate hamiltonians and unitary transformations.
 gates.py are more predefined in terms of dimensions I think?
 """
 
-# TODO : see if we should jit the operators
+# JIT compilation is generally beneficial for functions that are
+# computationally intensive and called repeatedly with the same
+# input shapes/types. For simple operator generators like these
+# (mostly returning small constant arrays), JIT will not provide
+# significant speedup and may add unnecessary overhead. Only
+# consider jitting functions that are performance bottlenecks
+# in practice, such as those involving large matrix operations
+# or repeated numerical computation.
 
 import jax
 import jax.numpy as jnp
 import qutip as qt
+
+jax.config.update("jax_enable_x64", True)
 
 
 def sigmax(dtype=jnp.complex128):

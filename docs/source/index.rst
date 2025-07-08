@@ -42,7 +42,6 @@ Click here to get started with some example tutorials for feedbackGRAPE: :doc:`t
    
    grape.rst
    fgrape.rst
-   qubit_cavity.rst
    utils.rst
    tutorials/index.rst
 

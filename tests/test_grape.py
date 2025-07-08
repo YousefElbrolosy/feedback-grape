@@ -24,6 +24,9 @@ from tests.helper_for_tests import (
     get_results_for_new_dissipation_problem,
 )
 
+jax.config.update("jax_enable_x64", True)
+
+
 # Check documentation for pytest for more decorators
 
 

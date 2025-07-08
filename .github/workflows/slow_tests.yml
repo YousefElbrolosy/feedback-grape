@@ -1,8 +1,9 @@
 name: Weekly Slow Tests
 
 on:
-  schedule:
-    - cron: '0 19 * * 1'  # Every Monday at 19:00 UTC
+  # No longer a cron job because it exceeds github actions running time
+  # schedule:
+  #   - cron: '0 19 * * 1'  # Every Monday at 19:00 UTC
   workflow_dispatch:
 
 jobs:

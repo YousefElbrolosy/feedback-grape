@@ -1,9 +1,11 @@
 # ruff: noqa
 
 # TODO: test for errors (do situations where you expect an error to be raised) and catch that error
-
+import jax
 import pytest
 from feedback_grape.fgrape import Gate, Decay
+
+jax.config.update("jax_enable_x64", True)
 
 
 def example_A_body():

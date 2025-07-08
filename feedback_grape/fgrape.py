@@ -7,7 +7,7 @@ from enum import Enum
 import jax.numpy as jnp
 from .utils.solver import mesolve
 from typing import List, NamedTuple
-from .utils.optimizers import _optimize_adam_feedback
+from .utils.optimizers import optimize_adam_feedback
 from .utils.fidelity import (
     isbra,
     isket,
@@ -41,7 +41,7 @@ parts and then internaly in your defined function unitaries you need to combine 
 # TODO: Make sure that a global variable isn't being changed in the process
 # Just like what happened with the c_ops.copy
 
-# TODO: see if there is a way to enforce 64 bit over whole repository
+# Answer: see if there is a way to enforce 64 bit over whole repository --> Added to top of each file
 
 
 # TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
@@ -619,10 +619,10 @@ def optimize_pulse(
 
             rnn_model = rnn(hidden_size=hidden_size, output_size=output_size)  # type: ignore
 
-            # TODO: should we use some better initialization for the rnn?
             h_initial_state = jnp.zeros((1, hidden_size))
 
-            # TODO: should this be .zeros? our input is only 1 or -1
+            # Answer: should this be .zeros? our input is only 1 or -1? Does not matter this is only for initialization parameters,
+            # and I tried .ones it did not differ
             dummy_input = jnp.zeros(
                 (1, 1)
             )  # Dummy input for rnn initialization
@@ -632,9 +632,7 @@ def optimize_pulse(
                 ),
                 'initial_params': flat_params,
             }
-            # trainable_params = rnn_model.init(
-            #     rnn_key, dummy_input, h_initial_state
-            # )
+
         elif mode == "lookup":
             h_initial_state = None
             rnn_model = None
@@ -676,8 +674,6 @@ def optimize_pulse(
                 "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
             )
 
-    # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
-    # the log prob or not? ( like in porroti's implementation )?
     def loss_fn(trainable_params, rng_key):
         """
         Loss function for the optimization process.
@@ -810,7 +806,7 @@ def _train(
     """
     # Optimization
     # set up optimizer and training state
-    best_model_params, iter_idx = _optimize_adam_feedback(
+    best_model_params, iter_idx = optimize_adam_feedback(
         loss_fn,
         trainable_params,
         max_iter,

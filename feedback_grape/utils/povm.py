@@ -5,6 +5,8 @@ from feedback_grape.utils.fidelity import isbra, isket
 from .fgrape_helpers import clip_params
 # ruff: noqa N8
 
+jax.config.update("jax_enable_x64", True)
+
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
     rho_cav,
@@ -35,7 +37,9 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
             raise TypeError(
                 "rho_cav must be a ket (column vector) for evo_type 'state'."
             )
-        # TODO/QUESTION: without jnp.real the result is complex and jnp.grad can no longer do it, but are we then losing information?
+        # Answer: without jnp.real the result is complex and jnp.grad can no longer do it, but are we then losing information? --> No because probability is real
+        # and if the math is correct this quality should be real or have very very small imaginary part because its the probability (the .real is essential for jnp.grad to work)
+        # just to remove the +0j
         prob = jnp.real(jnp.vdot(rho_cav, Em @ rho_cav))
     elif evo_type == "density":
         if (

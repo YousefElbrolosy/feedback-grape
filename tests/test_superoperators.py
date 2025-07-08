@@ -1,8 +1,11 @@
 # ruff: noqa N8
+import jax
 from feedback_grape.utils.superoperator import sprepost
 from feedback_grape.utils.operators import sigmax, sigmay
 import qutip as qt
 import jax.numpy as jnp
+
+jax.config.update("jax_enable_x64", True)
 
 
 def test_sprepost():

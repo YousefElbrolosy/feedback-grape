@@ -59,3 +59,12 @@ Solver
 ------------------------
 .. automodule:: feedback_grape.utils.solver
     :members:
+
+QubitCavity (Modeling API)
+--------------------------
+.. automodule:: feedback_grape.utils.modeling
+    :members:
+    :undoc-members:
+    :inherited-members:
+    :show-inheritance:
+    :special-members: __init__
