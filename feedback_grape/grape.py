@@ -256,21 +256,31 @@ def optimize_pulse(
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices."
         )
+    
+    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
+        raise TypeError(
+            "For evo_type='state', please provide initial and target states as kets (column vectors)."
+        )
+    
+    if evo_type == "density" and (isket(U_0) or isket(C_target)):
+        raise TypeError(
+            "For evo_type='density', please provide initial and target states as density matrices."
+        )
 
     if (
-        not is_positive_semi_definite(U_0)
-        and not is_positive_semi_definite(C_target)
+        (not is_positive_semi_definite(U_0)
+        or not is_positive_semi_definite(C_target))
         and evo_type == "density"
     ):
         raise TypeError(
-            'your initial and target rhos must be positive semi-definite.'
+            'If evo_type=`density` your initial and target rhos must be positive semi-definite.'
         )
 
     if (
         evo_type == "state" or (isket(U_0) or isket(C_target))
     ) and c_ops != []:
         raise ValueError(
-            "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets/=. "
+            "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets. "
             "Dissipation requires a density matrix representation of your inital and target states because the solver uses Lindblad equation to evolve the system with dissipation."
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )

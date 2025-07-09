@@ -526,6 +526,11 @@ def optimize_pulse(
             "Please provide a target state C_target for fidelity calculation."
         )
 
+    if isbra(U_0) or isbra(C_target):
+        raise TypeError(
+            "Please provide initial and target states as kets (column vectors) or density matrices."
+        )
+    
     if evo_type == "state" and not (isket(U_0) and isket(C_target)):
         raise TypeError(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
@@ -536,14 +541,9 @@ def optimize_pulse(
             "For evo_type='density', please provide initial and target states as density matrices."
         )
 
-    if isbra(U_0) or isbra(C_target):
-        raise TypeError(
-            "Please provide initial and target states as kets (column vectors) or density matrices."
-        )
 
     if (
-        goal in ["fidelity", "both"]
-        and evo_type == "density"
+        evo_type == "density"
         and (
             not is_positive_semi_definite(U_0)
             or not is_positive_semi_definite(C_target)
