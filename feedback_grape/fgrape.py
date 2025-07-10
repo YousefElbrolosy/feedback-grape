@@ -541,22 +541,27 @@ def optimize_pulse(
             "For evo_type='density', please provide initial and target states as density matrices."
         )
 
+    if goal in ["purity", "both"] and evo_type == "state":
+        raise ValueError(
+            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
+        )
+    
+    if goal == "purity" and C_target is not None:
+        raise ValueError(
+            "C_target should not be provided when goal is 'purity'."
+        )
 
     if (
         evo_type == "density"
         and (
             not is_positive_semi_definite(U_0)
-            or not is_positive_semi_definite(C_target)
+            or (goal != "purity" and not is_positive_semi_definite(C_target))
         )
     ):
         raise TypeError(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
         )
 
-    if goal in ["purity", "both"] and evo_type == "state":
-        raise ValueError(
-            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
-        )
 
     (
         initial_params,
