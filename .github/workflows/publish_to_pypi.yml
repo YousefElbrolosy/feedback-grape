@@ -24,20 +24,31 @@ jobs:
       - name: Extract tag and Details
         id: release
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            NEW_VERSION=$(echo $TAG_NAME | awk -F'-' '{print $1}')
-            SUFFIX=$(echo $TAG_NAME | grep -oP '[a-z]+[0-9]+' || echo "")
-            echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-            echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
-            echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
-            echo "Version is $NEW_VERSION"
-            echo "Suffix is $SUFFIX"
-            echo "Tag name is $TAG_NAME"
-          else
-            echo "No tag found"
-            exit 1
-          fi
+            if [ "${{ github.ref_type }}" = "tag" ]; then
+              TAG_NAME=${GITHUB_REF#refs/tags/}
+              NEW_VERSION=$(echo $TAG_NAME | awk -F'-' '{print $1}')
+              SUFFIX=$(echo $TAG_NAME | grep -oP '[a-z]+[0-9]+' || echo "")
+              echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+              echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
+              echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+              echo "Version is $NEW_VERSION"
+              echo "Suffix is $SUFFIX"
+              echo "Tag name is $TAG_NAME"
+            elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              # For manual dispatch, use the latest tag or generate a dev version
+              TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+              NEW_VERSION=$(echo $TAG_NAME | sed 's/^v//' | awk -F'-' '{print $1}')
+              SUFFIX="dev$(date +%Y%m%d%H%M%S)"
+              echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+              echo "suffix=$SUFFIX" >> "$GITHUB_OUTPUT"
+              echo "tag_name=$TAG_NAME-$SUFFIX" >> "$GITHUB_OUTPUT"
+              echo "Version is $NEW_VERSION"
+              echo "Suffix is $SUFFIX"
+              echo "Tag name is $TAG_NAME-$SUFFIX"
+            else
+              echo "No tag found and not a manual dispatch"
+              exit 1
+            fi
 
   check_pypi:
     needs: details
