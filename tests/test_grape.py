@@ -3,6 +3,7 @@ Tests for the GRAPE package.
 """
 
 # ruff: noqa
+import re
 import jax
 import jax.numpy as jnp
 import pytest
@@ -11,6 +12,9 @@ import qutip as qt
 from feedback_grape.utils.fidelity import fidelity
 from feedback_grape.utils.fidelity import sqrtm_eig
 from feedback_grape.utils.fidelity import is_positive_semi_definite
+from feedback_grape.grape import optimize_pulse
+from feedback_grape.utils.fidelity import ket2dm
+from feedback_grape.utils.states import basis
 from tests.helper_for_tests import (
     get_finals,
     get_results_for_cnot_problem,
@@ -23,6 +27,9 @@ from tests.helper_for_tests import (
     get_targets_for_qubit_in_cavity_problem,
     get_results_for_new_dissipation_problem,
 )
+
+jax.config.update("jax_enable_x64", True)
+
 
 # Check documentation for pytest for more decorators
 
@@ -227,3 +234,195 @@ def test_sesolve():
     assert jnp.allclose(psi_fg_2, psi_qt_2.full(), atol=1e-2), (
         "The states are not close enough."
     )
+
+
+def test_for_errors():
+    """
+    Test for errors in the GRAPE package.
+    """
+    import jax.numpy as jnp
+
+    # Test invalid evo_type
+    def test_invalid_evo_type():
+        """Test that invalid evo_type raises ValueError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        U_0 = jnp.array([[1, 0], [0, 1]])
+        C_target = jnp.array([[0, 1], [1, 0]])
+        
+        with pytest.raises(ValueError, match="Invalid evo_type. Choose 'state' or 'density' or 'unitary'."):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="invalid_type"
+            )
+
+    # Test None U_0
+    def test_none_u0():
+        """Test that None U_0 raises ValueError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        C_target = jnp.array([[0, 1], [1, 0]])
+        
+        with pytest.raises(ValueError, match="Please provide an initial state/density matrix/unitary gate U_0."):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=None,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="unitary"
+            )
+
+    # Test bra states
+    def test_bra_states():
+        """Test that bra states raise TypeError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        # Create bra (row vector)
+        U_0_bra = jnp.array([[1, 0]])  # Row vector (bra)
+        C_target = jnp.array([[1], [0]])  # Column vector (ket)
+        
+        with pytest.raises(TypeError, match="Please provide initial and target states as kets"):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0_bra,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="state"
+            )
+
+    def test_target_bra_states():
+        """Test that target bra states raise TypeError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        U_0 = jnp.array([[1], [0]])  # Column vector (ket)
+        C_target_bra = jnp.array([[1, 0]])  # Row vector (bra)
+        
+        with pytest.raises(TypeError, match="Please provide initial and target states as kets"):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0,
+                C_target=C_target_bra,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="state"
+            )
+
+    # Test non-positive semi-definite density matrices
+    def test_non_positive_semidefinite_density():
+        """Test that non-positive semi-definite density matrices raise TypeError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        # Non-positive semi-definite matrix (negative eigenvalue)
+        U_0_bad = jnp.array([[1, 0], [0, -1]])
+        C_target = jnp.array([[0.5, 0], [0, 0.5]])
+        
+        with pytest.raises(TypeError, match="your initial and target rhos must be positive semi-definite"):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0_bad,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="density"
+            )
+
+    def test_non_positive_semidefinite_target_density():
+        """Test that non-positive semi-definite target density matrices raise TypeError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        U_0 = jnp.array([[0.5, 0], [0, 0.5]])
+        # Non-positive semi-definite matrix (negative eigenvalue)
+        C_target_bad = jnp.array([[1, 0], [0, -1]])
+        
+        with pytest.raises(TypeError, match="If evo_type=`density` your initial and target rhos must be positive semi-definite"):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0,
+                C_target=C_target_bad,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="density"
+            )
+
+    # Test collapse operators with state evolution
+    def test_collapse_ops_with_state_evo():
+        """Test that collapse operators with state evolution raise ValueError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        U_0 = jnp.array([[1], [0]])  # Ket state
+        C_target = jnp.array([[0], [1]])  # Ket state
+        c_ops = [jnp.array([[0, 1], [0, 0]])]  # Collapse operator
+        
+        with pytest.raises(ValueError, match="You supplied collapse operators"):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="state",
+                c_ops=c_ops
+            )
+
+    def test_density_with_ket_states():
+        """Test that collapse operators with ket states (even with density evo_type) raise ValueError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        U_0 = basis(2)  # Ket state
+        C_target = ket2dm(basis(2))  # Density matrix from ket
+        c_ops = [jnp.array([[0, 1], [0, 0]])]  # Collapse operator
+        
+        with pytest.raises(TypeError, match=re.escape("For evo_type='density', please provide initial and target states as density matrices.")):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="density",
+                c_ops=c_ops
+            )
+
+    def test_invalid_optimizer():
+        """Test that invalid optimizer raises ValueError."""
+        H_drift = jnp.array([[0, 1], [1, 0]])
+        H_control = [jnp.array([[1, 0], [0, -1]])]
+        U_0 = jnp.array([[1, 0], [0, 1]])
+        C_target = jnp.array([[0, 1], [1, 0]])
+        
+        with pytest.raises(ValueError, match="Optimizer invalid_optimizer not supported. Use 'adam' or 'l-bfgs'."):
+            optimize_pulse(
+                H_drift=H_drift,
+                H_control=H_control,
+                U_0=U_0,
+                C_target=C_target,
+                num_t_slots=10,
+                total_evo_time=1.0,
+                evo_type="unitary",
+                optimizer="invalid_optimizer"
+            )
+
+    # Run all tests
+    test_invalid_evo_type()
+    test_none_u0()
+    test_bra_states()
+    test_target_bra_states()
+    test_non_positive_semidefinite_density() 
+    test_non_positive_semidefinite_target_density()
+    test_collapse_ops_with_state_evo()
+    test_density_with_ket_states()
+    test_invalid_optimizer()

@@ -1,13 +1,18 @@
+"""
+GRadient Ascent Pulse Engineering (GRAPE) with feedback.
+"""
+
 import jax
+from enum import Enum
 import jax.numpy as jnp
-from typing import List, NamedTuple
 from .utils.solver import mesolve
-from .utils.optimizers import _optimize_adam_feedback
+from typing import List, NamedTuple
+from .utils.optimizers import optimize_adam_feedback
 from .utils.fidelity import (
-    fidelity,
-    is_positive_semi_definite,
     isbra,
     isket,
+    fidelity,
+    is_positive_semi_definite,
 )
 from .utils.purity import purity
 from .utils.povm import povm
@@ -19,7 +24,7 @@ from .utils.fgrape_helpers import (
     extract_from_lut,
     reshape_params,
     apply_gate,
-    DEFAULTS,
+    RNN,
 )
 
 # Answer: see if I should replace with pmap for feedback-grape gpu version (may also be a different package)
@@ -36,7 +41,7 @@ parts and then internaly in your defined function unitaries you need to combine 
 # TODO: Make sure that a global variable isn't being changed in the process
 # Just like what happened with the c_ops.copy
 
-# TODO: see if there is a way to enforce 64 bit over whole repository
+# Answer: see if there is a way to enforce 64 bit over whole repository --> Added to top of each file
 
 
 # TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
@@ -59,7 +64,7 @@ class FgResult(NamedTuple):
     """
     returned_params: List[jnp.ndarray]
     """
-    Array of finalsPOVM parameters for each time step.
+    Array of final parameters for each time step.
     """
     final_purity: jnp.ndarray | None
     """
@@ -69,6 +74,17 @@ class FgResult(NamedTuple):
     """
     Final fidelity of the optimized control.
     """
+
+
+class _DEFAULTS(Enum):
+    BATCH_SIZE = 1
+    EVAL_BATCH_SIZE = 10
+    MODE = "lookup"
+    RNN = RNN
+    RNN_HIDDEN_SIZE = 30
+    GOAL = "fidelity"
+    DECAY = None
+    PROGRESS = False
 
 
 class Gate(NamedTuple):
@@ -91,7 +107,7 @@ class Gate(NamedTuple):
     param_constraints: list[float] | None = None
     # TODO: IMPORTANT Is that what florian wanted?
     """
-    This constraints the initialization of the parameters to be withing the specified range.
+    This constraints the initialization of the parameters to be within the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
     sigmoid function.
     """
@@ -446,8 +462,7 @@ def calculate_trajectory(
     )(batch_keys)
 
 
-# TODO: say in the docs what the defaults are for the parameters
-def optimize_pulse_with_feedback(
+def optimize_pulse(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray,
     system_params: list[Gate],
@@ -456,13 +471,13 @@ def optimize_pulse_with_feedback(
     convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    goal: str = DEFAULTS.GOAL.value,  # purity, fidelity, both
-    batch_size: int = DEFAULTS.BATCH_SIZE.value,
-    eval_batch_size: int = DEFAULTS.EVAL_BATCH_SIZE.value,
-    mode: str = DEFAULTS.MODE.value,  # nn, lookup
-    rnn: callable = DEFAULTS.RNN.value,  # type: ignore
-    rnn_hidden_size: int = DEFAULTS.RNN_HIDDEN_SIZE.value,
-    progress: bool = DEFAULTS.PROGRESS.value,
+    goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
+    batch_size: int = _DEFAULTS.BATCH_SIZE.value,
+    eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
+    mode: str = _DEFAULTS.MODE.value,  # nn, lookup
+    rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
+    rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
+    progress: bool = _DEFAULTS.PROGRESS.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -473,20 +488,27 @@ def optimize_pulse_with_feedback(
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
-        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide 0.0 or None to enforce max iterations.
+        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
-                    This is primarily used for fidelity calculation.
-        goal (str): The optimization goal, which can be 'purity', 'fidelity', or 'both'.
-        batch_size (int): The number of trajectories to process in parallel.
-        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table).
-        rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'.
-        rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters)
-        progress (bool): Whether to show progress of the loss each ten iterations during the optimization process.
+        goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n
+            - (default: fidelity)
+        batch_size (int): The number of trajectories to process in parallel \n
+            - (default: 1)
+        eval_batch_size (int): The number of trajectories to process in parallel during evaluation \n
+            - (default: 10)
+        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table) \n
+            - (default: lookup)
+        rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'. \n
+            - (default: RNN)
+        rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters) \n
+            - (default: 30)
+        progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes). This may significantly slow down the optimization process \n
+            - (default: False).
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
-    if convergence_threshold == 0.0 or convergence_threshold == None:
+    if convergence_threshold == None:
         early_stop = False
     else:
         early_stop = True
@@ -504,6 +526,11 @@ def optimize_pulse_with_feedback(
             "Please provide a target state C_target for fidelity calculation."
         )
 
+    if isbra(U_0) or isbra(C_target):
+        raise TypeError(
+            "Please provide initial and target states as kets (column vectors) or density matrices."
+        )
+    
     if evo_type == "state" and not (isket(U_0) and isket(C_target)):
         raise TypeError(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
@@ -514,27 +541,27 @@ def optimize_pulse_with_feedback(
             "For evo_type='density', please provide initial and target states as density matrices."
         )
 
-    if isbra(U_0) or isbra(C_target):
-        raise TypeError(
-            "Please provide initial and target states as kets (column vectors) or density matrices."
+    if goal in ["purity", "both"] and evo_type == "state":
+        raise ValueError(
+            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
+        )
+    
+    if goal == "purity" and C_target is not None:
+        raise ValueError(
+            "C_target should not be provided when goal is 'purity'."
         )
 
     if (
-        goal in ["fidelity", "both"]
-        and evo_type == "density"
+        evo_type == "density"
         and (
             not is_positive_semi_definite(U_0)
-            or not is_positive_semi_definite(C_target)
+            or (goal != "purity" and not is_positive_semi_definite(C_target))
         )
     ):
         raise TypeError(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
         )
 
-    if goal in ["purity", "both"] and evo_type == "state":
-        raise ValueError(
-            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
-        )
 
     (
         initial_params,
@@ -552,9 +579,6 @@ def optimize_pulse_with_feedback(
             "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )
-        # U_0 = ket2dm(U_0)
-        # C_target = ket2dm(C_target)
-        # evo_type = "density"
 
     parent_rng_key = jax.random.PRNGKey(0)
     train_eval_key, sub_key, rnn_key = jax.random.split(parent_rng_key, 3)
@@ -600,10 +624,10 @@ def optimize_pulse_with_feedback(
 
             rnn_model = rnn(hidden_size=hidden_size, output_size=output_size)  # type: ignore
 
-            # TODO: should we use some better initialization for the rnn?
             h_initial_state = jnp.zeros((1, hidden_size))
 
-            # TODO: should this be .zeros? our input is only 1 or -1
+            # Answer: should this be .zeros? our input is only 1 or -1? Does not matter this is only for initialization parameters,
+            # and I tried .ones it did not differ
             dummy_input = jnp.zeros(
                 (1, 1)
             )  # Dummy input for rnn initialization
@@ -613,9 +637,7 @@ def optimize_pulse_with_feedback(
                 ),
                 'initial_params': flat_params,
             }
-            # trainable_params = rnn_model.init(
-            #     rnn_key, dummy_input, h_initial_state
-            # )
+
         elif mode == "lookup":
             h_initial_state = None
             rnn_model = None
@@ -657,8 +679,6 @@ def optimize_pulse_with_feedback(
                 "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
             )
 
-    # QUESTION: should we add an accumilate log-term boolean here that decides whether we add
-    # the log prob or not? ( like in porroti's implementation )?
     def loss_fn(trainable_params, rng_key):
         """
         Loss function for the optimization process.
@@ -791,7 +811,7 @@ def _train(
     """
     # Optimization
     # set up optimizer and training state
-    best_model_params, iter_idx = _optimize_adam_feedback(
+    best_model_params, iter_idx = optimize_adam_feedback(
         loss_fn,
         trainable_params,
         max_iter,

@@ -7,12 +7,15 @@ This construction is crucial to understanding the quantum mechanics of multi-
 particle systems.
 """
 
+import jax
 import jax.numpy as jnp
+
+jax.config.update("jax_enable_x64", True)
 
 
 def tensor(*args: jnp.ndarray) -> jnp.ndarray:
     """
-    Compute the tensor/Kronecker product of two quantum objects.
+    Compute the tensor/Kronecker product of two or more quantum objects.
 
     Args:
         *args (jnp.ndarray): Arrays to be tensored together.

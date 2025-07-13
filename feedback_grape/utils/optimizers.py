@@ -3,9 +3,11 @@ import optax  # type: ignore
 import optax.tree_utils as otu  # type: ignore
 # ruff: noqa N8
 
+jax.config.update("jax_enable_x64", True)
+
 
 # only difference is that this one uses kayes for each time step
-def _optimize_adam_feedback(
+def optimize_adam_feedback(
     loss_fn,
     control_amplitudes,
     max_iter,
@@ -15,6 +17,23 @@ def _optimize_adam_feedback(
     progress,
     early_stop,
 ):
+    """
+
+    Uses Adam optimizer to optimize the control amplitudes.
+
+    Args:
+        loss_fn: loss function to optimize.
+        control_amplitudes: Initial control amplitudes.
+        max_iter: Maximum number of iterations.
+        learning_rate: Learning rate for the optimizer.
+        convergence_threshold: Convergence threshold for optimization.
+        key: JAX random key for stochastic operations (so that each iteration has is different).
+        progress: If True, prints the progress of the optimization.
+        early_stop: If True, stops the optimization if the loss does not change significantly (if convergence threshold is reached).
+    Returns:
+        control_amplitudes: Optimized control amplitudes.
+        final_iter_idx: Number of iterations in the optimization.
+    """
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(control_amplitudes)
     losses = []
@@ -49,7 +68,7 @@ def _optimize_adam_feedback(
 
 
 # TODO: Throw a warning if the user uses complex parameters with L-BFGS or Adam, since they are not optimized for complex numbers
-def _optimize_adam(
+def optimize_adam(
     loss_fn,
     control_amplitudes,
     max_iter,
@@ -58,6 +77,23 @@ def _optimize_adam(
     progress,
     early_stop,
 ):
+    """
+
+    Uses Adam optimizer to optimize the control amplitudes.
+    No stachasticity is used between iterations.
+
+    Args:
+        loss_fn: loss function to optimize.
+        control_amplitudes: Initial control amplitudes.
+        max_iter: Maximum number of iterations.
+        learning_rate: Learning rate for the optimizer.
+        convergence_threshold: Convergence threshold for optimization.
+        progress: If True, prints the progress of the optimization.
+        early_stop: If True, stops the optimization if the loss does not change significantly (if convergence threshold is reached).
+    Returns:
+        control_amplitudes: Optimized control amplitudes.
+        final_iter_idx: Number of iterations in the optimization.
+    """
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(control_amplitudes)
     losses = []
@@ -92,7 +128,7 @@ def _optimize_adam(
 
 # Answer: L_bfgs ouputs error when params are complex amplitudes --> yeah both won't work with complex parameters
 # user needs to use two real parameters per complex number and then in his function convert them to complex
-def _optimize_L_BFGS(
+def optimize_L_BFGS(
     loss_fn,
     control_amplitudes,
     max_iter,
@@ -102,12 +138,17 @@ def _optimize_L_BFGS(
     early_stop,
 ):
     """
+
     Uses L-BFGS to optimize the control amplitudes.
+
     Args:
         loss_fn: loss function to optimize.
         control_amplitudes: Initial control amplitudes.
         max_iter: Maximum number of iterations.
         convergence_threshold: Convergence threshold for optimization.
+        learning_rate: Learning rate for the optimizer.
+        progress: If True, prints the progress of the optimization (for debugging - significantly slows optimization).
+        early_stop: If True, stops the optimization if the loss does not change significantly (if convergence threshold is reached).
     Returns:
         control_amplitudes: Optimized control amplitudes.
         final_iter_idx: Number of iterations in the optimization.
@@ -130,8 +171,15 @@ def _optimize_L_BFGS(
             value_fn=loss_fn,
         )
         control_amplitudes = optax.apply_updates(control_amplitudes, updates)
-        if progress and (iter_idx % 10 == 0):
-            print(f"Iteration {iter_idx}, Loss: {value:.6f}")
+        jax.lax.cond(
+            jax.numpy.logical_and(progress, iter_idx % 10 == 0),
+            lambda: jax.debug.print(
+                "Iteration {iter_idx}, Loss: {value:.6f}",
+                iter_idx=iter_idx,
+                value=value,
+            ),
+            lambda: None,
+        )
         return control_amplitudes, state, iter_idx + 1
 
     def continuing_criterion(carry):
