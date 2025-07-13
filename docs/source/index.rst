@@ -22,10 +22,7 @@ then simply import as follows:
 .. code-block:: python
 
    from feedback_grape.grape import (
-    optimize_pulse,
-    plot_control_amplitudes,
-    sesolve,
-    fidelity
+    optimize_pulse
    )
    
    from feedback_grape.utils.operators import identity, destroy, sigmap, sigmaz
@@ -43,9 +40,8 @@ Click here to get started with some example tutorials for feedbackGRAPE: :doc:`t
    :caption: Contents:
    :maxdepth: 2
    
-   fgrape.rst
    grape.rst
-   qubit_cavity.rst
+   fgrape.rst
    utils.rst
    tutorials/index.rst
 

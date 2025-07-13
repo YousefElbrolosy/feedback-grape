@@ -3,7 +3,7 @@ Tutorials
 
 Welcome to the feedbackGRAPE tutorials! These interactive notebooks will guide you through the key concepts and practical applications of GRAPE (Gradient Ascent Pulse Engineering) optimization.
 
-.. grid:: 3
+.. grid:: 4
    :gutter: 2
 
    .. grid-item-card:: GRAPE Tutorials
@@ -28,6 +28,13 @@ Welcome to the feedbackGRAPE tutorials! These interactive notebooks will guide y
 
       Use an easier more intuitive way to model your qubit in a cavity systems.
 
+   .. grid-item-card:: Examples Using Qutip's operators  
+      :link: qutip_operators_tutorials/index
+      :link-type: doc
+      :class-header: bg-success text-white
+
+      Use qutip's extensive library of operators and states to construct your system dynamics with the jaxify function from feedback_grape.utils.operators
+
 .. toctree::
    :maxdepth: 2
    :hidden:   
@@ -35,6 +42,7 @@ Welcome to the feedbackGRAPE tutorials! These interactive notebooks will guide y
    GRAPE-tutorials/index
    feedbackGRAPE-tutorials/index
    QubitCavity_api_tutorials/index
+   qutip_operators_tutorials/index
 
 Quick Start Guide
 -----------------

@@ -9,6 +9,8 @@ import jax.numpy as jnp
 from dynamiqs import mesolve as mesolve_dynamiqs
 import dynamiqs as dq
 
+jax.config.update("jax_enable_x64", True)
+
 
 def sesolve(Hs, initial_state, delta_ts, evo_type="density"):
     """

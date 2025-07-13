@@ -4,6 +4,7 @@ import jax.numpy as jnp
 import pytest
 import qutip as qt
 from feedback_grape.utils.states import basis, coherent, fock
+from feedback_grape.utils.operators import jaxify
 
 jax.config.update("jax_enable_x64", True)
 
@@ -47,4 +48,28 @@ def test_fock(n):
     print(f"result: {result}, \n expected: {expected}")
     assert jnp.allclose(result, expected, atol=1e-10), (
         "The fock state is not close enough to qutip's."
+    )
+
+
+@pytest.mark.parametrize(
+    "jax_state, qt_state",
+    [
+        (basis(2, 0), qt.basis(2, 0)),
+        (basis(2, 1), qt.basis(2, 1)),
+        (coherent(4, 1.0), qt.coherent(4, 1.0, method="analytic")),
+        (fock(5, 3), qt.fock(5, 3)),
+    ],
+)
+def test_jaxify_states(jax_state, qt_state):
+    """
+    Test the jaxify function to ensure it converts Qobj states to JAX arrays correctly.
+    """
+    result = jaxify(qt_state)
+    expected = jax_state
+
+    assert jnp.allclose(result, expected, atol=1e-10), (
+        f"jaxify result: {result}, expected: {expected}"
+    )
+    assert result.dtype == expected.dtype, (
+        f"jaxify dtype mismatch: {result.dtype} != {expected.dtype}"
     )

@@ -5,6 +5,8 @@ from feedback_grape.utils.fidelity import isbra, isket
 from .fgrape_helpers import clip_params
 # ruff: noqa N8
 
+jax.config.update("jax_enable_x64", True)
+
 
 def _probability_of_a_measurement_outcome_given_a_certain_state(
     rho_cav,
@@ -20,7 +22,7 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
         rho_cav: Density matrix of the cavity
         measurement_outcome: The measurement outcome
         povm_measure_operator: The POVM measurement operator
-        params: Parameters for the POVM operator
+        initial_params: Parameters for the POVM operator
         evo_type: Evolution type, either 'state' or 'density_matrix'
 
     Returns:
@@ -35,7 +37,9 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
             raise TypeError(
                 "rho_cav must be a ket (column vector) for evo_type 'state'."
             )
-        # TODO/QUESTION: without jnp.real the result is complex and jnp.grad can no longer do it, but are we then losing information?
+        # Answer: without jnp.real the result is complex and jnp.grad can no longer do it, but are we then losing information? --> No because probability is real
+        # and if the math is correct this quality should be real or have very very small imaginary part because its the probability (the .real is essential for jnp.grad to work)
+        # just to remove the +0j
         prob = jnp.real(jnp.vdot(rho_cav, Em @ rho_cav))
     elif evo_type == "density":
         if (
@@ -47,7 +51,7 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
             raise TypeError(
                 "rho_cav must be a density matrix for evo_type 'density'."
             )
-        # TODO:QUESTION: would jnp.real be useful here?
+        # ANSWER: would jnp.real be useful here? --> it is essential for jnp.grad to work
         prob = jnp.real(jnp.trace(Em @ rho_cav))
     else:
         raise ValueError(f"Invalid evo_type: {evo_type}.")
@@ -69,7 +73,7 @@ def _post_measurement_state(
         rho_cav: Density matrix of the cavity
         measurement_outcome: The measurement outcome
         povm_measure_operator: The POVM measurement operator
-        params: Parameters for the POVM operator
+        initial_params: Parameters for the POVM operator
         evo_type: Evolution type, either 'state' or 'density_matrix'
 
     Returns:
@@ -119,12 +123,17 @@ def povm(
     evo_type,
 ):
     """
-    Perform a POVM measurement on the given state.
+    Perform a POVM measurement on the given state. Gets called when user provides measurement_flag=True in one of the Gate NamedTuples.
 
     Args:
         rho_cav (jnp.ndarray): The density matrix of the cavity.
         povm_measure_operator (callable): The POVM measurement operator.
+            - It should take a measurement outcome and list of parameters as input.
+            - The measurement outcome options are either 1 or -1
         initial_povm_params (list): Initial parameters for the POVM measurement operator.
+        gate_param_constraints (list): Constraints for the gate parameters.
+        rng_key (jax.random.PRNGKey): Random number generator key for stochastic operations.
+        evo_type (str): Evolution type, either 'state' or 'density_matrix'.
 
     Returns:
         tuple: A tuple containing the post-measurement state, the measurement result, and the log probability of the measurement outcome.

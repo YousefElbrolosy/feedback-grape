@@ -5,6 +5,8 @@ This module contains functions to implement some basic quantum states
 import jax
 import jax.numpy as jnp
 
+jax.config.update("jax_enable_x64", True)
+
 
 def basis(n, k=0):
     """

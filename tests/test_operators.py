@@ -2,6 +2,7 @@
 Tests for the GRAPE package.
 """
 
+# ruff: noqa
 import jax
 import jax.numpy as jnp
 import pytest
@@ -12,6 +13,7 @@ from feedback_grape.utils.operators import (
     create,
     destroy,
     identity,
+    jaxify,
     sigmam,
     sigmap,
     sigmax,
@@ -204,3 +206,30 @@ def test_create_destroy_dtype(n, dtype):
     expected_destroy = qt.destroy(n).full().astype(dtype)
     assert result_destroy.dtype == dtype
     assert jnp.allclose(result_destroy, expected_destroy, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "jax_array, qt_operator",
+    [
+        (identity(2), qt.qeye(2)),
+        (sigmax(), qt.sigmax()),
+        (sigmay(), qt.sigmay()),
+        (sigmaz(), qt.sigmaz()),
+        (sigmap(), qt.sigmap()),
+        (sigmam(), qt.sigmam()),
+        (create(4), qt.create(4)),
+        (destroy(4), qt.destroy(4)),
+    ],
+)
+def test_jaxify(jax_array, qt_operator):
+    """
+    Test the jaxify function to ensure it converts Qobj to JAX arrays correctly.
+    """
+    result = jaxify(qt_operator)
+    expected = jax_array
+    assert jnp.allclose(result, expected), (
+        f"jaxify result: {result}, expected: {expected}"
+    )
+    assert result.dtype == expected.dtype, (
+        f"jaxify dtype mismatch: {result.dtype} != {expected.dtype}"
+    )

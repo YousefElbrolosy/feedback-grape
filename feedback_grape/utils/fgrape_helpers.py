@@ -1,6 +1,5 @@
 import jax
 import numpy as np
-from enum import Enum
 import flax.linen as nn
 import jax.numpy as jnp
 # ruff: noqa N8
@@ -10,28 +9,20 @@ jax.config.update("jax_enable_x64", True)
 
 # Answer: add in docs an example of how they can construct their own `Network to use it.`
 # --> the example E nn is suitable enough to show how to use it
+# Answer: make all these functions private? or just not include them in the docs? --> just not include them in the docs
 class RNN(nn.Module):
     hidden_size: int  # number of features in the hidden state
     output_size: int  # number of features in the output ( 2 in the case of gamma and beta)
 
     @nn.compact
     def __call__(self, measurement, hidden_state):
-        """
-        If your GRU has a hidden state increasing number of features in the hidden stateH means:
-
-        - You're allowing the model to store more information across time steps
-
-        - Each time step can represent more complex features, patterns, or dependencies
-
-        - You're giving the GRU more representational capacity
-        """
         gru_cell = nn.GRUCell(features=self.hidden_size)
 
         if measurement.ndim == 1:
             measurement = measurement.reshape(1, -1)
         new_hidden_state, _ = gru_cell(hidden_state, measurement)
-        # this returns the povm_params after linear regression through the hidden state which contains
-        # the information of the previous time steps and this is optimized to output best povm_params
+        # this returns the params after linear regression through the hidden state which contains
+        # the information of the previous time steps and this is optimized to output best params
         # new_hidden_state = nn.Dense(features=self.hidden_size)(new_hidden_state)
         output = nn.Dense(
             features=self.output_size,
@@ -43,20 +34,10 @@ class RNN(nn.Module):
         return output[0], new_hidden_state
 
 
-class DEFAULTS(Enum):
-    BATCH_SIZE = 1
-    EVAL_BATCH_SIZE = 10
-    MODE = "lookup"
-    RNN = RNN
-    RNN_HIDDEN_SIZE = 30
-    GOAL = "fidelity"
-    DECAY = None
-    PROGRESS = False
-
-
 def clip_params(params, gate_param_constraints):
     """
-    Clip the parameters to be within the specified constraints.
+    Clip the parameters to be within the specified constraints. if the parameters are within the bounds, they remain unchanged.
+    If they are outside the bounds, they are mapped to the bounds using a sigmoid function.
 
     Args:
         params: Parameters to be clipped.
@@ -90,11 +71,11 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
         rho_cav: Density matrix of the cavity.
         gate: The gate function to apply.
         params: Parameters for the gate.
-        param_constraints: Constraints for the parameters.
-        gate_index: Index of the gate in the system.
+        evo_type: Evolution type, either "density" or "state".
+        gate_param_constraints: Constraints for the parameters.
 
     Returns:
-        tuple: Updated state, measurement result (or None), log probability (or 0.0).
+        tuple: Updated state.
     """
     # For non-measurement gates, apply the gate without measurement
     params = clip_params(params, gate_param_constraints)
@@ -107,7 +88,17 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
 
 
 def convert_to_index(measurement_history):
-    # Convert measurement history from [1, -1, ...] to [0, 1, ...] and then to an integer index
+    """
+
+    Convert measurement history from [1, -1, ...] to [0, 1, ...] and then to an integer index
+
+    Args:
+        measurement_history: List of measurements, where 1 indicates a positive measurement and -1 indicates
+                             a negative measurement.
+    Returns:
+        int: Integer index representing the measurement history for accessing the lut.
+
+    """
     binary_history = jnp.where(jnp.array(measurement_history) == 1, 0, 1)
     # Convert binary list to integer index (e.g., [0,1] -> 1)
     reversed_binary = binary_history[::-1]
@@ -124,7 +115,6 @@ def extract_from_lut(lut, measurement_history):
     Args:
         lut: Lookup table for parameters.
         measurement_history: History of measurements.
-        time_step: Current time step.
 
     Returns:
         Extracted parameters.
@@ -177,6 +167,21 @@ def prepare_parameters_from_dict(params_dict):
 def construct_ragged_row(
     num_of_rows, num_of_columns, param_constraints, init_flat_params, rng_key
 ):
+    """
+    Construct a ragged row of parameters for the gates in the lookup table.
+
+    Args:
+        num_of_rows: Number of rows in this array which would be a ragged row in the lut before padding.
+        num_of_columns: Number of columns of the array (the total number of parameters of the system).
+        param_constraints: List of tuples specifying (min, max) for each parameter. If not specfied == [] and then
+            the initial flat parameters are used for all rows.
+        init_flat_params: Initial flat parameters for the gates.
+        rng_key: JAX random key for random parameter initialization.
+
+    Returns:
+        One ragged row of the lookup table with the specified number of rows and columns.
+
+    """
     res = []
     if len(param_constraints) == 0:
         for i in range(num_of_rows):
@@ -201,21 +206,19 @@ def construct_ragged_row(
 
 def convert_system_params(system_params):
     """
-    Convert system_params format to (initial_params, parameterized_gates, measurement_indices) format.
+    Convert system_params format to (initial_params, parameterized_gates, measurement_indices, param_constraints, c_ops, decay_indices) format.
 
     Args:
-        system_params: List of dictionaries, each containing:
-            - "gate": gate function
-            - "initial_params": list of parameters
-            - "measurement_flag": boolean indicating if this is a measurement gate
-            - "param_constraints": optional list of parameter constraints (min, max) for each gate
+        system_params: List of NamedTuples. Either Gate or Decay NamedTuples.
 
     Returns:
-        tuple: (initial_params, parameterized_gates, measurement_indices)
+        tuple:
             - initial_params: dict mapping gate names/types to parameter lists
             - parameterized_gates: list of gate functions
             - measurement_indices: list of indices where measurement gates appear
             - param_constraints: list of parameter constraints for each gate
+            - c_ops: list of collapse operators for decay gates
+            - decay_indices: list of indices where decay gates appear
     """
     initial_params = {}
     parameterized_gates = []
@@ -278,6 +281,27 @@ def convert_system_params(system_params):
 def get_trainable_parameters_for_no_meas(
     initial_parameters, param_constraints, num_time_steps, rng_key
 ):
+    """
+
+    This function prepares the trainable parameters for the case for which no measurement is
+    performed. Meaning this is just for normal gate-parameterized GRAPE optimization.
+
+    User enters the initial parameters and if they want to constrain the parameters
+    to be within a certain range, they can specify the `param_constraints` argument.
+
+    if that is not provided the initial parameters are used for all time steps.
+
+    Args:
+        initial_parameters: Initial parameters for the gates.
+        param_constraints: List of tuples specifying (min, max) for each parameter.
+        num_time_steps: Number of time steps for the optimization. (used to infer the dimension of the trainable parameters)
+        rng_key: JAX random key for random parameter initialization between specified bounds if param_constraints is provided.
+
+    Returns:
+        List of trainable parameters for each time step.
+
+
+    """
     trainable_params = []
     flat_params, _ = prepare_parameters_from_dict(initial_parameters)
     trainable_params.append(flat_params)

@@ -1,13 +1,17 @@
 # ruff: noqa
-
-# TODO: test for errors (do situations where you expect an error to be raised) and catch that error
-
+import jax
 import pytest
 from feedback_grape.fgrape import Gate, Decay
+from feedback_grape.fgrape import optimize_pulse, Gate, Decay
+from feedback_grape.utils.states import basis
+from feedback_grape.utils.tensor import tensor
+import re
+
+jax.config.update("jax_enable_x64", True)
 
 
 def example_A_body():
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -90,7 +94,7 @@ def example_A_body():
 
     # -- Optimization --
     time_steps = 20
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=psi0,
         C_target=psi_target,
         system_params=system_params,
@@ -115,7 +119,7 @@ def example_A_body():
 
 def example_B_body():
     # B. State purification with qubit-mediated measurement
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     import jax.numpy as jnp
 
     # initial state is a thermal state
@@ -159,7 +163,7 @@ def example_B_body():
 
     system_params = [measure]
 
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_cav,
         C_target=None,
         system_params=system_params,
@@ -187,7 +191,7 @@ def example_B_body():
 
 def example_C_body():
     # C. State preparation from a thermal state with Jaynes-Cummings controls
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -306,7 +310,7 @@ def example_C_body():
 
     system_params = [measure, qub_unitary, qub_cav]
 
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho0,
         C_target=rho_target,
         system_params=system_params,
@@ -341,7 +345,7 @@ def example_D_body():
     no_dissipation_flag = False
     dissipation_flag = False
 
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import (
         sigmap,
         sigmam,
@@ -448,7 +452,7 @@ def example_D_body():
     )
 
     system_params = [measure, qub_unitary, qub_cav]
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_target,
         C_target=rho_target,
         system_params=system_params,
@@ -472,7 +476,7 @@ def example_D_body():
     )
 
     system_params = [decay, measure, qub_unitary, qub_cav]
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_target,
         C_target=rho_target,
         system_params=system_params,
@@ -501,7 +505,7 @@ def example_D_body():
 def example_E_body():
     # E: State stabilization with SNAP gates and displacement gates
     # ruff: noqa
-    from feedback_grape.fgrape import optimize_pulse_with_feedback
+    from feedback_grape.fgrape import optimize_pulse
     from feedback_grape.utils.operators import sigmam, identity, cosm, sinm
     from feedback_grape.utils.states import coherent, basis
     from feedback_grape.utils.tensor import tensor
@@ -692,7 +696,7 @@ def example_E_body():
         displacement_dag,
     ]
 
-    result = optimize_pulse_with_feedback(
+    result = optimize_pulse(
         U_0=rho_target,
         C_target=rho_target,
         system_params=system_params,
@@ -773,3 +777,298 @@ def test_example_E():
     assert example_E_body(), (
         "The max fidelity reached by example_E is below 0.9"
     )
+
+
+def test_for_errors():
+    import jax.numpy as jnp
+
+    # Minimal valid gate for tests
+    def dummy_gate(params):
+        return jnp.eye(2)
+
+    valid_gate = Gate(
+        gate=dummy_gate,
+        initial_params=jnp.array([0.0]),
+        measurement_flag=False,
+    )
+
+    # 1. num_time_steps <= 0
+    with pytest.raises(ValueError,  match=re.escape("Time steps must be greater than 0.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=0,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+        )
+
+    # 2. Invalid evo_type
+    with pytest.raises(ValueError,  match=re.escape("Invalid evo_type. Choose 'state' or 'density'.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="invalid",
+        )
+
+    # 3. U_0 is None
+    with pytest.raises(ValueError,  match=re.escape("Please provide an initial state U_0.")):
+        optimize_pulse(
+            U_0=None,
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+        )
+
+    # 4. C_target is None and goal is fidelity
+    with pytest.raises(ValueError,  match=re.escape("Please provide a target state C_target for fidelity calculation.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=None,
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            goal="fidelity",
+        )
+
+    # 5. evo_type='state' but not both kets
+    with pytest.raises(TypeError,  match=re.escape("For evo_type='state', please provide initial and target states as kets (column vectors).")):
+        optimize_pulse(
+            U_0=jnp.eye(2),
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+        )
+
+    # 6. evo_type='density' but one is ket
+    with pytest.raises(TypeError,  match=re.escape("For evo_type='density', please provide initial and target states as density matrices.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=jnp.eye(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="density",
+        )
+
+    # 7. isbra(U_0) or isbra(C_target)
+    # A bra is a row vector, e.g. shape (2,)
+    with pytest.raises(TypeError,  match=re.escape("Please provide initial and target states as kets (column vectors) or density matrices.")):
+        optimize_pulse(
+            U_0=basis(2).conj().T,  # row vector
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="density",
+        )
+
+    # 8. Not positive semi-definite for density
+    with pytest.raises(TypeError,  match=re.escape("If evo_type=`density` Your initial and target rhos must be positive semi-definite.")):
+        optimize_pulse(
+            U_0=jnp.array([[1, 2], [2, -3]]),  # not psd
+            C_target=jnp.eye(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="density",
+        )
+
+    # 9. goal in ["purity", "both"] and evo_type == "state"
+    with pytest.raises(ValueError,  match=re.escape("Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            goal="purity",
+        )
+
+    # 10. Decay with state evo_type
+    decay = Decay(c_ops=[jnp.eye(2)])
+    with pytest.raises(ValueError,  match=re.escape("Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
+            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[decay, valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+        )
+    
+    # 11. param_constraints wrong length
+    def dummy_gate(params):
+        return jnp.eye(2)
+
+    valid_gate_1 = Gate(
+        gate=dummy_gate,
+        initial_params=jnp.array([0.0, 0.0]),
+        measurement_flag=False,
+        param_constraints=[0, 1, 2],  # wrong length        
+    )
+
+    # param_constraints should be 2 * num_of_params (upper and lower for each param)
+    with pytest.raises(TypeError, match=re.escape("Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate_1],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="no-measurement",
+        )
+
+    # 12. no-measurement mode but measurement_flag True
+    valid_gate_meas = Gate(
+        gate=dummy_gate,
+        initial_params=jnp.array([0.0]),
+        measurement_flag=True,
+    )
+    with pytest.raises(ValueError, match=re.escape("The Positive operator valued measure gate you supplied must have at least two arguments. "
+                        "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
+                        "of optimizable parameters for the measurement gate.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate_meas],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="no-measurement",
+        )
+    
+    def dummy_meas_gate(meas_outcome, params):
+        return jnp.eye(2)
+    
+    valid_gate_meas_2 = Gate(
+        gate=dummy_meas_gate,
+        initial_params=jnp.array([0.0]),
+        measurement_flag=True,
+    )
+    with pytest.raises(ValueError, match=re.escape("You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate_meas_2],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="no-measurement",
+        )
+    
+    valid_gate = Gate(
+        gate=dummy_gate,
+        initial_params=jnp.array([0.0, 0.0]),
+        measurement_flag=False,
+    )
+
+    # 13. nn/lookup mode but no measurement operator
+    with pytest.raises(ValueError, match=re.escape("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. ")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="nn",
+        )
+    with pytest.raises(ValueError, match=re.escape("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. ")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="lookup",
+        )
+
+    # 14. Invalid mode
+    with pytest.raises(ValueError, match=re.escape("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[valid_gate_meas_2],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="invalid_mode",
+        )
+
+
+
+    def dummy_gate(params):
+        return jnp.eye(2)
+
+    # Two gates, but only one has param_constraints
+    gate1 = Gate(
+        gate=dummy_gate,
+        initial_params=jnp.array([0.0]),
+        measurement_flag=False,
+        param_constraints=[[0, 1]],  # valid for gate1
+    )
+    gate2 = Gate(
+        gate=dummy_gate,
+        initial_params=jnp.array([0.0]),
+        measurement_flag=False,
+        # No param_constraints for gate2
+    )
+
+    # 15. If you provide parameter constraints for some gates, you need to provide them for all gates.
+    with pytest.raises(TypeError, match=re.escape("If you provide parameter constraints for some gates, you need to provide them for all gates.")):
+        optimize_pulse(
+            U_0=basis(2),
+            C_target=basis(2),
+            system_params=[gate1, gate2],
+            num_time_steps=1,
+            max_iter=1,
+            convergence_threshold=None,
+            learning_rate=0.01,
+            evo_type="state",
+            mode="no-measurement",
+        )

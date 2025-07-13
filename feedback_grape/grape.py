@@ -1,5 +1,5 @@
 """
-Gradient Ascent Pulse Engineering (GRAPE)
+GRadient Ascent Pulse Engineering (GRAPE)
 """
 
 # ruff: noqa N8
@@ -9,10 +9,10 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 from .utils.optimizers import (
-    _optimize_adam,
-    _optimize_L_BFGS,
+    optimize_adam,
+    optimize_L_BFGS,
 )
-from .utils.fidelity import fidelity, is_positive_semi_definite, isket
+from .utils.fidelity import fidelity, is_positive_semi_definite, isbra, isket
 from .utils.solver import mesolve, sesolve
 
 jax.config.update("jax_enable_x64", True)
@@ -42,6 +42,8 @@ class result(NamedTuple):
 
 
 class _DEFAULTS(Enum):
+    ctrl_amp_lower_bound = -2 * jnp.pi * 0.05
+    ctrl_amp_upper_bound = 2 * jnp.pi * 0.05
     C_OPS = []  # type: ignore
     MAX_ITER = 1000
     CONVERGENCE_THRESHOLD = 1e-6
@@ -156,15 +158,16 @@ def build_parameterized_hamiltonian(
     return Hs, delta_ts
 
 
-# TODO: Why is this controlled by an amplitude (give user option to set those bounds)
-# NOTE: try different seeds for random initialization and choose the best fidelity
-# TODO: Make user supply amplitude bounds in api
-def _init_control_amplitudes(num_t_slots, num_controls):
+def _init_control_amplitudes(
+    num_t_slots, num_controls, ctrl_amp_lower_bound, ctrl_amp_upper_bound
+):
     """
     Initialize control amplitudes for the optimization process.
     Args:
         num_t_slots: Number of time slots.
         num_controls: Number of control Hamiltonians.
+        ctrl_amp_lower_bound: Lower bound for control amplitudes.
+        ctrl_amp_upper_bound: Upper bound for control amplitudes.
     Returns:
         init_control_amplitudes: Initialized control amplitudes.
     """
@@ -175,12 +178,11 @@ def _init_control_amplitudes(num_t_slots, num_controls):
     return jax.random.uniform(
         key,
         (num_t_slots, num_controls),
-        minval=-(2 * jnp.pi * 0.05),
-        maxval=(2 * jnp.pi * 0.05),
+        minval=ctrl_amp_lower_bound,
+        maxval=ctrl_amp_upper_bound,
     )
 
 
-# TODO: make sure you make it require positional parameters
 def optimize_pulse(
     H_drift: jnp.ndarray,
     H_control: list[jnp.ndarray],
@@ -189,6 +191,8 @@ def optimize_pulse(
     num_t_slots: int,
     total_evo_time: float,
     evo_type: str,
+    ctrl_amp_lower_bound: float = _DEFAULTS.ctrl_amp_lower_bound.value,
+    ctrl_amp_upper_bound: float = _DEFAULTS.ctrl_amp_upper_bound.value,
     c_ops: list[jnp.ndarray] = _DEFAULTS.C_OPS.value,
     max_iter: int = _DEFAULTS.MAX_ITER.value,
     convergence_threshold: float = _DEFAULTS.CONVERGENCE_THRESHOLD.value,
@@ -203,26 +207,37 @@ def optimize_pulse(
     Args:
         H_drift: Drift Hamiltonian.
         H_control: List of Control Hamiltonians.
-        U_0: Initial state or /unitary/density.
-        C_target: Target state or /unitary/density.
+        U_0: Initial state or unitary/density matrix.
+        C_target: Target state or unitary/density matrix.
         num_t_slots: Number of time slots.
         total_evo_time: Total evolution time.
-        c_ops: List of collapse operators (optional, used for dissipative evolution).
-        max_iter: Maximum number of iterations.
-        convergence_threshold: Convergence threshold provide 0.0 or None to enforce max iterations.
-        learning_rate: Learning rate for gradient ascent.
-        evo_type: Type of fidelity and evolution calculation ("unitary" or "state" or "density").
-            When to use each evo_type:
-            - "unitary": For unitary evolution.
-            - "state": For state evolution.
-            - "density": For density matrix evolution.
-        optimizer: Optimizer to use ("adam" or "L-BFGS").
-        propcomp: Propagator computation method ("time-efficient" or "memory-efficient").
-        progress: Whether to show progress during optimization. (for debugging purposes) This may significantly slow down the optimization process.
+        evo_type: Type of fidelity and evolution calculation ("unitary" or "state" or "density"). \n
+            Options:
+                - "unitary": For unitary evolution.
+                - "state": For state evolution.
+                - "density": For density matrix evolution.
+        ctrl_amp_lower_bound: Lower bound for control amplitudes initialization \n
+            - (default: -2 * jnp.pi * 0.05).
+        ctrl_amp_upper_bound: Upper bound for control amplitudes initialization \n
+            - (default: 2 * jnp.pi * 0.05).
+        c_ops: List of collapse operators (optional, used for dissipative evolution) \n
+            - (default: []).
+        max_iter: Maximum number of iterations \n
+            - (default: 1000).
+        convergence_threshold: Convergence threshold provide None to enforce max iterations \n
+            - (default: 1e-6).
+        learning_rate: Learning rate for gradient ascent \n
+            - (default: 0.01)
+        optimizer: Optimizer to use ("adam" or "L-BFGS") \n
+            - (default: "adam")
+        propcomp: Propagator computation method ("time-efficient" or "memory-efficient") \n
+            - (default: "time-efficient").
+        progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes) This may significantly slow down the optimization process \n
+            - (default: False).
     Returns:
-        result: Dictionary containing optimized pulse and convergence data.
+        result: NamedTuple containing optimized pulse and convergence data.
     """
-    if convergence_threshold == 0.0 or convergence_threshold == None:
+    if convergence_threshold == None:
         early_stop = False
     else:
         early_stop = True
@@ -232,25 +247,47 @@ def optimize_pulse(
             "Invalid evo_type. Choose 'state' or 'density' or 'unitary'."
         )
 
+    if U_0 is None:
+        raise ValueError(
+            "Please provide an initial state/density matrix/unitary gate U_0."
+        )
+
+    if isbra(U_0) or isbra(C_target):
+        raise TypeError(
+            "Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices."
+        )
+    
+    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
+        raise TypeError(
+            "For evo_type='state', please provide initial and target states as kets (column vectors)."
+        )
+    
+    if evo_type == "density" and (isket(U_0) or isket(C_target)):
+        raise TypeError(
+            "For evo_type='density', please provide initial and target states as density matrices."
+        )
+
     if (
-        not is_positive_semi_definite(U_0)
-        and not is_positive_semi_definite(C_target)
+        (not is_positive_semi_definite(U_0)
+        or not is_positive_semi_definite(C_target))
         and evo_type == "density"
     ):
         raise TypeError(
-            'your initial and target rhos must be positive semi-definite.'
+            'If evo_type=`density` your initial and target rhos must be positive semi-definite.'
         )
 
     if (
         evo_type == "state" or (isket(U_0) or isket(C_target))
     ) and c_ops != []:
         raise ValueError(
-            "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets/=. "
+            "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets. "
             "Dissipation requires a density matrix representation of your inital and target states because the solver uses Lindblad equation to evolve the system with dissipation."
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )
     # Step 1: Initialize control amplitudes
-    control_amplitudes = _init_control_amplitudes(num_t_slots, len(H_control))
+    control_amplitudes = _init_control_amplitudes(
+        num_t_slots, len(H_control), ctrl_amp_lower_bound, ctrl_amp_upper_bound
+    )
     delta_t = total_evo_time / num_t_slots
 
     # Convert H_control to array for easier manipulation
@@ -259,7 +296,6 @@ def optimize_pulse(
     # Step 2: Gradient ascent loop
 
     def _loss(control_amplitudes):
-        # TODO: see how to do dissipation for unitary
         if evo_type == "density" and c_ops != []:
             Hs, _ = build_parameterized_hamiltonian(
                 control_amplitudes, H_drift, H_control_array, delta_t
@@ -393,7 +429,7 @@ def train(
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
-        control_amplitudes, iter_idx = _optimize_L_BFGS(
+        control_amplitudes, iter_idx = optimize_L_BFGS(
             _loss,
             control_amplitudes,
             max_iter,
@@ -403,7 +439,7 @@ def train(
             early_stop,
         )
     elif optimizer.upper() == "ADAM":
-        control_amplitudes, iter_idx = _optimize_adam(
+        control_amplitudes, iter_idx = optimize_adam(
             _loss,
             control_amplitudes,
             max_iter,
