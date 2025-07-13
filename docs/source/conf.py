@@ -1,5 +1,5 @@
 """
-feedbackGRAPE documentation build configuration file, created by
+feedback_grape documentation build configuration file, created by
 sphinx-quickstart on Mon Jan 01 00:00:00 2025.
 """
 # Configuration file for the Sphinx documentation builder.
@@ -15,11 +15,11 @@ sys.path.insert(0, os.path.abspath("../.."))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "feedbackGRAPE"
+project = "feedback_grape"
 copyright = "2025, Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 author = "Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 # CD: the version of the package
-release = "0.0.1rc1"
+release = "0.0.1rc2"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

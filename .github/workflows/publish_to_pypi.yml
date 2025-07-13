@@ -7,7 +7,7 @@ on:
     workflow_dispatch:
 
 env:
-  PACKAGE_NAME: "feedbackGRAPE"
+  PACKAGE_NAME: "feedback_grape"
   OWNER: "YousefElbrolosy"
 
 
@@ -69,7 +69,9 @@ jobs:
         run: |
           NEW_VERSION=${{ needs.details.outputs.new_version }}
           LATEST_VERSION=$latest_previous_version
-          if [ "$(printf '%s\n' "$LATEST_VERSION" "$NEW_VERSION" | sort -rV | head -n 1)" != "$NEW_VERSION" ] || [ "$NEW_VERSION" == "$LATEST_VERSION" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "The new version $NEW_VERSION is the same as the latest version $LATEST_VERSION."
+          elif [ "$(printf '%s\n' "$LATEST_VERSION" "$NEW_VERSION" | sort -rV | head -n 1)" != "$NEW_VERSION" ] || [ "$NEW_VERSION" == "$LATEST_VERSION" ]; then
             echo "The new version $NEW_VERSION is not greater than the latest version $LATEST_VERSION on PyPI."
             exit 1
           else
@@ -119,7 +121,7 @@ jobs:
           uses: pypa/gh-action-pypi-publish@release/v1
   github_release:
     name: Create GitHub Release
-    needs: [build, details]
+    needs: [build, details, pypi-publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
