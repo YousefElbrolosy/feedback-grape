@@ -235,7 +235,7 @@ def optimize_pulse(
         progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes) This may significantly slow down the optimization process \n
             - (default: False).
     Returns:
-        result: Dictionary containing optimized pulse and convergence data.
+        result: NamedTuple containing optimized pulse and convergence data.
     """
     if convergence_threshold == None:
         early_stop = False

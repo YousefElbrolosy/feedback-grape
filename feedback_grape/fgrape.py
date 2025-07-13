@@ -64,7 +64,7 @@ class FgResult(NamedTuple):
     """
     returned_params: List[jnp.ndarray]
     """
-    Array of finalsPOVM parameters for each time step.
+    Array of final parameters for each time step.
     """
     final_purity: jnp.ndarray | None
     """
