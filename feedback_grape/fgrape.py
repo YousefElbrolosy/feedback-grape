@@ -37,14 +37,6 @@ jax.config.update("jax_enable_x64", True)
 NOTE: If you want to optimize complex prameters, you need to divide your complex parameter into two real 
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
-
-# TODO: Make sure that a global variable isn't being changed in the process
-# Just like what happened with the c_ops.copy
-
-# Answer: see if there is a way to enforce 64 bit over whole repository --> Added to top of each file
-
-
-# TODO: Would be useful in the documentation to explain to the user the shapes of the outputs
 class FgResult(NamedTuple):
     """
     result class to store the results of the optimization process.
@@ -105,7 +97,6 @@ class Gate(NamedTuple):
     Flag indicating if the gate is used for measurement.
     """
     param_constraints: list[float] | None = None
-    # TODO: IMPORTANT Is that what florian wanted?
     """
     This constraints the initialization of the parameters to be within the specified range.
     This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
@@ -851,7 +842,7 @@ def _evaluate(
     Evaluate the model using the best parameters found during training.
     """
     if mode == "no-measurement":
-        rho_final, _, returned_params = calculate_trajectory(
+        rho_final, _, resulting_params = calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
@@ -925,10 +916,10 @@ def _evaluate(
         )
 
     return FgResult(
-        optimized_trainable_parameters=best_model_params,
+        r=best_model_params,
         final_purity=final_purity,
         final_fidelity=final_fidelity,
         iterations=num_iterations,
         final_state=rho_final,
-        returned_params=returned_params,
+        returned_params=resulting_params,
     )

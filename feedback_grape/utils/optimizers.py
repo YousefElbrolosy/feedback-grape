@@ -67,7 +67,6 @@ def optimize_adam_feedback(
     return params, iter_idx + 1
 
 
-# TODO: Throw a warning if the user uses complex parameters with L-BFGS or Adam, since they are not optimized for complex numbers
 def optimize_adam(
     loss_fn,
     control_amplitudes,
