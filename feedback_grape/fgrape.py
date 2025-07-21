@@ -842,7 +842,7 @@ def _evaluate(
     Evaluate the model using the best parameters found during training.
     """
     if mode == "no-measurement":
-        rho_final, _, resulting_params = calculate_trajectory(
+        rho_final, _, returned_params = calculate_trajectory(
             rho_cav=U_0,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
@@ -916,10 +916,10 @@ def _evaluate(
         )
 
     return FgResult(
-        r=best_model_params,
+        optimized_trainable_parameters=best_model_params,
         final_purity=final_purity,
         final_fidelity=final_fidelity,
         iterations=num_iterations,
         final_state=rho_final,
-        returned_params=resulting_params,
+        returned_params=returned_params,
     )
