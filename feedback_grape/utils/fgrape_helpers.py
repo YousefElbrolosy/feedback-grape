@@ -321,7 +321,7 @@ def get_trainable_parameters_for_no_meas(
                     sampled_params.append(var)
                 gate_params_list.append(jnp.array(sampled_params))
             trainable_params.append(gate_params_list)
-        else:  # TODO: explain those differences in the docs
+        else:
             # if no parameter constraints are provided, we just use the initial parameters
             # for all time steps as initial parameters
             trainable_params.append(flat_params)

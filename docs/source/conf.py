@@ -19,7 +19,7 @@ project = "feedback_grape"
 copyright = "2025, Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 author = "Yousef Elbrolosy, Pavlo Bilous, Florian Marquardt"
 # CD: the version of the package
-release = "0.0.1rc2"
+release = "0.0.1"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
