@@ -15,7 +15,14 @@ Then, to install feedbackGRAPE, run the following command:
 
 .. code-block:: bash
 
-   pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ feedbackGRAPE
+   pip install feedback-grape
+
+
+or for the gpu-enabled version:
+
+.. code-block:: bash
+
+   pip install feedback-grape[cuda12]
 
 then simply import as follows:
 
