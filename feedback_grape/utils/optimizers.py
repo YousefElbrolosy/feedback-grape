@@ -1,6 +1,7 @@
 import jax
 import optax  # type: ignore
 import optax.tree_utils as otu  # type: ignore
+from time import time
 # ruff: noqa N8
 
 jax.config.update("jax_enable_x64", True)
@@ -61,8 +62,10 @@ def optimize_adam_feedback(
                 break
 
         if progress:
-            if iter_idx % 10 == 0:
-                print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
+            if iter_idx == 0:
+                start_time = time() # Start clock after first iteration which initializes compiled functions
+            if iter_idx % 10 == 0 and iter_idx > 0:
+                print(f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(time() - start_time)}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(time() - start_time))}s")
 
     return params, iter_idx + 1
 
@@ -118,9 +121,12 @@ def optimize_adam(
                 and abs(losses[-1] - losses[-2]) < convergence_threshold
             ):
                 break
+
         if progress:
-            if iter_idx % 10 == 0:
-                print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
+            if iter_idx == 0:
+                start_time = time() # Start clock after first iteration which initializes compiled functions
+            if iter_idx % 10 == 0 and iter_idx > 0:
+                print(f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(start_time - time())}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(start_time - time()))}s")
 
     return params, iter_idx + 1
 

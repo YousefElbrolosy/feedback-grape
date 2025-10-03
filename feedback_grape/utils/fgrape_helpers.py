@@ -2,6 +2,7 @@ import jax
 import numpy as np
 import flax.linen as nn
 import jax.numpy as jnp
+from .fidelity import is_positive_semi_definite
 # ruff: noqa N8
 
 jax.config.update("jax_enable_x64", True)
@@ -119,8 +120,8 @@ def extract_from_lut(lut, measurement_history):
     Returns:
         Extracted parameters.
     """
-    sub_array_idx = len(measurement_history) - 1
-    sub_array_param_idx = convert_to_index(measurement_history)
+    sub_array_idx = min(len(measurement_history) - 1, len(lut) - 1) # MODIFIED LINE: Uses the last available sub-array if measurement history is longer than lut_depth
+    sub_array_param_idx = convert_to_index(measurement_history) & (2**len(lut) - 1) # MODIFIED LINE. Ignores extra measurements beyond lut_depth.
     return jnp.array(lut)[sub_array_idx][sub_array_param_idx]
 
 
@@ -227,11 +228,48 @@ def convert_system_params(system_params):
     c_ops = []
     decay_indices = []
 
+    def _Gate_validity_checks(gate):
+        """
+        Checks if the provided gate is a valid unitary or POVM element by evaluating it at the initial parameters.
+        """
+        if not gate.measurement_flag: # Check if gate is callable on initial parameters and unitary
+            unitary = gate.gate(gate.initial_params)
+            
+            if len(unitary.shape) == 2:
+
+                assert unitary.shape[0] == unitary.shape[1], "The provided gate is not a square matrix."
+                identity = jnp.eye(unitary.shape[0])
+                if not jnp.allclose(unitary @ unitary.conj().T, identity):
+                    if jnp.allclose(unitary, unitary.conj().T):
+                        raise ValueError("The provided gate is not unitary but Hermitian. Did you perhaps provide a Hamiltonian instead of a unitary?")
+                    else:
+                        raise ValueError("The provided gate is not unitary. Did you perhaps mistake jnp.exp for a matrix exponential jax.scipy.linalg.expm?")
+                
+            elif len(unitary.shape) == 0:
+                assert jnp.isclose(jnp.linalg.norm(unitary), 1.0), f"The provided gate is not a normalized state. Instead it is a scalar of value {unitary}."
+
+            else:
+                raise ValueError("The provided gate must be either a unitary matrix or 1.")
+            
+        else: # Check if gate is callable on initial parameters and a valid POVM element
+            M_0 = gate.gate(-1, gate.initial_params)
+            M_1 = gate.gate(1, gate.initial_params)
+            
+            for M in [M_0, M_1]:
+                assert M.shape[0] == M.shape[1], "The provided measurement operator is not a square matrix."
+
+                E = M.conj().T @ M
+                assert is_positive_semi_definite(E), "The provided measurement operator M does not satisfy M^† M >= 0 (positive semi-definite)."
+
+            assert jnp.allclose(M_0.conj().T @ M_0 + M_1.conj().T @ M_1, jnp.eye(M_0.shape[0])), "The provided measurement operators do not sum to the identity."
+
     for i, gate_config in enumerate(system_params):
         if hasattr(gate_config, "c_ops"):
             c_ops.append(gate_config.c_ops)
             decay_indices.append(i)
         else:
+            _Gate_validity_checks(gate_config) # Validate the gate
+
             gate_func = gate_config.gate
             if isinstance(gate_config.initial_params, jnp.ndarray):
                 # If initial_params is a numpy array, convert it to a list
