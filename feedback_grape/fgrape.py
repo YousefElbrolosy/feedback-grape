@@ -2,7 +2,6 @@
 GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
-from re import U
 import jax
 from enum import Enum
 import jax.numpy as jnp
@@ -531,7 +530,11 @@ def optimize_pulse(
             "Please provide a target state C_target for fidelity calculation."
         )
 
-    if isbra(U_0) or isbra(C_target):
+    # If U_0 or C_target are callables, generate a test state to check their validity
+    U_0_test = U_0(jax.random.PRNGKey(0)) if callable(U_0) else U_0
+    C_target_test = C_target(jax.random.PRNGKey(0)) if callable(C_target) else C_target
+
+    if isbra(U_0_test) or isbra(C_target_test):
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices."
         )
