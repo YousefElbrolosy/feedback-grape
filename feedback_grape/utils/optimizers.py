@@ -52,7 +52,7 @@ def optimize_adam_feedback(
     # setting it to -1 in the beginning in case the max_iter is 0
     iter_idx = -1
     for iter_idx in range(max_iter):
-        params, opt_state, loss, key = step(params, opt_state, key)
+        new_params, new_opt_state, loss, key = step(params, opt_state, key)
         losses.append(loss)
         if early_stop:
             if (
@@ -60,6 +60,15 @@ def optimize_adam_feedback(
                 and abs(losses[-1] - losses[-2]) < convergence_threshold
             ):
                 break
+
+        nan_detected = any([jax.numpy.any(jax.numpy.isnan(p)) for p in jax.tree_util.tree_leaves(new_params)])
+        if nan_detected:
+            print(f"Warning: NaN values detected in updated parameters at iteration {iter_idx}. Stopping optimization.")
+            print(f"Info: NaN values may occur due to high learning rates or POVM elements with zero eigenvalues.")
+            break
+        else:
+            params = new_params
+            opt_state = new_opt_state
 
         if progress:
             if iter_idx == 0:

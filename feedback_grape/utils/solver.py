@@ -67,5 +67,8 @@ def mesolve(*, jump_ops, rho0, H=None, tsave=jnp.linspace(0, 1, 2)):
             jump_ops=jump_ops,
             rho0=rho0,
             tsave=tsave,
+            options = dq.Options(
+                save_states = False,
+            )
         ).final_state
     )[-1].data

@@ -28,9 +28,8 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
     Returns:
         Probability of the measurement outcome
     """
-    Em = povm_measure_operator(
-        measurement_outcome, *[initial_params]
-    ).conj().T @ povm_measure_operator(measurement_outcome, *[initial_params])
+    Mm = povm_measure_operator(measurement_outcome, *[initial_params])
+    Em = Mm.conj().T @ Mm
 
     if evo_type == "state":
         if not isket(rho_cav):
@@ -161,5 +160,6 @@ def povm(
         1 - prob_plus,
     )
     # QUESTION: If prob is 0 though then the log prob is -inf ( and 1e-10 will be a very huge number)
+    # ANSWER: No, it will be log(1e-10) = -23 which should be okay.
     log_prob = jnp.log(jnp.maximum(prob, 1e-10))
     return rho_meas, measurement, log_prob
