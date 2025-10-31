@@ -549,11 +549,6 @@ def optimize_pulse(
             "For evo_type='density', please provide initial and target states as density matrices."
         )
     
-    if lut_depth is None and mode == "lookup":
-        lut_depth = num_time_steps
-    elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps:
-        raise ValueError("lut_depth cannot be greater than num_time_steps.")
-    
     if reward_weights is None:
         reward_weights = [0.0] * num_time_steps
         reward_weights[-1] = 1.0
@@ -590,6 +585,11 @@ def optimize_pulse(
         c_ops,
         decay_indices,
     ) = convert_system_params(system_params)
+
+    if lut_depth is None and mode == "lookup":
+        lut_depth = num_time_steps*len(measurement_indices)
+    elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
+        raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
 
     if (
         evo_type == "state" or (isket(U_0) or isket(C_target))
