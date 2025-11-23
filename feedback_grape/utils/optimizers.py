@@ -41,8 +41,7 @@ def optimize_adam_feedback(
 
     @jax.jit
     def step(params, state, key):
-        loss = loss_fn(params, key)  # Minimize -loss_fn
-        grads = jax.grad(lambda x, k: loss_fn(x, k))(params, key)
+        loss, grads = jax.value_and_grad(loss_fn)(params, key)
         updates, new_state = optimizer.update(grads, state, params)
         new_params = optax.apply_updates(params, updates)
         new_key, _ = jax.random.split(key)
@@ -111,8 +110,7 @@ def optimize_adam(
 
     @jax.jit
     def step(params, state):
-        loss = loss_fn(params)
-        grads = jax.grad(lambda x: loss_fn(x))(params)
+        loss, grads = jax.value_and_grad(loss_fn)(params)
         updates, new_state = optimizer.update(grads, state, params)
         new_params = optax.apply_updates(params, updates)
         return new_params, new_state, loss
