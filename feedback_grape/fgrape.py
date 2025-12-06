@@ -2,6 +2,7 @@
 GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
+from re import U
 import jax
 from enum import Enum
 import jax.numpy as jnp
@@ -469,8 +470,8 @@ def optimize_pulse(
     convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    lut_depth: int = _DEFAULTS.LUT_DEPTH.value,
-    reward_weights: jnp.ndarray | list[float] = _DEFAULTS.REWARD_WEIGHTS.value,
+    lut_depth: int | None = _DEFAULTS.LUT_DEPTH.value,
+    reward_weights: list[float] | None = _DEFAULTS.REWARD_WEIGHTS.value,
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -493,7 +494,7 @@ def optimize_pulse(
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
         lut_depth (int): The depth of the lookup table, i.e. the number of time steps it stores. If None, it will be set to the number of time steps. Only used if mode is 'lookup'. \n
             - (default: None)
-        reward_weights (jnp.ndarray or list): Weights for the reward at each time step. If None, only the final time step is weighted. \n
+        reward_weights (list[float] | None): Weights for the reward at each time step. If None, only the final time step is weighted. \n
             - (default: None)
         goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n
             - (default: fidelity)
@@ -551,12 +552,10 @@ def optimize_pulse(
         raise ValueError("lut_depth cannot be greater than num_time_steps.")
     
     if reward_weights is None:
-        reward_weights = jnp.zeros(num_time_steps)
-        reward_weights = reward_weights.at[-1].set(1.0)
+        reward_weights = [0.0] * num_time_steps
+        reward_weights[-1] = 1.0
     elif len(reward_weights) != num_time_steps:
         raise ValueError("reward_weights must have length equal to num_time_steps.")
-    else:
-        reward_weights = jnp.array(reward_weights)
 
     if goal in ["purity", "both"] and evo_type == "state":
         raise ValueError(
@@ -758,18 +757,20 @@ def optimize_pulse(
                 )
             )
 
-            for weight,rho_final,log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
-                fidelity_value = fidelity_vmap(rho_final)
-                loss_sum1 += -weight * jnp.mean(fidelity_value)
-                loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(fidelity_value))
+            for weight, rf, log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
+                if weight != 0.0: # Supposed to cut branches in jax's computational graph -> less memory usage
+                    fidelity_value = fidelity_vmap(C_target_eval, rf)
+                    loss_sum1 += -weight * jnp.mean(fidelity_value)
+                    loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(fidelity_value))
         
         if goal in ["purity", "both"]:
             purity_vmap = jax.vmap(purity)
 
-            for weight,rho_final,log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
-                purity_values = purity_vmap(rho=rho_final)
-                loss_sum1 += -weight * jnp.mean(purity_values)
-                loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(purity_values))
+            for weight, rf, log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
+                if weight != 0.0: # Supposed to cut branches in jax's computational graph -> less memory usage
+                    purity_values = purity_vmap(rho=rf)
+                    loss_sum1 += -weight * jnp.mean(purity_values)
+                    loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(purity_values))
 
         return loss_sum1 + loss_sum2
 
