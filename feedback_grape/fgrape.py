@@ -2,6 +2,7 @@
 GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
+from calendar import c
 from types import NoneType
 import jax
 from enum import Enum
@@ -514,71 +515,36 @@ def optimize_pulse(
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
-    if convergence_threshold == None:
-        early_stop = False
-    else:
-        early_stop = True
-    if num_time_steps <= 0:
-        raise ValueError("Time steps must be greater than 0.")
+
+    ### Input validation and defaults ###
+    early_stop = convergence_threshold is not None
+
     if eval_time_steps is None:
         eval_time_steps = num_time_steps
-    assert eval_time_steps > 0, "eval_time_steps must be greater than 0."
 
+    assert batch_size > 0, ValueError("batch_size must be greater than 0.")
+    assert eval_batch_size > 0, ValueError("eval_batch_size must be greater than 0.")
+    assert num_time_steps > 0, ValueError("num_time_steps must be greater than 0.")
+    assert learning_rate > 0, ValueError("learning_rate must be greater than 0.")
+    assert eval_time_steps > 0, ValueError("eval_time_steps must be greater than 0.")
+    assert evo_type in ["state", "density"], ValueError("Invalid evo_type. Choose 'state' or 'density'.")
+    assert U_0 is not None, ValueError("Please provide an initial state U_0.")
+    assert not (C_target is None and goal in ["fidelity", "both"]), ValueError("Please provide a target state C_target for fidelity calculation.")
+    assert not (isbra(U_0) or isbra(C_target)), TypeError("Please provide initial and target states as kets (column vectors) or density matrices.")
+    assert not (evo_type == "state" and not (isket(U_0) and isket(C_target))), TypeError("For evo_type='state', please provide initial and target states as kets (column vectors).")
+    assert not (evo_type == "density" and (isket(U_0) or isket(C_target))), TypeError("For evo_type='density', please provide initial and target states as density matrices.")
+    assert goal in ["purity", "fidelity", "both"], ValueError("Invalid goal. Choose 'purity', 'fidelity', or 'both'.")
+    assert mode in ["nn", "lookup", "no-measurement"], ValueError("Invalid mode. Choose 'nn', 'lookup', or 'no-measurement'.")
+    assert not (goal in ["purity", "both"] and evo_type == "state"), ValueError("Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation.")
+    assert goal != "purity" or C_target is None, ValueError("C_target should not be provided when goal is 'purity'.")
+    assert evo_type != "density" or (is_positive_semi_definite(U_0) and (goal == "purity") or is_positive_semi_definite(C_target)), TypeError("For evo_type='density', initial and target states must be positive semi-definite.")
 
-    if evo_type not in ["state", "density"]:
-        raise ValueError("Invalid evo_type. Choose 'state' or 'density'.")
-
-    if U_0 is None:
-        raise ValueError("Please provide an initial state U_0.")
-
-    if C_target is None and goal in ["fidelity", "both"]:
-        raise ValueError(
-            "Please provide a target state C_target for fidelity calculation."
-        )
-
-    if isbra(U_0) or isbra(C_target):
-        raise TypeError(
-            "Please provide initial and target states as kets (column vectors) or density matrices."
-        )
-    
-    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
-        raise TypeError(
-            "For evo_type='state', please provide initial and target states as kets (column vectors)."
-        )
-
-    if evo_type == "density" and (isket(U_0) or isket(C_target)):
-        raise TypeError(
-            "For evo_type='density', please provide initial and target states as density matrices."
-        )
-    
     if reward_weights is None:
         reward_weights = [0.0] * num_time_steps
         reward_weights[-1] = 1.0
-    elif len(reward_weights) != num_time_steps:
-        raise ValueError("reward_weights must have length equal to num_time_steps.")
 
-    if goal in ["purity", "both"] and evo_type == "state":
-        raise ValueError(
-            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
-        )
+    assert len(reward_weights) == num_time_steps, ValueError("reward_weights must have length equal to num_time_steps.")
     
-    if goal == "purity" and C_target is not None:
-        raise ValueError(
-            "C_target should not be provided when goal is 'purity'."
-        )
-
-    if (
-        evo_type == "density"
-        and (
-            not is_positive_semi_definite(U_0)
-            or (goal != "purity" and not is_positive_semi_definite(C_target))
-        )
-    ):
-        raise TypeError(
-            'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
-        )
-
-
     (
         initial_params,
         parameterized_gates,
@@ -586,7 +552,7 @@ def optimize_pulse(
         param_constraints,
         c_ops,
         decay_indices,
-    ) = convert_system_params(system_params)
+    ) = convert_system_params(system_params) # <-- this also validates the system_params input
 
     # lut_depth is removed from API for now, set it to num_time_steps here
     #if lut_depth is None and mode == "lookup":
@@ -594,29 +560,26 @@ def optimize_pulse(
     #elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
     #    raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
 
-    if (
-        evo_type == "state" or (isket(U_0) or isket(C_target))
-    ) and decay_indices != []:
-        raise ValueError(
-            "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
-            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
-        )
+    assert decay_indices == [] or evo_type == "density", ValueError(
+        "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
+        "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
+    )
+    assert mode == "no-measurement" or measurement_indices, ValueError("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params.")
+    assert mode != "no-measurement" or not measurement_indices , ValueError("You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'.")
+
+    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
+
+    assert len(param_constraints) == 0 or len(jax.tree_util.tree_leaves(param_constraints)) == num_of_params * 2, TypeError(
+        "Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default."
+    )
+
+    ### End of input validation and defaults ###
 
     parent_rng_key = jax.random.PRNGKey(0)
     train_eval_key, sub_key, rnn_key = jax.random.split(parent_rng_key, 3)
     row_key, no_meas_key = jax.random.split(sub_key)
     trainable_params = None
     param_shapes = None
-    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
-
-    if param_constraints != []:
-        if (
-            len(jax.tree_util.tree_leaves(param_constraints))
-            != num_of_params * 2
-        ):
-            raise TypeError(
-                "Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default."
-            )
 
     if mode == "no-measurement":
         # If no feedback is used, we can just use the initial parameters
@@ -625,15 +588,7 @@ def optimize_pulse(
         trainable_params = get_trainable_parameters_for_no_meas(
             initial_params, param_constraints, num_time_steps, no_meas_key
         )
-        if not (measurement_indices == [] or measurement_indices is None):
-            raise ValueError(
-                "You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'."
-            )
     else:
-        if measurement_indices == [] or measurement_indices is None:
-            raise ValueError(
-                "For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. "
-            )
         # Convert dictionary parameters to list[list] structure
         flat_params, param_shapes = prepare_parameters_from_dict(
             initial_params
@@ -696,10 +651,6 @@ def optimize_pulse(
                 'lookup_table': F,
                 'initial_params': flat_params,
             }
-        else:
-            raise ValueError(
-                "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
-            )
 
     def loss_fn(trainable_params, rng_key):
         """
@@ -719,7 +670,6 @@ def optimize_pulse(
             rnn_params = None
             lookup_table_params = None
             initial_params_opt = trainable_params
-            # jax.debug.print("trainable params: {} \n", trainable_params)
         elif mode == "nn":
             # reseting hidden state at end of every trajectory ( does not really change the purity tho)
             h_initial_state = jnp.zeros((1, hidden_size))
@@ -752,11 +702,6 @@ def optimize_pulse(
         )
 
         if goal in ["fidelity", "both"]: # Cleaned this up a bit and added weighting
-            if C_target == None:
-                raise ValueError(
-                    "C_target must be provided for fidelity calculation."
-                )
-            
             fidelity_vmap = jax.vmap(
                 lambda rf: fidelity(
                     C_target=C_target, U_final=rf, evo_type=evo_type
@@ -765,7 +710,7 @@ def optimize_pulse(
 
             for weight, rf, log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
                 if weight != 0.0: # Supposed to cut branches in jax's computational graph -> less memory usage
-                    fidelity_value = fidelity_vmap(C_target, rf)
+                    fidelity_value = fidelity_vmap(rf)
                     loss_sum1 += -weight * jnp.mean(fidelity_value)
                     loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(fidelity_value))
         
@@ -955,11 +900,9 @@ def _evaluate(
 
         final_purity = purity_each_timestep[-1]
 
-
-    if goal not in ["purity", "fidelity", "both"]:
-        raise ValueError(
-            "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-        )
+    assert goal in ["purity", "fidelity", "both"], ValueError(
+        "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+    )
 
     return FgResult(
         optimized_trainable_parameters=best_model_params,

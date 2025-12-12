@@ -237,53 +237,27 @@ def optimize_pulse(
     Returns:
         result: NamedTuple containing optimized pulse and convergence data.
     """
-    if convergence_threshold == None:
-        early_stop = False
-    else:
-        early_stop = True
 
-    if evo_type not in ["state", "density", "unitary"]:
-        raise ValueError(
-            "Invalid evo_type. Choose 'state' or 'density' or 'unitary'."
-        )
+    ### Input validation and defaults ###
+    early_stop = convergence_threshold is not None
 
-    if U_0 is None:
-        raise ValueError(
-            "Please provide an initial state/density matrix/unitary gate U_0."
-        )
+    assert total_evo_time > 0, ValueError("total_evo_time must be greater than 0.")
+    assert learning_rate > 0, ValueError("learning_rate must be greater than 0.")
+    assert num_t_slots > 0, ValueError("num_t_slots must be greater than 0.")
+    assert evo_type in ["state", "density", "unitary"], ValueError("Invalid evo_type. Choose 'state' or 'density' or 'unitary'.")
+    assert U_0 is not None, ValueError("Please provide an initial state/density matrix/unitary gate U_0.")
+    assert not (C_target is None and goal in ["fidelity", "both"]), ValueError("Please provide a target state C_target for fidelity calculation.")
+    assert not (isbra(U_0) or isbra(C_target)), TypeError("Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices.")
+    assert not (evo_type == "state" and not (isket(U_0) and isket(C_target))), TypeError("For evo_type='state', please provide initial and target states as kets (column vectors).")
+    assert not (evo_type == "density" and (isket(U_0) or isket(C_target))), TypeError("For evo_type='density', please provide initial and target states as density matrices.")
+    assert evo_type != "density" or (is_positive_semi_definite(U_0) and is_positive_semi_definite(C_target)), TypeError("If evo_type=`density` your initial and target rhos must be positive semi-definite.")
+    assert c_ops == [] or not (evo_type == "state" or isket(U_0) or isket(C_target)), TypeError(
+        "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets. "
+        "Dissipation requires a density matrix representation of your inital and target states because the solver uses Lindblad equation to evolve the system with dissipation."
+        "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
+    ) 
+    ### End input validation ###
 
-    if isbra(U_0) or isbra(C_target):
-        raise TypeError(
-            "Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices."
-        )
-    
-    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
-        raise TypeError(
-            "For evo_type='state', please provide initial and target states as kets (column vectors)."
-        )
-    
-    if evo_type == "density" and (isket(U_0) or isket(C_target)):
-        raise TypeError(
-            "For evo_type='density', please provide initial and target states as density matrices."
-        )
-
-    if (
-        (not is_positive_semi_definite(U_0)
-        or not is_positive_semi_definite(C_target))
-        and evo_type == "density"
-    ):
-        raise TypeError(
-            'If evo_type=`density` your initial and target rhos must be positive semi-definite.'
-        )
-
-    if (
-        evo_type == "state" or (isket(U_0) or isket(C_target))
-    ) and c_ops != []:
-        raise ValueError(
-            "You supplied collapse operators (c_ops) for dissipation, but your evo_type is state or one of your initial and target are kets. "
-            "Dissipation requires a density matrix representation of your inital and target states because the solver uses Lindblad equation to evolve the system with dissipation."
-            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
-        )
     # Step 1: Initialize control amplitudes
     control_amplitudes = _init_control_amplitudes(
         num_t_slots, len(H_control), ctrl_amp_lower_bound, ctrl_amp_upper_bound

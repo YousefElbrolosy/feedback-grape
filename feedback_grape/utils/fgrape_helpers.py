@@ -247,7 +247,6 @@ def convert_system_params(system_params):
                 
             elif len(unitary.shape) == 0:
                 assert jnp.isclose(jnp.linalg.norm(unitary), 1.0), f"The provided gate is not a normalized state. Instead it is a scalar of value {unitary}."
-
             else:
                 raise ValueError("The provided gate must be either a unitary matrix or 1.")
             
@@ -283,12 +282,11 @@ def convert_system_params(system_params):
 
             # If this is a measurement gate, add its index
             if is_measurement:
-                if gate_func.__code__.co_argcount < 2:
-                    raise ValueError(
-                        "The Positive operator valued measure gate you supplied must have at least two arguments. "
-                        "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
-                        "of optimizable parameters for the measurement gate."
-                    )
+                assert gate_func.__code__.co_argcount >= 2, ValueError(
+                    "The Positive operator valued measure gate you supplied must have at least two arguments. "
+                    "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
+                    "of optimizable parameters for the measurement gate."
+                )
                 measurement_indices.append(i)
 
             param_name = f"gate_{i}"
@@ -299,12 +297,9 @@ def convert_system_params(system_params):
             if gate_config.param_constraints is not None:
                 param_constraints.append(gate_config.param_constraints)
 
-            if len(param_constraints) > 0 and (
-                len(param_constraints) != len(parameterized_gates)
-            ):
-                raise TypeError(
-                    "If you provide parameter constraints for some gates, you need to provide them for all gates."
-                )
+            assert not param_constraints or len(param_constraints) == len(parameterized_gates), TypeError(
+                "If you provide parameter constraints for some gates, you need to provide them for all gates."
+            )
 
     return (
         initial_params,
