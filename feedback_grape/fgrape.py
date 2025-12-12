@@ -470,7 +470,6 @@ def optimize_pulse(
     convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    lut_depth: int | None = _DEFAULTS.LUT_DEPTH.value,
     reward_weights: list[float] | None = _DEFAULTS.REWARD_WEIGHTS.value,
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
@@ -594,10 +593,11 @@ def optimize_pulse(
         decay_indices,
     ) = convert_system_params(system_params)
 
-    if lut_depth is None and mode == "lookup":
-        lut_depth = num_time_steps*len(measurement_indices)
-    elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
-        raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
+    # lut_depth is removed from API for now, set it to num_time_steps here
+    #if lut_depth is None and mode == "lookup":
+    lut_depth = num_time_steps*len(measurement_indices)
+    #elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
+    #    raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
 
     if (
         evo_type == "state" or (isket(U_0) or isket(C_target))
