@@ -86,7 +86,6 @@ class _DEFAULTS(Enum):
     GOAL = "fidelity"
     DECAY = None
     PROGRESS = False
-    LUT_DEPTH = None # if None, will be set to number of time steps
     REWARD_WEIGHTS = None # if None, will only weight the reward at the final time step
 
 class Gate(NamedTuple):
@@ -537,11 +536,7 @@ def optimize_pulse(
             "Please provide a target state C_target for fidelity calculation."
         )
 
-    # If U_0 or C_target are callables, generate a test state to check their validity
-    U_0_test = U_0(jax.random.PRNGKey(0)) if callable(U_0) else U_0
-    C_target_test = C_target(jax.random.PRNGKey(0)) if callable(C_target) else C_target
-
-    if isbra(U_0_test) or isbra(C_target_test):
+    if isbra(U_0) or isbra(C_target):
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices."
         )
@@ -770,7 +765,7 @@ def optimize_pulse(
 
             for weight, rf, log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
                 if weight != 0.0: # Supposed to cut branches in jax's computational graph -> less memory usage
-                    fidelity_value = fidelity_vmap(C_target_eval, rf)
+                    fidelity_value = fidelity_vmap(C_target, rf)
                     loss_sum1 += -weight * jnp.mean(fidelity_value)
                     loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(fidelity_value))
         
