@@ -2,6 +2,7 @@
 GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
+from types import NoneType
 import jax
 from enum import Enum
 import jax.numpy as jnp
@@ -474,6 +475,7 @@ def optimize_pulse(
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
+    eval_time_steps : int | None = None,
     mode: str = _DEFAULTS.MODE.value,  # nn, lookup
     rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
@@ -501,6 +503,8 @@ def optimize_pulse(
             - (default: 1)
         eval_batch_size (int): The number of trajectories to process in parallel during evaluation \n
             - (default: 10)
+        eval_time_steps (int): The number of time steps to use during evaluation. \n
+            - (default: None) If None, it will be set to num_time_steps.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table) \n
             - (default: lookup)
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'. \n
@@ -518,6 +522,10 @@ def optimize_pulse(
         early_stop = True
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
+    if eval_time_steps is None:
+        eval_time_steps = num_time_steps
+    assert eval_time_steps > 0, "eval_time_steps must be greater than 0."
+
 
     if evo_type not in ["state", "density"]:
         raise ValueError("Invalid evo_type. Choose 'state' or 'density'.")
@@ -801,7 +809,7 @@ def optimize_pulse(
         param_shapes=param_shapes,
         best_model_params=best_model_params,
         mode=mode,
-        num_time_steps=num_time_steps,
+        num_time_steps=eval_time_steps,
         evo_type=evo_type,
         eval_batch_size=eval_batch_size,
         prng_key=eval_key,
@@ -968,193 +976,3 @@ def _evaluate(
         final_state=rho_final,
         returned_params=returned_params,
     )
-
-def evaluate_on_longer_time(
-    U_0: jnp.ndarray,
-    C_target: jnp.ndarray,
-    system_params: list[Gate],
-    optimized_trainable_parameters: list[jnp.ndarray],
-    num_time_steps: int,
-    evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    goal: str,  # purity, fidelity, both
-    eval_batch_size: int,
-    mode: str,  # nn, lookup
-    rnn: callable,  # type: ignore
-    rnn_hidden_size: int,
-) -> FgResult:
-    """
-    Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
-
-    Args:
-        U_0: Initial state or density matrix.
-        C_target: Target state or density matrix.
-        system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
-        num_time_steps (int): The number of time steps for the optimization process.
-        max_iter (int): The maximum number of iterations for the optimization process.
-        learning_rate (float): The learning rate for the optimization algorithm.
-        evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
-        goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n
-            - (default: fidelity)
-        batch_size (int): The number of trajectories to process in parallel \n
-            - (default: 1)
-        eval_batch_size (int): The number of trajectories to process in parallel during evaluation \n
-            - (default: 10)
-        mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table) \n
-            - (default: lookup)
-        rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'. \n
-            - (default: RNN)
-        rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters) \n
-            - (default: 30)
-        progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes). This may significantly slow down the optimization process \n
-            - (default: False).
-    Returns:
-        result: Dictionary containing optimized pulse and convergence data.
-    """
-    if num_time_steps <= 0:
-        raise ValueError("Time steps must be greater than 0.")
-
-    if evo_type not in ["state", "density"]:
-        raise ValueError("Invalid evo_type. Choose 'state' or 'density'.")
-
-    if U_0 is None:
-        raise ValueError("Please provide an initial state U_0.")
-
-    if C_target is None and goal in ["fidelity", "both"]:
-        raise ValueError(
-            "Please provide a target state C_target for fidelity calculation."
-        )
-
-    if isbra(U_0) or isbra(C_target):
-        raise TypeError(
-            "Please provide initial and target states as kets (column vectors) or density matrices."
-        )
-    
-    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
-        raise TypeError(
-            "For evo_type='state', please provide initial and target states as kets (column vectors)."
-        )
-
-    if evo_type == "density" and (isket(U_0) or isket(C_target)):
-        raise TypeError(
-            "For evo_type='density', please provide initial and target states as density matrices."
-        )
-
-    if goal in ["purity", "both"] and evo_type == "state":
-        raise ValueError(
-            "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
-        )
-    
-    if goal == "purity" and C_target is not None:
-        raise ValueError(
-            "C_target should not be provided when goal is 'purity'."
-        )
-
-    if (
-        evo_type == "density"
-        and (
-            not is_positive_semi_definite(U_0)
-            or (goal != "purity" and not is_positive_semi_definite(C_target))
-        )
-    ):
-        raise TypeError(
-            'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
-        )
-    
-    (
-        initial_params,
-        parameterized_gates,
-        measurement_indices,
-        param_constraints,
-        c_ops,
-        decay_indices,
-    ) = convert_system_params(system_params)
-
-    if (
-        evo_type == "state" or (isket(U_0) or isket(C_target))
-    ) and decay_indices != []:
-        raise ValueError(
-            "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
-            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
-        )
-
-    param_shapes = None
-    num_of_params = len(jax.tree_util.tree_leaves(initial_params))
-
-    if mode == "no-measurement":
-        # If no feedback is used, we can just use the initial parameters
-        h_initial_state = None
-        rnn_model = None
-
-        if not (measurement_indices == [] or measurement_indices is None):
-            raise ValueError(
-                "You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'."
-            )
-    else:
-        if measurement_indices == [] or measurement_indices is None:
-            raise ValueError(
-                "For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. "
-            )
-        # Convert dictionary parameters to list[list] structure
-        _, param_shapes = prepare_parameters_from_dict(initial_params)
-
-        # Calculate total number of parameters
-        if mode == "nn":
-            # VERY IMPORTANT: Go through the RNN parameters and convert lists to jnp arrays.
-            # Otherwise, flax will throw incomprehensible errors about non-matching shapes.
-            def convert_lists_to_jnp(obj):
-                if isinstance(obj, dict):
-                    return {k: convert_lists_to_jnp(v) for k, v in obj.items()}
-                elif isinstance(obj, list):
-                    try:
-                        return jnp.array(obj, dtype=jnp.float32)
-                    except Exception as e:
-                        for i, item in enumerate(obj):
-                            obj[i] = convert_lists_to_jnp(item)
-                        return obj
-                else:
-                    return obj
-            optimized_trainable_parameters['rnn_params'] = convert_lists_to_jnp(optimized_trainable_parameters['rnn_params'])
-
-            hidden_size = rnn_hidden_size
-            output_size = num_of_params
-            rnn_model = rnn(hidden_size=hidden_size, output_size=output_size)  # type: ignore
-
-            h_initial_state = jnp.zeros((1, hidden_size))
-            dummy_input = jnp.zeros(
-                (1, 1)
-            )  # Dummy input for rnn initialization
-
-            rnn_model.init(
-                jax.random.PRNGKey(0), dummy_input, h_initial_state
-            )  # Initialize RNN parameters
-
-        elif mode == "lookup":
-            h_initial_state = None
-            rnn_model = None
-        else:
-            raise ValueError(
-                "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
-            )
-
-    result = _evaluate(
-        U_0=U_0,
-        C_target=C_target,
-        parameterized_gates=parameterized_gates,
-        measurement_indices=measurement_indices,
-        param_constraints=param_constraints,
-        c_ops=c_ops,
-        decay_indices=decay_indices,
-        param_shapes=param_shapes,
-        best_model_params=optimized_trainable_parameters,
-        mode=mode,
-        num_time_steps=num_time_steps,
-        evo_type=evo_type,
-        eval_batch_size=eval_batch_size,
-        prng_key=jax.random.PRNGKey(42),
-        h_initial_state=h_initial_state,
-        rnn_model=rnn_model,
-        goal=goal,
-        num_iterations=0, # No optimization, just evaluation
-    )
-
-    return result
