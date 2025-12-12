@@ -886,7 +886,7 @@ def _evaluate(
         
         for rho_final in rho_finals:
             fidelity_each_timestep.append(
-                jnp.mean(fidelity_vmap(rho_final))
+                fidelity_vmap(rho_final)
             )
 
         final_fidelity = fidelity_each_timestep[-1]
