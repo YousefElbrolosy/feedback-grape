@@ -65,7 +65,7 @@ def sqrtm_eig(A):
     # since it can return complex numbers for negative eigenvalues
     # and we want to avoid that in the square root.
     eigenvals = jnp.where(eigenvals > 0, eigenvals, 0)
-    sqrt_eigenvals = jnp.sqrt(eigenvals)
+    sqrt_eigenvals = jnp.sqrt(eigenvals) # type: ignore
     return eigenvecs @ jnp.diag(sqrt_eigenvals) @ eigenvecs.conj().T
 
 
@@ -123,6 +123,8 @@ def _state_density_fidelity(A, B):
         Fidelity pseudo-metric between A and B.
 
     """
+    # Question: do we need to normalize here? When we start with normalized states and apply valid operators, we should always have normalized states.
+    # When we apply channel operations, it should be up to the users, if they want to renormalize or not.
     if isket(A) or isbra(A):
         if isket(B) or isbra(B):
             A = A / jnp.linalg.norm(A)
@@ -133,7 +135,7 @@ def _state_density_fidelity(A, B):
         # Take advantage of the fact that the density operator for A
         # is a projector to avoid a sqrtm call.
         A = A / jnp.linalg.norm(A)
-        sqrtmA = ket2dm(A)
+        #sqrtmA = ket2dm(A)
     else:
         if isket(B) or isbra(B):
             # Swap the order so that we can take a more numerically
@@ -144,20 +146,20 @@ def _state_density_fidelity(A, B):
         A = A / jnp.linalg.trace(A)
         B = B / jnp.linalg.trace(B)
 
-        sqrtmA = sqrtm_eig(A)
+        #sqrtmA = sqrtm_eig(A)
         # sqrtmA = jax.scipy.linalg.sqrtm(A)
 
-    if sqrtmA.shape != B.shape:
-        raise TypeError('Density matrices do not have same dimensions.')
+    #if sqrtmA.shape != B.shape:
+    #    raise TypeError('Density matrices do not have same dimensions.')
 
     # We don't actually need the whole matrix here, just the trace
     # of its square root, so let's just get its eigenenergies instead.
     # We also truncate negative eigenvalues to avoid nan propagation;
     # even for positive semidefinite matrices, small negative eigenvalues
     # can be reported. This REALLY HAPPENED!! In example c
-    eig_vals = jnp.linalg.eigvals(sqrtmA @ B @ sqrtmA)
+    eig_vals = jnp.linalg.eigvals(A @ B) # Changed this from sqrtmA@B@sqrtmA to A@B for speedup
     eig_vals_non_neg = jnp.where(eig_vals > 0, eig_vals, 0)
-    return jnp.real(jnp.sum(jnp.sqrt(eig_vals_non_neg)))
+    return jnp.real(jnp.sum(jnp.sqrt(eig_vals_non_neg))) # type: ignore
 
 
 def fidelity(*, C_target, U_final, evo_type="unitary"):
