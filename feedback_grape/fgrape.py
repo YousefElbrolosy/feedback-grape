@@ -538,7 +538,8 @@ def optimize_pulse(
     assert not (goal in ["purity", "both"] and evo_type == "state"), ValueError("Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation.")
     assert goal != "purity" or C_target is None, ValueError("C_target should not be provided when goal is 'purity'.")
     assert evo_type != "density" or (is_positive_semi_definite(U_0) and (goal == "purity") or is_positive_semi_definite(C_target)), TypeError("For evo_type='density', initial and target states must be positive semi-definite.")
-
+    assert mode is not "no-measurement" or eval_time_steps == num_time_steps, ValueError("In no-measurement mode, eval_time_steps must be equal to num_time_steps.")
+    
     if reward_weights is None:
         reward_weights = [0.0] * num_time_steps
         reward_weights[-1] = 1.0
