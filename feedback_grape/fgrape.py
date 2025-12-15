@@ -2,7 +2,6 @@
 GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
-from calendar import c
 from types import NoneType
 import jax
 from enum import Enum
