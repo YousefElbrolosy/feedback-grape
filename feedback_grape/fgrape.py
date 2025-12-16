@@ -59,19 +59,19 @@ class FgResult(NamedTuple):
     """
     Array of final parameters for each time step.
     """
-    final_purity: jnp.ndarray | None
+    final_purity: list[jnp.ndarray]
     """
     Final purity of the optimized control.
     """
-    final_fidelity: jnp.ndarray | None
+    final_fidelity: list[jnp.ndarray]
     """
     Final fidelity of the optimized control.
     """
-    fidelity_each_timestep: jnp.ndarray | None = None
+    fidelity_each_timestep: list[jnp.ndarray]
     """
     Fidelity of the optimized control along each timestep.
     """
-    purity_each_timestep: jnp.ndarray | None = None
+    purity_each_timestep: list[jnp.ndarray]
     """
     Purity of the optimized control along each timestep.
     """
@@ -97,7 +97,7 @@ class Gate(NamedTuple):
     """
     Function that applies the gate to the state.
     """
-    initial_params: list[float]
+    initial_params: list[float] | jnp.ndarray
     """
     Initial parameters for the gate.
     """
@@ -462,14 +462,14 @@ def calculate_trajectory(
 
 def optimize_pulse(
     U_0: jnp.ndarray,
-    C_target: jnp.ndarray,
+    C_target: jnp.ndarray | None,
     system_params: list[Gate],
     num_time_steps: int,
     max_iter: int,
-    convergence_threshold: float,
+    convergence_threshold: float | None,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    reward_weights: list[float] | None = _DEFAULTS.REWARD_WEIGHTS.value,
+    reward_weights: list[float | int] | tuple[float | int, ...] | None = _DEFAULTS.REWARD_WEIGHTS.value,
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -871,8 +871,8 @@ def _evaluate(
         )
 
     rho_final = rho_finals[-1]
-    final_fidelity = None
-    final_purity = None
+    final_fidelity = []
+    final_purity = []
     fidelity_each_timestep = []
     purity_each_timestep = []
 
