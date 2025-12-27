@@ -55,13 +55,12 @@ def _probability_of_a_measurement_outcome_given_a_certain_state(
                 "rho_cav must be a density matrix for evo_type 'density'."
             )
         
-        prob = jnp.real(jnp.trace(Mm.conj().T @ Mm @ rho_cav))
+        #prob = jnp.real(jnp.trace(Mm.conj().T @ Mm @ rho_cav))
 
         # 2x faster because it only evaluates diagonal elements
         # of second matrix multiplication before taking trace,
         # hence saving one full matrix multiplication.
-        # Numerical issues when executing on GPU.
-        # prob = jnp.real(jnp.vdot(Mm, Mm @ rho_cav))
+        prob = jnp.real(jnp.vdot(Mm, Mm @ rho_cav))
     else:
         raise ValueError(f"Invalid evo_type: {evo_type}.")
 
