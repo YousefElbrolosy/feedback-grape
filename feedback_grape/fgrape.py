@@ -463,7 +463,7 @@ def calculate_trajectory(
 def optimize_pulse(
     U_0: jnp.ndarray,
     C_target: jnp.ndarray | None,
-    system_params: list[Gate],
+    system_params: list[Gate | Decay],
     num_time_steps: int,
     max_iter: int,
     convergence_threshold: float | None,
