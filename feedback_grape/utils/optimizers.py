@@ -1,6 +1,7 @@
 import jax
 import optax  # type: ignore
 import optax.tree_utils as otu  # type: ignore
+from time import time
 # ruff: noqa N8
 
 jax.config.update("jax_enable_x64", True)
@@ -40,8 +41,7 @@ def optimize_adam_feedback(
 
     @jax.jit
     def step(params, state, key):
-        loss = loss_fn(params, key)  # Minimize -loss_fn
-        grads = jax.grad(lambda x, k: loss_fn(x, k))(params, key)
+        loss, grads = jax.value_and_grad(loss_fn)(params, key)
         updates, new_state = optimizer.update(grads, state, params)
         new_params = optax.apply_updates(params, updates)
         new_key, _ = jax.random.split(key)
@@ -51,7 +51,7 @@ def optimize_adam_feedback(
     # setting it to -1 in the beginning in case the max_iter is 0
     iter_idx = -1
     for iter_idx in range(max_iter):
-        params, opt_state, loss, key = step(params, opt_state, key)
+        new_params, new_opt_state, loss, key = step(params, opt_state, key)
         losses.append(loss)
         if early_stop:
             if (
@@ -60,9 +60,20 @@ def optimize_adam_feedback(
             ):
                 break
 
+        nan_detected = any([jax.numpy.any(jax.numpy.isnan(p)) for p in jax.tree_util.tree_leaves(new_params)])
+        if nan_detected:
+            print(f"Warning: NaN values detected in updated parameters at iteration {iter_idx}. Stopping optimization.")
+            print(f"Info: NaN values may occur due to high learning rates or POVM elements with zero eigenvalues.")
+            break
+        else:
+            params = new_params
+            opt_state = new_opt_state
+
         if progress:
-            if iter_idx % 10 == 0:
-                print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
+            if iter_idx == 0:
+                start_time = time() # Start clock after first iteration which initializes compiled functions
+            if iter_idx % 10 == 0 and iter_idx > 0:
+                print(f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(time() - start_time)}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(time() - start_time))}s")
 
     return params, iter_idx + 1
 
@@ -99,8 +110,7 @@ def optimize_adam(
 
     @jax.jit
     def step(params, state):
-        loss = loss_fn(params)
-        grads = jax.grad(lambda x: loss_fn(x))(params)
+        loss, grads = jax.value_and_grad(loss_fn)(params)
         updates, new_state = optimizer.update(grads, state, params)
         new_params = optax.apply_updates(params, updates)
         return new_params, new_state, loss
@@ -118,9 +128,12 @@ def optimize_adam(
                 and abs(losses[-1] - losses[-2]) < convergence_threshold
             ):
                 break
+
         if progress:
-            if iter_idx % 10 == 0:
-                print(f"Iteration {iter_idx}, Loss: {loss:.6f}")
+            if iter_idx == 0:
+                start_time = time() # Start clock after first iteration which initializes compiled functions
+            if iter_idx % 10 == 0 and iter_idx > 0:
+                print(f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(start_time - time())}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(start_time - time()))}s")
 
     return params, iter_idx + 1
 
