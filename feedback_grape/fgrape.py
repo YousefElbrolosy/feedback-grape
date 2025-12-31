@@ -66,6 +66,14 @@ class FgResult(NamedTuple):
     """
     Final fidelity of the optimized control.
     """
+    fidelity_each_timestep: list[jnp.ndarray]
+    """
+    Fidelity of the optimized control along each timestep and batch.
+    """
+    purity_each_timestep: list[jnp.ndarray]
+    """
+    Purity of the optimized control along each timestep and batch.
+    """
 
 
 class _DEFAULTS(Enum):
@@ -685,10 +693,6 @@ def optimize_pulse(
                 'lookup_table': F,
                 'initial_params': flat_params,
             }
-        else:
-            raise ValueError(
-                "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
-            )
 
     def loss_fn(trainable_params, rng_key):
         """
@@ -708,7 +712,6 @@ def optimize_pulse(
             rnn_params = None
             lookup_table_params = None
             initial_params_opt = trainable_params
-            # jax.debug.print("trainable params: {} \n", trainable_params)
         elif mode == "nn":
             # reseting hidden state at end of every trajectory ( does not really change the purity tho)
             h_initial_state = jnp.zeros((1, hidden_size))
@@ -912,28 +915,43 @@ def _evaluate(
     rho_final = rho_finals[-1]
     final_fidelity = None
     final_purity = None
+    fidelity_each_timestep = []
+    purity_each_timestep = []
 
     if goal in ["fidelity", "both"]:
-        final_fidelity = jnp.mean(
-            jax.vmap(
+        fidelity_vmap = jax.vmap(
                 lambda rf: fidelity(
                     C_target=C_target, U_final=rf, evo_type=evo_type
                 )
-            )(rho_final)
-        )
+            )
+        
+        for rho_final in rho_finals:
+            fidelity_each_timestep.append(
+                fidelity_vmap(rho_final)
+            )
+
+        final_fidelity = fidelity_each_timestep[-1].mean()
 
     if goal in ["purity", "both"]:
-        final_purity = jnp.mean(jax.vmap(purity)(rho=rho_final))
+        purity_vmap = jax.vmap(purity)
+        
+        for rho_final in rho_finals:
+            purity_each_timestep.append(
+                purity_vmap(rho=rho_final)
+            )
 
-    if goal not in ["purity", "fidelity", "both"]:
-        raise ValueError(
-            "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-        )
+        final_purity = purity_each_timestep[-1].mean()
+
+    assert goal in ["purity", "fidelity", "both"], ValueError(
+        "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+    )
 
     return FgResult(
         optimized_trainable_parameters=best_model_params,
         final_purity=final_purity,
+        purity_each_timestep=purity_each_timestep,
         final_fidelity=final_fidelity,
+        fidelity_each_timestep=fidelity_each_timestep,
         iterations=num_iterations,
         final_state=rho_final,
         returned_params=returned_params,
