@@ -762,7 +762,7 @@ def test_example_C():
     )
 
 
-@pytest.mark.slow
+@pytest.mark.slow # Marked slow because it takes long on GPU, but is fast on CPU for some reason
 def test_example_D():
     """
     This test tests if the max fidelity reached by example_C is above 0.9
@@ -793,7 +793,7 @@ def test_for_errors():
     )
 
     # 1. num_time_steps <= 0
-    with pytest.raises(ValueError,  match=re.escape("Time steps must be greater than 0.")):
+    with pytest.raises(AssertionError,  match=re.escape("Time steps must be greater than 0.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -806,7 +806,7 @@ def test_for_errors():
         )
 
     # 2. Invalid evo_type
-    with pytest.raises(ValueError,  match=re.escape("Invalid evo_type. Choose 'state' or 'density'.")):
+    with pytest.raises(AssertionError,  match=re.escape("Invalid evo_type. Choose 'state' or 'density'.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -819,7 +819,7 @@ def test_for_errors():
         )
 
     # 3. U_0 is None
-    with pytest.raises(ValueError,  match=re.escape("Please provide an initial state U_0.")):
+    with pytest.raises(AssertionError,  match=re.escape("Please provide an initial state U_0.")):
         optimize_pulse(
             U_0=None,
             C_target=basis(2),
@@ -832,7 +832,7 @@ def test_for_errors():
         )
 
     # 4. C_target is None and goal is fidelity
-    with pytest.raises(ValueError,  match=re.escape("Please provide a target state C_target for fidelity calculation.")):
+    with pytest.raises(AssertionError,  match=re.escape("Please provide a target state C_target for fidelity calculation.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=None,
@@ -846,7 +846,7 @@ def test_for_errors():
         )
 
     # 5. evo_type='state' but not both kets
-    with pytest.raises(TypeError,  match=re.escape("For evo_type='state', please provide initial and target states as kets (column vectors).")):
+    with pytest.raises(AssertionError,  match=re.escape("For evo_type='state', please provide initial and target states as kets (column vectors).")):
         optimize_pulse(
             U_0=jnp.eye(2),
             C_target=basis(2),
@@ -859,7 +859,7 @@ def test_for_errors():
         )
 
     # 6. evo_type='density' but one is ket
-    with pytest.raises(TypeError,  match=re.escape("For evo_type='density', please provide initial and target states as density matrices.")):
+    with pytest.raises(AssertionError,  match=re.escape("For evo_type='density', please provide initial and target states as density matrices.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=jnp.eye(2),
@@ -873,7 +873,7 @@ def test_for_errors():
 
     # 7. isbra(U_0) or isbra(C_target)
     # A bra is a row vector, e.g. shape (2,)
-    with pytest.raises(TypeError,  match=re.escape("Please provide initial and target states as kets (column vectors) or density matrices.")):
+    with pytest.raises(AssertionError,  match=re.escape("Please provide initial and target states as kets (column vectors) or density matrices.")):
         optimize_pulse(
             U_0=basis(2).conj().T,  # row vector
             C_target=basis(2),
@@ -886,7 +886,7 @@ def test_for_errors():
         )
 
     # 8. Not positive semi-definite for density
-    with pytest.raises(TypeError,  match=re.escape("If evo_type=`density` Your initial and target rhos must be positive semi-definite.")):
+    with pytest.raises(AssertionError,  match=re.escape("For evo_type='density', initial and target states must be positive semi-definite.")):
         optimize_pulse(
             U_0=jnp.array([[1, 2], [2, -3]]),  # not psd
             C_target=jnp.eye(2),
@@ -899,7 +899,7 @@ def test_for_errors():
         )
 
     # 9. goal in ["purity", "both"] and evo_type == "state"
-    with pytest.raises(ValueError,  match=re.escape("Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation.")):
+    with pytest.raises(AssertionError,  match=re.escape("Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -914,7 +914,7 @@ def test_for_errors():
 
     # 10. Decay with state evo_type
     decay = Decay(c_ops=[jnp.eye(2)])
-    with pytest.raises(ValueError,  match=re.escape("Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
+    with pytest.raises(AssertionError,  match=re.escape("Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
             "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'.")):
         optimize_pulse(
             U_0=basis(2),
@@ -939,7 +939,7 @@ def test_for_errors():
     )
 
     # param_constraints should be 2 * num_of_params (upper and lower for each param)
-    with pytest.raises(TypeError, match=re.escape("Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default.")):
+    with pytest.raises(AssertionError, match=re.escape("Please provide upper and lower constraints for each variable in each gate, or don't provide `param_constraints` to use the default.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -981,7 +981,7 @@ def test_for_errors():
         initial_params=jnp.array([0.0]),
         measurement_flag=True,
     )
-    with pytest.raises(ValueError, match=re.escape("You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'.")):
+    with pytest.raises(AssertionError, match=re.escape("You set a measurement flag to true, but no-measurement mode is used. Please set mode to 'nn' or 'lookup'.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -1001,7 +1001,7 @@ def test_for_errors():
     )
 
     # 13. nn/lookup mode but no measurement operator
-    with pytest.raises(ValueError, match=re.escape("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. ")):
+    with pytest.raises(AssertionError, match=re.escape("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. ")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -1013,7 +1013,7 @@ def test_for_errors():
             evo_type="state",
             mode="nn",
         )
-    with pytest.raises(ValueError, match=re.escape("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. ")):
+    with pytest.raises(AssertionError, match=re.escape("For modes 'nn' and 'lookup', you must provide at least one measurement operator in your system_params. ")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -1027,7 +1027,7 @@ def test_for_errors():
         )
 
     # 14. Invalid mode
-    with pytest.raises(ValueError, match=re.escape("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")):
+    with pytest.raises(AssertionError, match=re.escape("Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),
@@ -1060,7 +1060,7 @@ def test_for_errors():
     )
 
     # 15. If you provide parameter constraints for some gates, you need to provide them for all gates.
-    with pytest.raises(TypeError, match=re.escape("If you provide parameter constraints for some gates, you need to provide them for all gates.")):
+    with pytest.raises(AssertionError, match=re.escape("If you provide parameter constraints for some gates, you need to provide them for all gates.")):
         optimize_pulse(
             U_0=basis(2),
             C_target=basis(2),

@@ -261,12 +261,9 @@ def convert_system_params(system_params):
             if gate_config.param_constraints is not None:
                 param_constraints.append(gate_config.param_constraints)
 
-            if len(param_constraints) > 0 and (
-                len(param_constraints) != len(parameterized_gates)
-            ):
-                raise TypeError(
-                    "If you provide parameter constraints for some gates, you need to provide them for all gates."
-                )
+            assert not param_constraints or len(param_constraints) == len(parameterized_gates), TypeError(
+                "If you provide parameter constraints for some gates, you need to provide them for all gates."
+            )
 
     return (
         initial_params,
