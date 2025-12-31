@@ -723,6 +723,10 @@ def optimize_pulse(
             rnn_params = None
             lookup_table_params = trainable_params['lookup_table']
             initial_params_opt = trainable_params['initial_params']
+        else:
+            raise ValueError(
+                "Invalid mode. Choose 'nn' or 'lookup' or 'no-measurement'."
+            )
 
         rho_finals, log_probs, _ = calculate_trajectory(
             rho_cav=U_0,
