@@ -235,23 +235,16 @@ def convert_system_params(system_params):
         if not gate.measurement_flag: # Check if gate is callable on initial parameters and unitary
             unitary = gate.gate(gate.initial_params)
             
-            if len(unitary.shape) == 2:
-
-                assert unitary.shape[0] == unitary.shape[1], "The provided gate is not a square matrix."
-                identity = jnp.eye(unitary.shape[0])
-                if not jnp.allclose(unitary @ unitary.conj().T, identity):
-                    if jnp.allclose(unitary, unitary.conj().T):
-                        raise ValueError("The provided gate is not unitary but Hermitian. Did you perhaps provide a Hamiltonian instead of a unitary?")
-                    else:
-                        raise ValueError("The provided gate is not unitary. Did you perhaps mistake jnp.exp for a matrix exponential jax.scipy.linalg.expm?")
-                
-            elif len(unitary.shape) == 0:
-                assert jnp.isclose(jnp.linalg.norm(unitary), 1.0), f"The provided gate is not a normalized state. Instead it is a scalar of value {unitary}."
-            else:
-                raise ValueError("The provided gate must be either a unitary matrix or 1.")
+            assert len(unitary.shape) == 2 and unitary.shape[0] == unitary.shape[1], "The provided gate is not a square matrix."
+            
+            if not jnp.allclose(unitary @ unitary.conj().T, jnp.eye(unitary.shape[0])):
+                if jnp.allclose(unitary, unitary.conj().T):
+                    raise ValueError("The provided gate is not unitary but Hermitian. Did you perhaps provide a Hamiltonian instead of a unitary?")
+                else:
+                    raise ValueError("The provided gate is not unitary. Did you perhaps mistake jnp.exp for a matrix exponential jax.scipy.linalg.expm?")
             
         else: # Check if gate is callable on initial parameters and a valid POVM element
-            assert gate.gate.__code__.co_argcount >= 2, ValueError(
+            assert gate.gate.__code__.co_argcount >= 2, (
                 "The Positive operator valued measure gate you supplied must have at least two arguments. "
                 "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
                 "of optimizable parameters for the measurement gate."
