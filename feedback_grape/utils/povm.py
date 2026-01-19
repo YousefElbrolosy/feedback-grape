@@ -83,6 +83,7 @@ def _post_measurement_state(
         measurement_outcome: The measurement outcome
         M_plus: The measurement operator for outcome +1
         M_minus: The measurement operator for outcome -1
+        prob_plus: Probability of measurement outcome +1
         evo_type: Evolution type, either 'state' or 'density_matrix'
 
     Returns:
