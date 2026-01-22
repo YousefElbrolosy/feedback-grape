@@ -13,4 +13,5 @@ def purity(*, rho):
     Returns:
         purity: Purity value.
     """
-    return jnp.real(jnp.trace(rho @ rho))
+    #return jnp.real(jnp.trace(rho @ rho))
+    return jnp.sum(rho * jnp.swapaxes(rho, -1, -2), axis=(-1, -2)).real # More efficient because it skips matrix multiplication
