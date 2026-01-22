@@ -568,13 +568,15 @@ def optimize_pulse(
     if eval_time_steps is None:
         eval_time_steps = num_time_steps
 
-    assert eval_batch_size > 0, ValueError("eval_batch_size must be greater than 0.")
+    if eval_batch_size <= 0:
+        raise ValueError("eval_batch_size must be greater than 0.")
     
     if reward_weights is None:
         reward_weights = [0.0] * num_time_steps
         reward_weights[-1] = 1.0
 
-    assert len(reward_weights) == num_time_steps, ValueError("reward_weights must have length equal to num_time_steps.")
+    if len(reward_weights) != num_time_steps:
+        raise ValueError("reward_weights must have length equal to num_time_steps.")
 
     (
         initial_params,
@@ -946,9 +948,10 @@ def _evaluate(
 
         final_purity = purity_each_timestep[-1].mean()
 
-    assert goal in ["purity", "fidelity", "both"], ValueError(
-        "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
-    )
+    if goal not in ["purity", "fidelity", "both"]:
+        raise ValueError(
+            "Invalid goal. Choose 'purity', 'fidelity', or 'both'."
+        )
 
     return FgResult(
         optimized_trainable_parameters=best_model_params,
