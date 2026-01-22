@@ -2,6 +2,7 @@ import jax
 import numpy as np
 import flax.linen as nn
 import jax.numpy as jnp
+from .fidelity import is_positive_semi_definite
 # ruff: noqa N8
 
 jax.config.update("jax_enable_x64", True)
@@ -227,11 +228,46 @@ def convert_system_params(system_params):
     c_ops = []
     decay_indices = []
 
+    def _Gate_validity_checks(gate):
+        """
+        Checks if the provided gate is a valid unitary or POVM element by evaluating it at the initial parameters.
+        """
+        if not gate.measurement_flag: # Check if gate is callable on initial parameters and unitary
+            unitary = gate.gate(gate.initial_params)
+            
+            assert len(unitary.shape) == 2 and unitary.shape[0] == unitary.shape[1], "The provided gate is not a square matrix."
+            
+            if not jnp.allclose(unitary @ unitary.conj().T, jnp.eye(unitary.shape[0])):
+                if jnp.allclose(unitary, unitary.conj().T):
+                    raise ValueError("The provided gate is not unitary but Hermitian. Did you perhaps provide a Hamiltonian instead of a unitary?")
+                else:
+                    raise ValueError("The provided gate is not unitary. Did you perhaps mistake jnp.exp for a matrix exponential jax.scipy.linalg.expm?")
+            
+        else: # Check if gate is callable on initial parameters and a valid POVM element
+            assert gate.gate.__code__.co_argcount >= 2, (
+                "The Positive operator valued measure gate you supplied must have at least two arguments. "
+                "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
+                "of optimizable parameters for the measurement gate."
+            )
+            
+            M_0 = gate.gate(-1, gate.initial_params)
+            M_1 = gate.gate(1, gate.initial_params)
+            
+            for M in [M_0, M_1]:
+                assert M.shape[0] == M.shape[1], "The provided measurement operator is not a square matrix."
+
+                E = M.conj().T @ M
+                assert is_positive_semi_definite(E), "The provided measurement operator M does not satisfy M^† M >= 0 (positive semi-definite)."
+
+            assert jnp.allclose(M_0.conj().T @ M_0 + M_1.conj().T @ M_1, jnp.eye(M_0.shape[0])), "The provided measurement operators do not sum to the identity."
+
     for i, gate_config in enumerate(system_params):
         if hasattr(gate_config, "c_ops"):
             c_ops.append(gate_config.c_ops)
             decay_indices.append(i)
         else:
+            _Gate_validity_checks(gate_config) # Validate the gate
+
             gate_func = gate_config.gate
             if isinstance(gate_config.initial_params, jnp.ndarray):
                 # If initial_params is a numpy array, convert it to a list
@@ -245,12 +281,6 @@ def convert_system_params(system_params):
 
             # If this is a measurement gate, add its index
             if is_measurement:
-                if gate_func.__code__.co_argcount < 2:
-                    raise ValueError(
-                        "The Positive operator valued measure gate you supplied must have at least two arguments. "
-                        "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
-                        "of optimizable parameters for the measurement gate."
-                    )
                 measurement_indices.append(i)
 
             param_name = f"gate_{i}"

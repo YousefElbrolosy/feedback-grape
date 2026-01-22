@@ -891,6 +891,7 @@ def test_for_errors():
             U_0=jnp.array([[1, 2], [2, -3]]),  # not psd
             C_target=jnp.eye(2),
             system_params=[valid_gate],
+            mode="no-measurement",
             num_time_steps=1,
             max_iter=1,
             convergence_threshold=None,
@@ -958,7 +959,7 @@ def test_for_errors():
         initial_params=jnp.array([0.0]),
         measurement_flag=True,
     )
-    with pytest.raises(ValueError, match=re.escape("The Positive operator valued measure gate you supplied must have at least two arguments. "
+    with pytest.raises(AssertionError, match=re.escape("The Positive operator valued measure gate you supplied must have at least two arguments. "
                         "The first argument is the measurement outcome (1, or -1) and the second argument is the list "
                         "of optimizable parameters for the measurement gate.")):
         optimize_pulse(
@@ -974,7 +975,7 @@ def test_for_errors():
         )
     
     def dummy_meas_gate(meas_outcome, params):
-        return jnp.eye(2)
+        return jnp.eye(2)/2**0.5
     
     valid_gate_meas_2 = Gate(
         gate=dummy_meas_gate,
