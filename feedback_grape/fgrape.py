@@ -664,7 +664,7 @@ def optimize_pulse(
             rnn_model = None
             # step 1: initialize the parameters
             num_of_columns = num_of_params
-            num_of_sub_lists = len(measurement_indices) * lut_depth
+            num_of_sub_lists = lut_depth
             F = []
             param_constraints_reshaped = jnp.array(param_constraints).reshape(
                 -1, 2
