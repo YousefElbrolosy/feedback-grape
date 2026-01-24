@@ -1,4 +1,5 @@
 # ruff: noqa
+from unittest import result
 import jax
 import pytest
 from feedback_grape.fgrape import Gate, Decay
@@ -739,6 +740,149 @@ def example_E_body():
         return True
     return False
 
+def test_reward_weights():
+    """
+    Tests a example_D with different reward weights (and less iterations for speed)
+    to check that only timesteps included in the reward_weights contribute to the optimization.
+    """
+    from feedback_grape.fgrape import optimize_pulse
+    from feedback_grape.utils.operators import (
+        sigmap,
+        sigmam,
+        create,
+        destroy,
+        identity,
+        cosm,
+        sinm,
+    )
+    from feedback_grape.utils.states import basis, coherent
+    from feedback_grape.utils.tensor import tensor
+    import jax.numpy as jnp
+    import jax
+    from jax.scipy.linalg import expm
+
+    N_cav = 30
+
+    def qubit_unitary(alpha_re):
+        alpha = alpha_re
+        return tensor(
+            identity(N_cav),
+            expm(-1j * (alpha * sigmap() + alpha.conjugate() * sigmam()) / 2),
+        )
+
+    def qubit_cavity_unitary(beta_re):
+        beta = beta_re
+        return expm(
+            -1j
+            * (
+                beta * (tensor(destroy(N_cav), sigmap()))
+                + beta.conjugate() * (tensor(create(N_cav), sigmam()))
+            )
+            / 2
+        )
+
+    def povm_measure_operator(measurement_outcome, params):
+        """
+        POVM for the measurement of the cavity state.
+        returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
+        """
+        gamma, delta = params
+        number_operator = tensor(create(N_cav) @ destroy(N_cav), identity(2))
+        angle = (gamma * number_operator) + delta / 2
+        meas_op = jnp.where(
+            measurement_outcome == 1,
+            cosm(angle),
+            sinm(angle),
+        )
+        return meas_op
+
+    alpha = 3
+    psi_target = tensor(
+        coherent(N_cav, alpha)
+        + coherent(N_cav, -alpha)
+        + coherent(N_cav, 1j * alpha)
+        + coherent(N_cav, -1j * alpha),
+        basis(2),
+    )  # 4-legged state
+
+    # Normalize psi_target before constructing rho_target
+    psi_target = psi_target / jnp.linalg.norm(psi_target)
+    rho_target = psi_target @ psi_target.conj().T
+
+    # Here the loss directly corressponds to the -fidelity (when converging) because log(1) is 0 and
+
+    # the algorithm is choosing params that makes the POVM generate prob = 1
+    key = jax.random.PRNGKey(42)
+
+    measure = Gate(
+        gate=povm_measure_operator,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(2,),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        ),
+        measurement_flag=True,
+    )
+
+    qub_unitary = Gate(
+        gate=qubit_unitary,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(1,),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        ),
+        measurement_flag=False,
+    )
+
+    qub_cav = Gate(
+        gate=qubit_cavity_unitary,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(1,),  # 2 for gamma and delta
+            minval=-jnp.pi,
+            maxval=jnp.pi,
+        ),
+        measurement_flag=False,
+    )
+
+    system_params = [measure, qub_unitary, qub_cav]
+
+    def wrapper(reward_weights):
+        fidelities = optimize_pulse(
+            U_0=rho_target,
+            C_target=rho_target,
+            system_params=system_params,
+            num_time_steps=len(reward_weights),
+            reward_weights=reward_weights,
+            mode="lookup",
+            goal="fidelity",
+            max_iter=100,
+            convergence_threshold=None,
+            learning_rate=0.02,
+            evo_type="density",
+            batch_size=1,
+            eval_batch_size=16,
+            eval_time_steps=5,
+        ).fidelity_each_timestep
+
+        batch_mean = jnp.mean(jnp.array(fidelities), axis=1)
+
+        return batch_mean
+    
+    result1 = wrapper(reward_weights=[1.0, 0.0])
+    result2 = wrapper(reward_weights=[0.0, 1.0])
+    result3 = wrapper(reward_weights=[1.0, 1.0])
+    result4 = wrapper(reward_weights=[1.0])
+
+    assert jnp.allclose(jnp.array([result1[0], result2[0], result3[0], result4[0]]), 1), "Fidelity at timestep 0 should be 1 because initial and target state are identical."
+    assert result1[1] > 0.7 and result1[2:] < 0.2, "For reward_weights=[1.0, 0.0], only first timestep should be optimized."
+    assert result2[1] < 0.2 and result2[2]  > 0.7 and result2[3:] < 0.5, "For reward_weights=[0.0, 1.0], only second timestep should be optimized."
+    assert result3[1:3] > 0.7 and result3[3] < 0.5, "For reward_weights=[1.0, 1.0], two timesteps should be optimized."
+
+    assert jnp.allclose(result1[1], result4[1]), "Unrewarded future should not affect optimization up to that timestep."
+    assert not jnp.allclose(result1[2:], result4[2:]), "LUT column not contributing to loss should not be optimized."
 
 # test normal state preparation using parameterized grape
 def test_example_A():
