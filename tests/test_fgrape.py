@@ -740,6 +740,9 @@ def example_E_body():
         return True
     return False
 
+
+# Test some specific features
+#@pytest.mark.slow # (approx 1 min)
 def test_reward_weights():
     """
     Tests a example_D with different reward weights (and less iterations for speed)
@@ -877,12 +880,221 @@ def test_reward_weights():
     result4 = wrapper(reward_weights=[1.0])
 
     assert jnp.allclose(jnp.array([result1[0], result2[0], result3[0], result4[0]]), 1), "Fidelity at timestep 0 should be 1 because initial and target state are identical."
-    assert result1[1] > 0.7 and result1[2:] < 0.2, "For reward_weights=[1.0, 0.0], only first timestep should be optimized."
-    assert result2[1] < 0.2 and result2[2]  > 0.7 and result2[3:] < 0.5, "For reward_weights=[0.0, 1.0], only second timestep should be optimized."
-    assert result3[1:3] > 0.7 and result3[3] < 0.5, "For reward_weights=[1.0, 1.0], two timesteps should be optimized."
+    assert jnp.all(result1[1] > 0.7) and jnp.all(result1[2:] < 0.3), "For reward_weights=[1.0, 0.0], only first timestep should be optimized."
+    assert jnp.all(result2[1] < 0.2) and jnp.all(result2[2]  > 0.7) and jnp.all(result2[3:] < 0.5), "For reward_weights=[0.0, 1.0], only second timestep should be optimized."
+    assert jnp.all(result3[1:3] > 0.7) and jnp.all(result3[3] < 0.5), "For reward_weights=[1.0, 1.0], two timesteps should be optimized."
 
     assert jnp.allclose(result1[1], result4[1]), "Unrewarded future should not affect optimization up to that timestep."
     assert not jnp.allclose(result1[2:], result4[2:]), "LUT column not contributing to loss should not be optimized."
+
+
+#@pytest.mark.slow # (approx 45 seconds)
+def test_eval_time_steps():
+    """
+        Tests example_E with eval_time_steps to check fidelity decay per timestep.
+        It was observed that with the current setup, the fidelity decays between 0.95 and 0.99 per timestep.
+    """
+    from feedback_grape.fgrape import optimize_pulse
+    from feedback_grape.utils.operators import cosm, sinm, identity
+    from feedback_grape.utils.states import coherent
+    import jax.numpy as jnp
+    import jax
+
+    from feedback_grape.utils.fidelity import ket2dm
+
+    N_cav = 30  # number of cavity modes
+    N_snap = 15
+
+    alpha = 2
+    psi_target = coherent(N_cav, alpha) + coherent(N_cav, -alpha)
+
+    # Normalize psi_target before constructing rho_target
+    psi_target = psi_target / jnp.linalg.norm(psi_target)
+
+    rho_target = ket2dm(psi_target)
+
+    from feedback_grape.utils.operators import create, destroy
+
+    def displacement_gate(alphas):
+        """Displacement operator for a coherent state."""
+        alpha_re, alpha_im = alphas
+        alpha = alpha_re + 1j * alpha_im
+        gate = jax.scipy.linalg.expm(
+            alpha * create(N_cav) - alpha.conj() * destroy(N_cav)
+        )
+        return gate
+
+
+    def displacement_gate_dag(alphas):
+        """Displacement operator for a coherent state."""
+        alpha_re, alpha_im = alphas
+        alpha = alpha_re + 1j * alpha_im
+        gate = (
+            jax.scipy.linalg.expm(
+                alpha * create(N_cav) - alpha.conj() * destroy(N_cav)
+            )
+            .conj()
+            .T
+        )
+        return gate
+
+    def snap_gate(phase_list):
+        diags = jnp.ones(shape=(N_cav - len(phase_list)))
+        exponentiated = jnp.exp(1j * jnp.array(phase_list))
+        diags = jnp.concatenate((exponentiated, diags))
+        return jnp.diag(diags)
+
+    def povm_measure_operator(measurement_outcome, params):
+        """
+        POVM for the measurement of the cavity state.
+        returns Mm ( NOT the POVM element Em = Mm_dag @ Mm ), given measurement_outcome m, gamma and delta
+        """
+        gamma, delta = params
+        angle = gamma * create(N_cav) @ destroy(N_cav) + delta / 2 * identity(N_cav)
+        meas_op = jnp.where(
+            measurement_outcome == 1,
+            cosm(angle),
+            sinm(angle),
+        )
+        return meas_op
+
+    import flax.linen as nn
+
+    # You can do whatever you want inside so long as you maintaing the hidden_size and output size shapes
+    class RNN(nn.Module):
+        hidden_size: int  # number of features in the hidden state
+        output_size: int  # number of features in the output (inferred from the number of parameters) just provide those attributes to the class
+
+        @nn.compact
+        def __call__(self, measurement, hidden_state):
+
+            if measurement.ndim == 1:
+                measurement = measurement.reshape(1, -1)
+
+            ###############
+            ### Free to change whatever you want below as long as hidden layers have size self.hidden_size
+            ### and output layer has size self.output_size
+            ###############
+
+            gru_cell = nn.GRUCell(
+                features=self.hidden_size,
+                gate_fn=nn.sigmoid,
+                activation_fn=nn.tanh,
+            )
+            self.make_rng('dropout')
+
+            new_hidden_state, _ = gru_cell(hidden_state, measurement)
+            new_hidden_state = nn.Dropout(rate=0.1, deterministic=False)(
+                new_hidden_state
+            )
+            # this returns the povm_params after linear regression through the hidden state which contains
+            # the information of the previous time steps and this is optimized to output best povm_params
+            # new_hidden_state = nn.Dense(features=self.hidden_size)(new_hidden_state)
+            new_hidden_state = nn.Dense(
+                features=self.hidden_size,
+                kernel_init=nn.initializers.glorot_uniform(),
+            )(new_hidden_state)
+            new_hidden_state = nn.relu(new_hidden_state)
+            new_hidden_state = nn.Dense(
+                features=self.hidden_size,
+                kernel_init=nn.initializers.glorot_uniform(),
+            )(new_hidden_state)
+            new_hidden_state = nn.relu(new_hidden_state)
+            output = nn.Dense(
+                features=self.output_size,
+                kernel_init=nn.initializers.glorot_uniform(),
+                bias_init=nn.initializers.constant(0.1),
+            )(new_hidden_state)
+            output = nn.relu(output)
+
+            ###############
+            ### Do not change the return statement
+            ###############
+
+            return output[0], new_hidden_state
+
+    from feedback_grape.fgrape import Decay, Gate
+
+    key = jax.random.PRNGKey(42)
+
+    measure = Gate(
+        gate=povm_measure_operator,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(2,),  # 2 for gamma and delta
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
+        measurement_flag=True,
+    )
+
+    displacement = Gate(
+        gate=displacement_gate,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(2,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
+        measurement_flag=False,
+    )
+
+    snap = Gate(
+        gate=snap_gate,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(N_snap,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
+        measurement_flag=False,
+    )
+
+    displacement_dag = Gate(
+        gate=displacement_gate_dag,
+        initial_params=jax.random.uniform(
+            key,
+            shape=(2,),
+            minval=-jnp.pi / 2,
+            maxval=jnp.pi / 2,
+            dtype=jnp.float64,
+        ),
+        measurement_flag=False,
+    )
+
+    decay = Decay(c_ops=[jnp.sqrt(0.005) * destroy(N_cav)])
+
+    system_params = [decay, measure, decay, displacement, snap, displacement_dag]
+
+    result = optimize_pulse(
+        U_0=rho_target,
+        C_target=rho_target,
+        system_params=system_params,
+        num_time_steps=2,
+        reward_weights=[1.0, 1.0],
+        mode="nn",
+        goal="fidelity",
+        max_iter=210,
+        convergence_threshold=None,
+        learning_rate=0.01,
+        evo_type="density",
+        batch_size=1,
+        rnn=RNN,
+        rnn_hidden_size=30,
+        eval_batch_size=1,
+        eval_time_steps=100,
+        progress=True,
+    )
+
+    fidelities = jnp.mean(jnp.array(result.fidelity_each_timestep), axis=1)
+    const = fidelities[1:] / fidelities[:-1]
+
+    assert len(fidelities) == 101, "eval_time_steps not working as expected." # initial fidelity + 100 time steps
+    assert jnp.all(const > 0.95) and jnp.all(const < 0.99), "Fidelity decay per timestep not as expected."
+
 
 # test normal state preparation using parameterized grape
 def test_example_A():
