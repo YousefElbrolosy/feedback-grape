@@ -88,7 +88,7 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
     return rho_meas
 
 
-def convert_to_index(measurement_history):
+def convert_to_index(measurement_history, lut_depth):
     """
 
     Convert measurement history from [1, -1, ...] to [0, 1, ...] and then to an integer index
@@ -96,6 +96,7 @@ def convert_to_index(measurement_history):
     Args:
         measurement_history: List of measurements, where 1 indicates a positive measurement and -1 indicates
                              a negative measurement.
+        lut_depth: Number of measurements to consider (last #lut_depth measurements).
     Returns:
         int: Integer index representing the measurement history for accessing the lut.
 
@@ -104,7 +105,7 @@ def convert_to_index(measurement_history):
     # Convert binary list to integer index (e.g., [0,1] -> 1)
     reversed_binary = binary_history[::-1]
     int_index = jnp.sum(
-        (2 ** jnp.arange(len(reversed_binary))) * reversed_binary
+        ((2 ** jnp.arange(len(reversed_binary))) * reversed_binary)[:lut_depth]
     )
     return int_index
 
@@ -120,8 +121,8 @@ def extract_from_lut(lut, measurement_history):
     Returns:
         Extracted parameters.
     """
-    sub_array_idx = len(measurement_history) - 1
-    sub_array_param_idx = convert_to_index(measurement_history)
+    sub_array_idx = min(len(measurement_history) - 1, len(lut) - 1)
+    sub_array_param_idx = convert_to_index(measurement_history, len(lut))
     return jnp.array(lut)[sub_array_idx][sub_array_param_idx]
 
 
