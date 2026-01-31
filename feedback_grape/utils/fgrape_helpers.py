@@ -87,7 +87,7 @@ def apply_gate(rho_cav, gate, params, evo_type, gate_param_constraints):
     return rho_meas
 
 
-def convert_to_index(measurement_history, memory_depth):
+def convert_to_index(measurement_history, lut_depth):
     """
 
     Convert measurement history from [1, -1, ...] to [0, 1, ...] and then to an integer index
@@ -95,6 +95,7 @@ def convert_to_index(measurement_history, memory_depth):
     Args:
         measurement_history: List of measurements, where 1 indicates a positive measurement and -1 indicates
                              a negative measurement.
+        lut_depth: Number of measurements to consider (last #lut_depth measurements).
     Returns:
         int: Integer index representing the measurement history for accessing the lut.
 
@@ -103,7 +104,7 @@ def convert_to_index(measurement_history, memory_depth):
     # Convert binary list to integer index (e.g., [0,1] -> 1)
     reversed_binary = binary_history[::-1]
     int_index = jnp.sum(
-        ((2 ** jnp.arange(len(reversed_binary))) * reversed_binary)[:memory_depth]
+        ((2 ** jnp.arange(len(reversed_binary))) * reversed_binary)[:lut_depth]
     )
     return int_index
 

@@ -587,6 +587,7 @@ def optimize_pulse(
         decay_indices,
     ) = convert_system_params(system_params)
 
+    # TODO: Add support for lut_depth parameter again
     # lut_depth is removed from API for now, set it to num_time_steps here
     #if lut_depth is None and mode == "lookup":
     lut_depth = num_time_steps*len(measurement_indices)
