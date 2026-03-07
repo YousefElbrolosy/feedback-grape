@@ -41,10 +41,6 @@ conda install conda-forge::pandoc
 ```
 To use GPU support with JAX:
 ```
-pip install -U "jax[cuda12]==0.5.2"
-```
-Or alternatively:
-```
 pip install -U -r requirements_gpu.txt
 ```
 ---
