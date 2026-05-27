@@ -474,6 +474,7 @@ def optimize_pulse(
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
     eval_time_steps : int | None = None,
     mode: str = _DEFAULTS.MODE.value,  # nn, lookup
+    lut_depth: int | None = None,
     rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
     progress: bool = _DEFAULTS.PROGRESS.value,
@@ -502,6 +503,8 @@ def optimize_pulse(
             - (default: None) If None, it will be set to num_time_steps.
         mode (str): The mode of operation, either 'nn' (neural network) or 'lookup' (lookup table) \n
             - (default: lookup)
+        lut_depth (int): The depth of the lookup table, which determines how many past measurements are considered for feedback. Only used if mode is 'lookup'. \n
+            - (default: None) If None, it will be set to num_time_steps times the number of measurements per time step.
         rnn (callable): The rnn model to use for the optimization process. Defaults to a predefined rnn class. Only used if mode is 'nn'. \n
             - (default: RNN)
         rnn_hidden_size (int): The hidden size of the rnn model. Only used if mode is 'nn'. (output size is inferred from the number of parameters) \n
@@ -587,12 +590,10 @@ def optimize_pulse(
         decay_indices,
     ) = convert_system_params(system_params)
 
-    # TODO: Add support for lut_depth parameter again
-    # lut_depth is removed from API for now, set it to num_time_steps here
-    #if lut_depth is None and mode == "lookup":
-    lut_depth = num_time_steps*len(measurement_indices)
-    #elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
-    #    raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
+    if lut_depth is None and mode == "lookup":
+        lut_depth = num_time_steps*len(measurement_indices)
+    elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
+        raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
 
     if (
         evo_type == "state" or (isket(U_0) or isket(C_target))
