@@ -321,11 +321,14 @@ def optimize_pulse(
                     evo_type,
                 )
 
-        return -1 * fidelity(
+        fid = fidelity(
             C_target=C_target,
             U_final=U_final,
             evo_type=evo_type,
         )
+        # Return (loss, reward) so optimizers can log the reward (fidelity, in
+        # [0, 1]) via their has_aux path. The loss minimized is -fidelity.
+        return -1 * fid, fid
 
     control_amplitudes, iter_idx = train(
         _loss,
@@ -428,7 +431,7 @@ def train(
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
-        control_amplitudes, iter_idx = optimize_L_BFGS(
+        control_amplitudes, iter_idx, _ = optimize_L_BFGS(
             _loss,
             control_amplitudes,
             max_iter,
@@ -438,7 +441,7 @@ def train(
             early_stop,
         )
     elif optimizer.upper() == "ADAM":
-        control_amplitudes, iter_idx = optimize_adam(
+        control_amplitudes, iter_idx, _ = optimize_adam(
             _loss,
             control_amplitudes,
             max_iter,

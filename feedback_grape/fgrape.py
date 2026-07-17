@@ -76,6 +76,13 @@ class FgResult(NamedTuple):
     """
     Purity of the optimized control along each timestep and batch.
     """
+    reward_history: jnp.ndarray | None = None
+    """
+    Reward (weighted mean fidelity/purity actually being optimized, in [0, 1]
+    for the default reward weights) at each training iteration. Unlike the
+    logged loss, this excludes the unbounded log-probability REINFORCE term and
+    is the interpretable quantity to plot to monitor training progress.
+    """
 
 
 class _DEFAULTS(Enum):
@@ -735,6 +742,12 @@ def optimize_pulse(
         """
 
         loss_sum1 = loss_sum2 = jnp.array(0.0)
+        # reward: weighted mean fidelity/purity actually being optimized for.
+        # Unlike the returned loss (which includes the log-prob REINFORCE term
+        # loss_sum2), this is bounded in [0, 1] for the default weights and is
+        # the interpretable metric to track across training. It equals
+        # -loss_sum1 and is returned as the has_aux output of loss_fn.
+        reward = 0.0
 
         if mode == "no-measurement":
             h_initial_state = None
@@ -794,9 +807,8 @@ def optimize_pulse(
                 ):  # Supposed to cut branches in jax's computational graph -> less memory usage
                     fidelity_value = fidelity_vmap(rf)
                     loss_sum1 += -weight * jnp.mean(fidelity_value)
-                    loss_sum2 += -weight * jnp.mean(
-                        log_prob * jax.lax.stop_gradient(fidelity_value)
-                    )
+                    loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(fidelity_value))
+                    reward += weight * jnp.mean(fidelity_value)
 
         if goal in ["purity", "both"]:
             purity_vmap = jax.vmap(purity)
@@ -809,15 +821,14 @@ def optimize_pulse(
                 ):  # Supposed to cut branches in jax's computational graph -> less memory usage
                     purity_values = purity_vmap(rho=rf)
                     loss_sum1 += -weight * jnp.mean(purity_values)
-                    loss_sum2 += -weight * jnp.mean(
-                        log_prob * jax.lax.stop_gradient(purity_values)
-                    )
+                    loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(purity_values))
+                    reward += weight * jnp.mean(purity_values)
 
-        return loss_sum1 + loss_sum2
+        return loss_sum1 + loss_sum2, reward
 
     train_key, eval_key = jax.random.split(train_eval_key)
 
-    best_model_params, iter_idx = _train(
+    best_model_params, iter_idx, reward_history = _train(
         loss_fn=loss_fn,
         trainable_params=trainable_params,
         max_iter=max_iter,
@@ -847,6 +858,7 @@ def optimize_pulse(
         rnn_model=rnn_model,
         goal=goal,
         num_iterations=iter_idx,
+        reward_history=reward_history,
     )
 
     return result
@@ -867,7 +879,7 @@ def _train(
     """
     # Optimization
     # set up optimizer and training state
-    best_model_params, iter_idx = optimize_adam_feedback(
+    best_model_params, iter_idx, reward_history = optimize_adam_feedback(
         loss_fn,
         trainable_params,
         max_iter,
@@ -880,7 +892,7 @@ def _train(
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted
 
-    return best_model_params, iter_idx
+    return best_model_params, iter_idx, reward_history
 
 
 def _evaluate(
@@ -902,6 +914,7 @@ def _evaluate(
     goal,
     rnn_model,
     num_iterations,
+    reward_history=None,
 ):
     """
     Evaluate the model using the best parameters found during training.
@@ -1000,4 +1013,5 @@ def _evaluate(
         iterations=num_iterations,
         final_state=rho_final,
         returned_params=returned_params,
+        reward_history=reward_history,
     )
