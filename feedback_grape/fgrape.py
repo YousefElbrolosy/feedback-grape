@@ -111,9 +111,29 @@ class Gate(NamedTuple):
     """
     param_constraints: list[float] | None = None
     """
-    This constraints the initialization of the parameters to be within the specified range.
-    This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
-    sigmoid function.
+    Serves two distinct purposes.
+
+    First, it bounds the parameters applied to the gates during the forward pass: at every gate
+    application, parameters lying outside their specified (min, max) range are softly mapped back
+    into it via a sigmoid function, while parameters already within bounds are left unchanged.
+
+    Second, it controls the initialization of the trainable variables, though the precise effect
+    depends on the chosen feedback mode.
+
+    - In 'no-measurement' mode, the user-supplied initial_params seed the first time step, while
+      the variables of the remaining time steps are initialized by sampling uniformly within the
+      specified ranges; if param_constraints is omitted, the same initial_params are instead
+      copied to every time step.
+    - In 'lookup' mode, the analogous behavior applies to the rows of the lookup table: each row
+      is either sampled within the specified ranges or, in the absence of constraints, initialized
+      to the same initial_params.
+    - In 'nn' mode, by contrast, param_constraints plays no role in initialization. The per-step
+      parameters are generated on the fly by the neural network, whose weights are initialized
+      independently, so the parameter serves only its bounding role.
+
+    In all modes, initial_params remains required, since it defines the structure (shapes and
+    number) of the gate parameters and seeds the gate(s) applied before any feedback signal is
+    available.
     """
 
 
@@ -497,7 +517,7 @@ def optimize_pulse(
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
-        reward_weights (list[float] | None): Weights for the reward at each time step. If None, only the final time step is weighted. \n
+        reward_weights (list[float] | None): Weights for the reward at each time step. The 0th index refers to the point after the gates from the first time step are applied. If None, only the final time step is weighted. \n
             - (default: None)
         goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n
             - (default: fidelity)
