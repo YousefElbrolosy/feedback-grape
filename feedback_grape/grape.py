@@ -256,22 +256,21 @@ def optimize_pulse(
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices or unitary matrices."
         )
-    
+
     if evo_type == "state" and not (isket(U_0) and isket(C_target)):
         raise TypeError(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
         )
-    
+
     if evo_type == "density" and (isket(U_0) or isket(C_target)):
         raise TypeError(
             "For evo_type='density', please provide initial and target states as density matrices."
         )
 
     if (
-        (not is_positive_semi_definite(U_0)
-        or not is_positive_semi_definite(C_target))
-        and evo_type == "density"
-    ):
+        not is_positive_semi_definite(U_0)
+        or not is_positive_semi_definite(C_target)
+    ) and evo_type == "density":
         raise TypeError(
             'If evo_type=`density` your initial and target rhos must be positive semi-definite.'
         )
