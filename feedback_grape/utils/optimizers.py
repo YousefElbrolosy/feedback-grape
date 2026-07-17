@@ -60,10 +60,19 @@ def optimize_adam_feedback(
             ):
                 break
 
-        nan_detected = any([jax.numpy.any(jax.numpy.isnan(p)) for p in jax.tree_util.tree_leaves(new_params)])
+        nan_detected = any(
+            [
+                jax.numpy.any(jax.numpy.isnan(p))
+                for p in jax.tree_util.tree_leaves(new_params)
+            ]
+        )
         if nan_detected:
-            print(f"Warning: NaN values detected in updated parameters at iteration {iter_idx}. Stopping optimization.")
-            print(f"Info: NaN values may occur due to high learning rates or POVM elements with zero eigenvalues.")
+            print(
+                f"Warning: NaN values detected in updated parameters at iteration {iter_idx}. Stopping optimization."
+            )
+            print(
+                f"Info: NaN values may occur due to high learning rates or POVM elements with zero eigenvalues."
+            )
             break
         else:
             params = new_params
@@ -71,9 +80,11 @@ def optimize_adam_feedback(
 
         if progress:
             if iter_idx == 0:
-                start_time = time() # Start clock after first iteration which initializes compiled functions
+                start_time = time()  # Start clock after first iteration which initializes compiled functions
             if iter_idx % 10 == 0 and iter_idx > 0:
-                print(f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(time() - start_time)}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(time() - start_time))}s")
+                print(
+                    f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(time() - start_time)}s, eta={int((max_iter - (iter_idx - 1)) / (iter_idx + 1) * (time() - start_time))}s"
+                )
 
     return params, iter_idx + 1
 
@@ -131,9 +142,11 @@ def optimize_adam(
 
         if progress:
             if iter_idx == 0:
-                start_time = time() # Start clock after first iteration which initializes compiled functions
+                start_time = time()  # Start clock after first iteration which initializes compiled functions
             if iter_idx % 10 == 0 and iter_idx > 0:
-                print(f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(start_time - time())}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(start_time - time()))}s")
+                print(
+                    f"Iteration {iter_idx}, Loss: {loss:.6f}, T={int(start_time - time())}s, eta={int((max_iter - (iter_idx - 1)) / (iter_idx + 1) * (start_time - time()))}s"
+                )
 
     return params, iter_idx + 1
 

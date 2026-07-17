@@ -240,8 +240,8 @@ def get_results_for_qubit_in_cavity_problem(optimizer, propcomp):
         time_end - time_start,
         max_iter=10000,
         # when you decrease convergence threshold, it is more accurate
-        convergence_threshold=1e-3,
-        learning_rate=1e-2,
+        convergence_threshold=1e-5,
+        learning_rate=1e-3,
         evo_type="state",
         optimizer=optimizer,
         propcomp=propcomp,

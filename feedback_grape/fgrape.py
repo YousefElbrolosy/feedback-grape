@@ -37,6 +37,8 @@ jax.config.update("jax_enable_x64", True)
 NOTE: If you want to optimize complex prameters, you need to divide your complex parameter into two real 
 parts and then internaly in your defined function unitaries you need to combine them back to complex numbers.
 """
+
+
 class FgResult(NamedTuple):
     """
     result class to store the results of the optimization process.
@@ -85,7 +87,10 @@ class _DEFAULTS(Enum):
     GOAL = "fidelity"
     DECAY = None
     PROGRESS = False
-    REWARD_WEIGHTS = None # if None, will only weight the reward at the final time step
+    REWARD_WEIGHTS = (
+        None  # if None, will only weight the reward at the final time step
+    )
+
 
 class Gate(NamedTuple):
     """
@@ -106,9 +111,29 @@ class Gate(NamedTuple):
     """
     param_constraints: list[float] | None = None
     """
-    This constraints the initialization of the parameters to be within the specified range.
-    This also constraints the parameters that gets applied to the gates by clipping to your specified range using a 
-    sigmoid function.
+    Serves two distinct purposes.
+
+    First, it bounds the parameters applied to the gates during the forward pass: at every gate
+    application, parameters lying outside their specified (min, max) range are softly mapped back
+    into it via a sigmoid function, while parameters already within bounds are left unchanged.
+
+    Second, it controls the initialization of the trainable variables, though the precise effect
+    depends on the chosen feedback mode.
+
+    - In 'no-measurement' mode, the user-supplied initial_params seed the first time step, while
+      the variables of the remaining time steps are initialized by sampling uniformly within the
+      specified ranges; if param_constraints is omitted, the same initial_params are instead
+      copied to every time step.
+    - In 'lookup' mode, the analogous behavior applies to the rows of the lookup table: each row
+      is either sampled within the specified ranges or, in the absence of constraints, initialized
+      to the same initial_params.
+    - In 'nn' mode, by contrast, param_constraints plays no role in initialization. The per-step
+      parameters are generated on the fly by the neural network, whose weights are initialized
+      independently, so the parameter serves only its bounding role.
+
+    In all modes, initial_params remains required, since it defines the structure (shapes and
+    number) of the gate parameters and seeds the gate(s) applied before any feedback signal is
+    available.
     """
 
 
@@ -460,19 +485,21 @@ def calculate_trajectory(
 
 
 def optimize_pulse(
-    U_0: jnp.ndarray,
-    C_target: jnp.ndarray,
+    init_state: jnp.ndarray,
+    target_state: jnp.ndarray,
     system_params: list[Gate],
     num_time_steps: int,
     max_iter: int,
     convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
-    reward_weights: list[float | int] | tuple[float | int, ...] | None = _DEFAULTS.REWARD_WEIGHTS.value,
+    reward_weights: list[float | int]
+    | tuple[float | int, ...]
+    | None = _DEFAULTS.REWARD_WEIGHTS.value,
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
-    eval_time_steps : int | None = None,
+    eval_time_steps: int | None = None,
     mode: str = _DEFAULTS.MODE.value,  # nn, lookup
     rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
@@ -482,15 +509,15 @@ def optimize_pulse(
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
 
     Args:
-        U_0: Initial state or density matrix.
-        C_target: Target state or density matrix.
+        init_state: Initial state or density matrix.
+        target_state: Target state or density matrix.
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
         convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
-        reward_weights (list[float] | None): Weights for the reward at each time step. If None, only the final time step is weighted. \n
+        reward_weights (list[float] | None): Weights for the reward at each time step. The 0th index refers to the point after the gates from the first time step are applied. If None, only the final time step is weighted. \n
             - (default: None)
         goal (str): The optimization goal, which can be `purity`, `fidelity`, or `both` \n
             - (default: fidelity)
@@ -521,25 +548,25 @@ def optimize_pulse(
     if evo_type not in ["state", "density"]:
         raise ValueError("Invalid evo_type. Choose 'state' or 'density'.")
 
-    if U_0 is None:
-        raise ValueError("Please provide an initial state U_0.")
+    if init_state is None:
+        raise ValueError("Please provide an initial state init_state.")
 
-    if C_target is None and goal in ["fidelity", "both"]:
+    if target_state is None and goal in ["fidelity", "both"]:
         raise ValueError(
-            "Please provide a target state C_target for fidelity calculation."
+            "Please provide a target state target_state for fidelity calculation."
         )
 
-    if isbra(U_0) or isbra(C_target):
+    if isbra(init_state) or isbra(target_state):
         raise TypeError(
             "Please provide initial and target states as kets (column vectors) or density matrices."
         )
-    
-    if evo_type == "state" and not (isket(U_0) and isket(C_target)):
+
+    if evo_type == "state" and not (isket(init_state) and isket(target_state)):
         raise TypeError(
             "For evo_type='state', please provide initial and target states as kets (column vectors)."
         )
 
-    if evo_type == "density" and (isket(U_0) or isket(C_target)):
+    if evo_type == "density" and (isket(init_state) or isket(target_state)):
         raise TypeError(
             "For evo_type='density', please provide initial and target states as density matrices."
         )
@@ -548,18 +575,15 @@ def optimize_pulse(
         raise ValueError(
             "Purity is not defined for evo_type='state'. Please use evo_type='density' for purity calculation."
         )
-    
-    if goal == "purity" and C_target is not None:
+
+    if goal == "purity" and target_state is not None:
         raise ValueError(
-            "C_target should not be provided when goal is 'purity'."
+            "target_state should not be provided when goal is 'purity'."
         )
 
-    if (
-        evo_type == "density"
-        and (
-            not is_positive_semi_definite(U_0)
-            or (goal != "purity" and not is_positive_semi_definite(C_target))
-        )
+    if evo_type == "density" and (
+        not is_positive_semi_definite(init_state)
+        or (goal != "purity" and not is_positive_semi_definite(target_state))
     ):
         raise TypeError(
             'If evo_type=`density` Your initial and target rhos must be positive semi-definite.'
@@ -570,13 +594,15 @@ def optimize_pulse(
 
     if eval_batch_size <= 0:
         raise ValueError("eval_batch_size must be greater than 0.")
-    
+
     if reward_weights is None:
         reward_weights = [0.0] * num_time_steps
         reward_weights[-1] = 1.0
 
     if len(reward_weights) != num_time_steps:
-        raise ValueError("reward_weights must have length equal to num_time_steps.")
+        raise ValueError(
+            "reward_weights must have length equal to num_time_steps."
+        )
 
     (
         initial_params,
@@ -589,17 +615,17 @@ def optimize_pulse(
 
     # TODO: Add support for lut_depth parameter again
     # lut_depth is removed from API for now, set it to num_time_steps here
-    #if lut_depth is None and mode == "lookup":
-    lut_depth = num_time_steps*len(measurement_indices)
-    #elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
+    # if lut_depth is None and mode == "lookup":
+    lut_depth = num_time_steps * len(measurement_indices)
+    # elif lut_depth is not None and mode == "lookup" and lut_depth > num_time_steps*len(measurement_indices):
     #    raise ValueError("lut_depth cannot be greater than num_time_steps times number of measurements per timestep.")
 
     if (
-        evo_type == "state" or (isket(U_0) or isket(C_target))
+        evo_type == "state" or (isket(init_state) or isket(target_state))
     ) and decay_indices != []:
         raise ValueError(
             "Decay requires a density matrix representation of your inital and target states because, the solver uses Lindblad equation to evolve the system with dissipation. \n"
-            "Please provide U_0 and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
+            "Please provide init_state and U_target as density matrices perhaps using `utils.fidelity.ket2dm` and use evo_type='density'."
         )
 
     parent_rng_key = jax.random.PRNGKey(0)
@@ -708,7 +734,7 @@ def optimize_pulse(
             Loss value to be minimized.
         """
 
-        loss_sum1 = loss_sum2 = 0
+        loss_sum1 = loss_sum2 = jnp.array(0.0)
 
         if mode == "no-measurement":
             h_initial_state = None
@@ -732,7 +758,7 @@ def optimize_pulse(
             )
 
         rho_finals, log_probs, _ = calculate_trajectory(
-            rho_cav=U_0,
+            rho_cav=init_state,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
@@ -750,27 +776,42 @@ def optimize_pulse(
             rng_key=rng_key,
         )
 
-        if goal in ["fidelity", "both"]: # Cleaned this up a bit and added weighting
+        if goal in [
+            "fidelity",
+            "both",
+        ]:  # Cleaned this up a bit and added weighting
             fidelity_vmap = jax.vmap(
                 lambda rf: fidelity(
-                    C_target=C_target, U_final=rf, evo_type=evo_type
+                    C_target=target_state, U_final=rf, evo_type=evo_type
                 )
             )
 
-            for weight, rf, log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
-                if weight != 0.0: # Supposed to cut branches in jax's computational graph -> less memory usage
+            for weight, rf, log_prob in zip(
+                reward_weights, rho_finals[1:], log_probs[1:]
+            ):
+                if (
+                    weight != 0.0
+                ):  # Supposed to cut branches in jax's computational graph -> less memory usage
                     fidelity_value = fidelity_vmap(rf)
                     loss_sum1 += -weight * jnp.mean(fidelity_value)
-                    loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(fidelity_value))
-        
+                    loss_sum2 += -weight * jnp.mean(
+                        log_prob * jax.lax.stop_gradient(fidelity_value)
+                    )
+
         if goal in ["purity", "both"]:
             purity_vmap = jax.vmap(purity)
 
-            for weight, rf, log_prob in zip(reward_weights, rho_finals[1:], log_probs[1:]):
-                if weight != 0.0: # Supposed to cut branches in jax's computational graph -> less memory usage
+            for weight, rf, log_prob in zip(
+                reward_weights, rho_finals[1:], log_probs[1:]
+            ):
+                if (
+                    weight != 0.0
+                ):  # Supposed to cut branches in jax's computational graph -> less memory usage
                     purity_values = purity_vmap(rho=rf)
                     loss_sum1 += -weight * jnp.mean(purity_values)
-                    loss_sum2 += -weight * jnp.mean(log_prob * jax.lax.stop_gradient(purity_values))
+                    loss_sum2 += -weight * jnp.mean(
+                        log_prob * jax.lax.stop_gradient(purity_values)
+                    )
 
         return loss_sum1 + loss_sum2
 
@@ -788,8 +829,8 @@ def optimize_pulse(
     )
 
     result = _evaluate(
-        U_0=U_0,
-        C_target=C_target,
+        init_state=init_state,
+        target_state=target_state,
         parameterized_gates=parameterized_gates,
         measurement_indices=measurement_indices,
         param_constraints=param_constraints,
@@ -843,8 +884,8 @@ def _train(
 
 
 def _evaluate(
-    U_0,
-    C_target,
+    init_state,
+    target_state,
     parameterized_gates,
     measurement_indices,
     param_shapes,
@@ -867,7 +908,7 @@ def _evaluate(
     """
     if mode == "no-measurement":
         rho_finals, _, returned_params = calculate_trajectory(
-            rho_cav=U_0,
+            rho_cav=init_state,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
@@ -882,7 +923,7 @@ def _evaluate(
         )
     elif mode == "nn":
         rho_finals, _, returned_params = calculate_trajectory(
-            rho_cav=U_0,
+            rho_cav=init_state,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
@@ -900,7 +941,7 @@ def _evaluate(
         )
     elif mode == "lookup":
         rho_finals, _, returned_params = calculate_trajectory(
-            rho_cav=U_0,
+            rho_cav=init_state,
             parameterized_gates=parameterized_gates,
             measurement_indices=measurement_indices,
             param_constraints=param_constraints,
@@ -927,25 +968,21 @@ def _evaluate(
 
     if goal in ["fidelity", "both"]:
         fidelity_vmap = jax.vmap(
-                lambda rf: fidelity(
-                    C_target=C_target, U_final=rf, evo_type=evo_type
-                )
+            lambda rf: fidelity(
+                C_target=target_state, U_final=rf, evo_type=evo_type
             )
-        
+        )
+
         for rho_final in rho_finals:
-            fidelity_each_timestep.append(
-                fidelity_vmap(rho_final)
-            )
+            fidelity_each_timestep.append(fidelity_vmap(rho_final))
 
         final_fidelity = fidelity_each_timestep[-1].mean()
 
     if goal in ["purity", "both"]:
         purity_vmap = jax.vmap(purity)
-        
+
         for rho_final in rho_finals:
-            purity_each_timestep.append(
-                purity_vmap(rho=rho_final)
-            )
+            purity_each_timestep.append(purity_vmap(rho=rho_final))
 
         final_purity = purity_each_timestep[-1].mean()
 
