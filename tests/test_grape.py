@@ -73,7 +73,7 @@ def test_hadamard(optimizer, propcomp):
 @pytest.mark.parametrize(
     "optimizer, propcomp",
     [
-        ("adam", "memory-efficient"),
+        ("l-bfgs", "memory-efficient"),
     ],
 )
 def test_qubit_in_cavity(optimizer, propcomp):
