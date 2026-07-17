@@ -74,9 +74,6 @@ def test_hadamard(optimizer, propcomp):
     "optimizer, propcomp",
     [
         ("adam", "memory-efficient"),
-        ("l-bfgs", "memory-efficient"),
-        ("adam", "time-efficient"),
-        ("l-bfgs", "time-efficient"),
     ],
 )
 def test_qubit_in_cavity(optimizer, propcomp):

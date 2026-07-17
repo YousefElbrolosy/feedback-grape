@@ -15,6 +15,7 @@ State Preparation Examples
    example_A
    example_A_cat_state
    example_C
+   paper_code
 
 State Purification
 ---------------------
