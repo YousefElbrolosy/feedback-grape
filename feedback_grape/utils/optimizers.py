@@ -64,7 +64,7 @@ def optimize_adam_feedback(
         if early_stop:
             if (
                 iter_idx > 0
-                and abs(losses[-1] - losses[-2]) < convergence_threshold
+                and abs(rewards[-1] - rewards[-2]) < convergence_threshold
             ):
                 break
 

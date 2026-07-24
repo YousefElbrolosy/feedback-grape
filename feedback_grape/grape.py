@@ -39,6 +39,11 @@ class result(NamedTuple):
     """
     Final operator after applying the optimized control amplitudes.
     """
+    reward_history: jnp.ndarray | None = None
+    """
+    Reward (fidelity, in [0, 1]) at each training iteration, to allow
+    plotting convergence against iteration count.
+    """
 
 
 class _DEFAULTS(Enum):
@@ -330,7 +335,7 @@ def optimize_pulse(
         # [0, 1]) via their has_aux path. The loss minimized is -fidelity.
         return -1 * fid, fid
 
-    control_amplitudes, iter_idx = train(
+    control_amplitudes, iter_idx, reward_history = train(
         _loss,
         control_amplitudes,
         max_iter,
@@ -354,6 +359,7 @@ def optimize_pulse(
         propcomp=propcomp,
         total_evo_time=total_evo_time,
         num_t_slots=num_t_slots,
+        reward_history=reward_history,
     )
 
     return final_res
@@ -372,6 +378,7 @@ def evaluate(
     propcomp,
     total_evo_time,
     num_t_slots,
+    reward_history=None,
 ):
     if evo_type == "density" and c_ops != []:
         Hs, _ = build_parameterized_hamiltonian(
@@ -413,6 +420,7 @@ def evaluate(
         final_fidelity,
         iter_idx,
         rho_final,
+        reward_history,
     )
 
     return final_res
@@ -431,7 +439,7 @@ def train(
     if isinstance(optimizer, tuple):
         optimizer = optimizer[0]
     if optimizer.upper() == "L-BFGS":
-        control_amplitudes, iter_idx, _ = optimize_L_BFGS(
+        control_amplitudes, iter_idx, reward_history = optimize_L_BFGS(
             _loss,
             control_amplitudes,
             max_iter,
@@ -441,7 +449,7 @@ def train(
             early_stop,
         )
     elif optimizer.upper() == "ADAM":
-        control_amplitudes, iter_idx, _ = optimize_adam(
+        control_amplitudes, iter_idx, reward_history = optimize_adam(
             _loss,
             control_amplitudes,
             max_iter,
@@ -454,7 +462,7 @@ def train(
         raise ValueError(
             f"Optimizer {optimizer} not supported. Use 'adam' or 'l-bfgs'."
         )
-    return control_amplitudes, iter_idx
+    return control_amplitudes, iter_idx, reward_history
 
 
 def plot_control_amplitudes(times, final_amps, labels):
