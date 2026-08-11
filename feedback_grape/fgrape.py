@@ -21,6 +21,7 @@ from .utils.fgrape_helpers import (
     prepare_parameters_from_dict,
     convert_system_params,
     construct_ragged_row,
+    prepare_warm_start,
     extract_from_lut,
     reshape_params,
     apply_gate,
@@ -99,6 +100,8 @@ class _DEFAULTS(Enum):
     REWARD_WEIGHTS = (
         None  # if None, will only weight the reward at the final time step
     )
+    CONVERGENCE_THRESHOLD = None
+    INITIAL_TRAINABLE_PARAMETERS = None
 
 
 class Gate(NamedTuple):
@@ -499,12 +502,12 @@ def optimize_pulse(
     system_params: list[Gate],
     num_time_steps: int,
     max_iter: int,
-    convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
     reward_weights: list[float | int]
     | tuple[float | int, ...]
     | None = _DEFAULTS.REWARD_WEIGHTS.value,
+    convergence_threshold: float = _DEFAULTS.CONVERGENCE_THRESHOLD.value,
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -515,6 +518,7 @@ def optimize_pulse(
     progress: bool = _DEFAULTS.PROGRESS.value,
     convergence_window: int = _DEFAULTS.CONVERGENCE_WINDOW.value,
     convergence_patience: int = _DEFAULTS.CONVERGENCE_PATIENCE.value,
+    initial_trainable_parameters = _DEFAULTS.INITIAL_TRAINABLE_PARAMETERS.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -530,6 +534,7 @@ def optimize_pulse(
             - The reward is estimated from `batch_size` sampled trajectories, so it is noisy. Set this above the noise floor of your reward -- otherwise it can never be reached and the optimization silently runs to `max_iter` (a warning is emitted when this happens). \n
             - A reward still improving more slowly than that noise floor cannot be told apart from a plateau, so early stopping can end training while the reward would have kept rising. Raise `batch_size` or `convergence_window` if that matters more than the iterations saved. \n
             - Note that with `goal='both'` the reward sums fidelity and purity, and every non-zero entry of `reward_weights` adds another term, so the reward ranges over [0, 2 * sum(reward_weights)] rather than [0, 1]. The threshold is in those same units.
+            - (default: None)
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
         reward_weights (list[float] | None): Weights for the reward at each time step. The 0th index refers to the point after the gates from the first time step are applied. If None, only the final time step is weighted. \n
@@ -554,6 +559,11 @@ def optimize_pulse(
             - (default: 50)
         convergence_patience (int): Number of consecutive window comparisons that must fall below `convergence_threshold` before stopping. Guards against a single comparison landing low by chance. Only used when `convergence_threshold` is not None. \n
             - (default: 3)
+        initial_trainable_parameters: Parameters to warm start from, so that training continues from an earlier run instead of from a fresh initialization. Pass the `optimized_trainable_parameters` field of a previous `FgResult`. \n
+            - (default: None) If None, parameters are initialized from `system_params` as usual. \n
+            - The previous run must have used the same `mode`, `system_params` and `num_time_steps`, and in 'nn' mode the same `rnn_hidden_size`; a mismatch raises a ValueError describing what differs. \n
+            - The `initial_params` supplied through `system_params` are then only used to determine parameter shapes, since the warm started values replace them. `param_constraints` still applies during the forward pass. \n
+            - Note that only the parameters are carried over, not the Adam optimizer state (its moment estimates restart), so expect a short transient before the previous convergence rate is recovered. \n
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
@@ -741,6 +751,14 @@ def optimize_pulse(
                 'lookup_table': F,
                 'initial_params': flat_params,
             }
+
+    if initial_trainable_parameters is not None:
+        # Warm start: the freshly built parameters are kept only as a template
+        # describing the structure this configuration expects, and are then
+        # replaced by the ones the user is continuing from.
+        trainable_params = prepare_warm_start(
+            initial_trainable_parameters, trainable_params, mode
+        )
 
     def loss_fn(trainable_params, rng_key):
         """
