@@ -3,6 +3,7 @@ GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
 import jax
+import warnings
 from enum import Enum
 import jax.numpy as jnp
 from .utils.solver import mesolve
@@ -516,8 +517,8 @@ def optimize_pulse(
     rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
     progress: bool = _DEFAULTS.PROGRESS.value,
-    convergence_window: int = _DEFAULTS.CONVERGENCE_WINDOW.value,
-    convergence_patience: int = _DEFAULTS.CONVERGENCE_PATIENCE.value,
+    convergence_window: int | None = None,
+    convergence_patience: int | None = None,
     initial_trainable_parameters = _DEFAULTS.INITIAL_TRAINABLE_PARAMETERS.value,
 ) -> FgResult:
     """
@@ -555,10 +556,10 @@ def optimize_pulse(
             - (default: 30)
         progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes). This may significantly slow down the optimization process \n
             - (default: False).
-        convergence_window (int): Number of iterations averaged into each of the two disjoint windows compared for convergence. Larger values suppress more reward noise and make slow-but-real progress easier to distinguish from a plateau, at the cost of delaying the earliest possible stop, which is `2 * convergence_window` iterations. Too small a window stops prematurely during the slow early phase of training. Only used when `convergence_threshold` is not None. \n
-            - (default: 50)
-        convergence_patience (int): Number of consecutive window comparisons that must fall below `convergence_threshold` before stopping. Guards against a single comparison landing low by chance. Only used when `convergence_threshold` is not None. \n
-            - (default: 3)
+        convergence_window (int): Number of iterations averaged into each of the two disjoint windows compared for convergence. Larger values suppress more reward noise and make slow-but-real progress easier to distinguish from a plateau, at the cost of delaying the earliest possible stop, which is `2 * convergence_window` iterations. Too small a window stops prematurely during the slow early phase of training. Setting it while `convergence_threshold` is None has no effect and warns. \n
+            - (default: None, which uses 50)
+        convergence_patience (int): Number of consecutive window comparisons that must fall below `convergence_threshold` before stopping. Guards against a single comparison landing low by chance. Setting it while `convergence_threshold` is None has no effect and warns. \n
+            - (default: None, which uses 3)
         initial_trainable_parameters: Parameters to warm start from, so that training continues from an earlier run instead of from a fresh initialization. Pass the `optimized_trainable_parameters` field of a previous `FgResult`. \n
             - (default: None) If None, parameters are initialized from `system_params` as usual. \n
             - The previous run must have used the same `mode`, `system_params` and `num_time_steps`, and in 'nn' mode the same `rnn_hidden_size`; a mismatch raises a ValueError describing what differs. \n
@@ -569,8 +570,25 @@ def optimize_pulse(
     """
     if convergence_threshold == None:
         early_stop = False
+        # Without a threshold these two are never consulted, so supplying them
+        # would otherwise silently do nothing.
+        if convergence_window is not None or convergence_patience is not None:
+            warnings.warn(
+                "convergence_window and/or convergence_patience were set, but "
+                "convergence_threshold is None, so convergence checking is "
+                "disabled and they have no effect. Pass a convergence_threshold "
+                "to enable early stopping.",
+                stacklevel=2,
+            )
     else:
         early_stop = True
+
+    # Resolved after the check above, so that "not supplied" stays
+    # distinguishable from a value that happens to equal the default.
+    if convergence_window is None:
+        convergence_window = _DEFAULTS.CONVERGENCE_WINDOW.value
+    if convergence_patience is None:
+        convergence_patience = _DEFAULTS.CONVERGENCE_PATIENCE.value
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
