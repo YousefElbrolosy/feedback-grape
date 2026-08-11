@@ -1,4 +1,7 @@
+import warnings
+
 import jax
+import jax.numpy as jnp
 import optax  # type: ignore
 import optax.tree_utils as otu  # type: ignore
 from time import time
@@ -17,26 +20,51 @@ def optimize_adam_feedback(
     key,
     progress,
     early_stop,
+    window=50,
+    patience=3,
 ):
     """
 
     Uses Adam optimizer to optimize the control amplitudes.
+
+    The reward is a stochastic estimate (it is averaged over ``batch_size``
+    sampled trajectories), so consecutive rewards differ by an amount that does
+    not decay as the optimization converges. Convergence is therefore measured
+    by comparing the mean reward over the last ``window`` iterations against the
+    mean over the ``window`` iterations before those. Averaging suppresses the
+    sampling noise, and keeping the two windows disjoint stops the comparison
+    from collapsing back into a single-sample difference.
 
     Args:
         loss_fn: loss function to optimize.
         control_amplitudes: Initial control amplitudes.
         max_iter: Maximum number of iterations.
         learning_rate: Learning rate for the optimizer.
-        convergence_threshold: Convergence threshold for optimization.
+        convergence_threshold: Smallest improvement in mean reward, over
+            ``window`` iterations, that is still considered progress. Must be
+            set above the noise floor of the reward (roughly
+            ``std(reward) * sqrt(2 / window)`` once the reward has plateaued) or
+            it can never be reached.
         key: JAX random key for stochastic operations (so that each iteration has is different).
         progress: If True, prints the progress of the optimization.
-        early_stop: If True, stops the optimization if the loss does not change significantly (if convergence threshold is reached).
+        early_stop: If True, stops the optimization once the reward has stopped
+            improving by more than ``convergence_threshold``.
+        window: Number of iterations averaged into each of the two compared
+            windows. Larger values suppress more noise but delay the earliest
+            possible stop, which is ``2 * window`` iterations.
+        patience: Number of consecutive comparisons that must fall below
+            ``convergence_threshold`` before stopping. Guards against a single
+            comparison landing low by chance.
     Returns:
         control_amplitudes: Optimized control amplitudes.
         final_iter_idx: Number of iterations in the optimization.
         reward_history: Reward (e.g. mean fidelity/purity, in [0, 1]) at each
             iteration, as returned by the auxiliary output of ``loss_fn``.
     """
+    if window < 2:
+        raise ValueError("window must be at least 2.")
+    if patience < 1:
+        raise ValueError("patience must be at least 1.")
     optimizer = optax.adam(learning_rate)
     opt_state = optimizer.init(control_amplitudes)
     losses = []
@@ -55,22 +83,20 @@ def optimize_adam_feedback(
     params = control_amplitudes
     # setting it to -1 in the beginning in case the max_iter is 0
     iter_idx = -1
+    # number of consecutive window comparisons that showed no real improvement
+    stall_count = 0
+    converged = False
+    nan_detected = False
     for iter_idx in range(max_iter):
         new_params, new_opt_state, loss, reward, key = step(
             params, opt_state, key
         )
         losses.append(loss)
         rewards.append(reward)
-        if early_stop:
-            if (
-                iter_idx > 0
-                and abs(rewards[-1] - rewards[-2]) < convergence_threshold
-            ):
-                break
 
         nan_detected = any(
             [
-                jax.numpy.any(jax.numpy.isnan(p))
+                jnp.any(jnp.isnan(p))
                 for p in jax.tree_util.tree_leaves(new_params)
             ]
         )
@@ -90,9 +116,52 @@ def optimize_adam_feedback(
             if iter_idx == 0:
                 start_time = time()  # Start clock after first iteration which initializes compiled functions
             if iter_idx % 10 == 0 and iter_idx > 0:
-                print(f"Iteration {iter_idx}, Reward: {reward:.6f}, Loss: {loss:.6f}, T={int(time() - start_time)}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(time() - start_time))}s")
+                print(
+                    f"Iteration {iter_idx}, Reward: {reward:.6f}, Loss: {loss:.6f}, T={int(time() - start_time)}s, eta={int((max_iter - (iter_idx - 1)) / (iter_idx + 1) * (time() - start_time))}s"
+                )
 
-    return params, iter_idx + 1, jax.numpy.array(rewards)
+        # Compared windows are disjoint: overlapping ones share all but two
+        # samples, which reduces the comparison to a single-sample difference
+        # and reintroduces the noise the averaging is meant to remove.
+        if early_stop and len(rewards) >= 2 * window:
+            recent = jnp.mean(jnp.asarray(rewards[-window:]))
+            prior = jnp.mean(jnp.asarray(rewards[-2 * window : -window]))
+            # Signed, so that a collapse in reward is not read as convergence.
+            if recent - prior < convergence_threshold:
+                stall_count += 1
+            else:
+                stall_count = 0
+            if stall_count >= patience:
+                converged = True
+                break
+
+    if early_stop and not converged and not nan_detected:
+        _warn_if_threshold_unreachable(rewards, convergence_threshold, window)
+
+    return params, iter_idx + 1, jnp.array(rewards)
+
+
+def _warn_if_threshold_unreachable(rewards, convergence_threshold, window):
+    """
+    Warn when early stopping was asked for but could not have happened.
+
+    A ``convergence_threshold`` far below the spread of the reward is never
+    reached, so the optimization silently runs to ``max_iter``. Comparing it
+    against the standard deviation of the window difference makes that visible.
+    """
+    if len(rewards) < 2 * window:
+        return
+    tail = jnp.asarray(rewards[-2 * window :])
+    noise_floor = float(jnp.std(tail)) * (2.0 / window) ** 0.5
+    if convergence_threshold < 0.1 * noise_floor:
+        warnings.warn(
+            f"early_stop was requested but never triggered: "
+            f"convergence_threshold={convergence_threshold:g} is far below the "
+            f"observed reward noise floor (~{noise_floor:.2g}). Consider a "
+            f"threshold above that value, or increase batch_size or window to "
+            f"lower the noise floor.",
+            stacklevel=3,
+        )
 
 
 def optimize_adam(
@@ -156,7 +225,9 @@ def optimize_adam(
             if iter_idx == 0:
                 start_time = time()  # Start clock after first iteration which initializes compiled functions
             if iter_idx % 10 == 0 and iter_idx > 0:
-                print(f"Iteration {iter_idx}, Reward: {reward:.6f}, Loss: {loss:.6f}, T={int(start_time - time())}s, eta={int((max_iter - (iter_idx - 1))/(iter_idx + 1)*(start_time - time()))}s")
+                print(
+                    f"Iteration {iter_idx}, Reward: {reward:.6f}, Loss: {loss:.6f}, T={int(start_time - time())}s, eta={int((max_iter - (iter_idx - 1)) / (iter_idx + 1) * (start_time - time()))}s"
+                )
 
     return params, iter_idx + 1, jax.numpy.array(rewards)
 
@@ -239,7 +310,6 @@ def optimize_L_BFGS(
         iter_num = otu.tree_get(state, 'count')
         grad = otu.tree_get(state, 'grad')
         err = otu.tree_l2_norm(grad)
-        import jax.numpy as jnp
 
         return jnp.logical_or(
             jnp.logical_and(iter_num == 0, max_iter != 0),
@@ -252,7 +322,12 @@ def optimize_L_BFGS(
         )
 
     rewards_init = jax.numpy.full((max_iter,), jax.numpy.nan)
-    init_carry = (control_amplitudes, opt.init(control_amplitudes), 0, rewards_init)
+    init_carry = (
+        control_amplitudes,
+        opt.init(control_amplitudes),
+        0,
+        rewards_init,
+    )
     final_params, _, final_iter_idx, reward_history = jax.lax.while_loop(
         continuing_criterion, step, init_carry
     )

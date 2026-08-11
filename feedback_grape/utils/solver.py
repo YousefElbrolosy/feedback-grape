@@ -40,6 +40,7 @@ def sesolve(Hs, initial_state, delta_ts, evo_type="density"):
             U_final = jax.scipy.linalg.expm(-1j * delta_t * (H)) @ U_final
         return U_final
 
+
 # TODO: See if it would be helpful to make the Hamiltonian, sparse using dynamiqs new update to speedup 0.3.sth
 def mesolve(*, jump_ops, rho0, H=None, tsave=jnp.linspace(0, 1, 2)):
     """
