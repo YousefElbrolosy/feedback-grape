@@ -375,3 +375,56 @@ def get_trainable_parameters_for_no_meas(
             trainable_params.append(flat_params)
 
     return trainable_params
+
+
+def prepare_warm_start(provided, template, mode):
+    """
+
+    Check user-supplied warm start parameters against the ones this
+    configuration would have built, and return them ready for training.
+
+    `template` is the freshly initialized parameter structure, which encodes
+    everything the current call expects: the mode, the number of time steps, the
+    number of gate parameters and (in `nn` mode) the rnn layer sizes. Checking
+    against it here turns a mismatch into an actionable error instead of a shape
+    error raised from somewhere inside the loss function.
+
+    Args:
+        provided: Parameters to continue training from, as returned in
+            `FgResult.optimized_trainable_parameters`.
+        template: Freshly initialized parameters for this configuration.
+        mode: The feedback mode, used only to make the error messages specific.
+
+    Returns:
+        The provided parameters, as jax arrays matching the template's dtypes.
+
+    """
+    template_leaves, template_struct = jax.tree_util.tree_flatten(template)
+    provided_leaves, provided_struct = jax.tree_util.tree_flatten(provided)
+
+    if provided_struct != template_struct:
+        raise ValueError(
+            f"initial_trainable_parameters does not match the structure "
+            f"expected in mode '{mode}'. Expected {template_struct}, got "
+            f"{provided_struct}. Pass the `optimized_trainable_parameters` of a "
+            f"previous run that used the same mode, system_params and "
+            f"num_time_steps."
+        )
+
+    converted = []
+    for idx, (given, expected) in enumerate(
+        zip(provided_leaves, template_leaves)
+    ):
+        given = jnp.asarray(given)
+        expected = jnp.asarray(expected)
+        if given.shape != expected.shape:
+            raise ValueError(
+                f"initial_trainable_parameters has the wrong shape at entry "
+                f"{idx}: expected {expected.shape}, got {given.shape}. This "
+                f"usually means the previous run used a different "
+                f"num_time_steps, a different number of gate parameters, or (in "
+                f"'nn' mode) a different rnn_hidden_size."
+            )
+        converted.append(given.astype(expected.dtype))
+
+    return jax.tree_util.tree_unflatten(provided_struct, converted)
