@@ -3,6 +3,7 @@ GRadient Ascent Pulse Engineering (GRAPE) with feedback.
 """
 
 import jax
+import warnings
 from enum import Enum
 import jax.numpy as jnp
 from .utils.solver import mesolve
@@ -21,6 +22,7 @@ from .utils.fgrape_helpers import (
     prepare_parameters_from_dict,
     convert_system_params,
     construct_ragged_row,
+    prepare_warm_start,
     extract_from_lut,
     reshape_params,
     apply_gate,
@@ -76,6 +78,13 @@ class FgResult(NamedTuple):
     """
     Purity of the optimized control along each timestep and batch.
     """
+    reward_history: jnp.ndarray | None = None
+    """
+    Reward (weighted mean fidelity/purity actually being optimized, in [0, 1]
+    for the default reward weights) at each training iteration. Unlike the
+    logged loss, this excludes the unbounded log-probability REINFORCE term and
+    is the interpretable quantity to plot to monitor training progress.
+    """
 
 
 class _DEFAULTS(Enum):
@@ -87,9 +96,13 @@ class _DEFAULTS(Enum):
     GOAL = "fidelity"
     DECAY = None
     PROGRESS = False
+    CONVERGENCE_WINDOW = 50
+    CONVERGENCE_PATIENCE = 3
     REWARD_WEIGHTS = (
         None  # if None, will only weight the reward at the final time step
     )
+    CONVERGENCE_THRESHOLD = None
+    INITIAL_TRAINABLE_PARAMETERS = None
 
 
 class Gate(NamedTuple):
@@ -490,12 +503,12 @@ def optimize_pulse(
     system_params: list[Gate],
     num_time_steps: int,
     max_iter: int,
-    convergence_threshold: float,
     learning_rate: float,
     evo_type: str,  # state, density (used now mainly for fidelity calculation)
     reward_weights: list[float | int]
     | tuple[float | int, ...]
     | None = _DEFAULTS.REWARD_WEIGHTS.value,
+    convergence_threshold: float = _DEFAULTS.CONVERGENCE_THRESHOLD.value,
     goal: str = _DEFAULTS.GOAL.value,  # purity, fidelity, both
     batch_size: int = _DEFAULTS.BATCH_SIZE.value,
     eval_batch_size: int = _DEFAULTS.EVAL_BATCH_SIZE.value,
@@ -504,6 +517,9 @@ def optimize_pulse(
     rnn: callable = _DEFAULTS.RNN.value,  # type: ignore
     rnn_hidden_size: int = _DEFAULTS.RNN_HIDDEN_SIZE.value,
     progress: bool = _DEFAULTS.PROGRESS.value,
+    convergence_window: int | None = None,
+    convergence_patience: int | None = None,
+    initial_trainable_parameters = _DEFAULTS.INITIAL_TRAINABLE_PARAMETERS.value,
 ) -> FgResult:
     """
     Optimizes pulse parameters for quantum systems based on the specified configuration using ADAM.
@@ -514,7 +530,12 @@ def optimize_pulse(
         system_params: List of Gate objects containing gate functions, initial parameters, measurement flags, and parameter constraints.
         num_time_steps (int): The number of time steps for the optimization process.
         max_iter (int): The maximum number of iterations for the optimization process.
-        convergence_threshold (float): The threshold for convergence to determine when to stop optimization provide None to enforce max iterations.
+        convergence_threshold (float): The smallest improvement in mean reward, measured over `convergence_window` iterations, that still counts as progress. Provide None to disable convergence checking and always run for `max_iter` iterations. \n
+            - Convergence checking is opt-in and problem-specific: `convergence_threshold`, `convergence_window` and `convergence_patience` interact, and reaching a good final reward usually requires tuning them for your system rather than relying on the defaults. If you are not testing for convergence, pass None. \n
+            - The reward is estimated from `batch_size` sampled trajectories, so it is noisy. Set this above the noise floor of your reward -- otherwise it can never be reached and the optimization silently runs to `max_iter` (a warning is emitted when this happens). \n
+            - A reward still improving more slowly than that noise floor cannot be told apart from a plateau, so early stopping can end training while the reward would have kept rising. Raise `batch_size` or `convergence_window` if that matters more than the iterations saved. \n
+            - Note that with `goal='both'` the reward sums fidelity and purity, and every non-zero entry of `reward_weights` adds another term, so the reward ranges over [0, 2 * sum(reward_weights)] rather than [0, 1]. The threshold is in those same units.
+            - (default: None)
         learning_rate (float): The learning rate for the optimization algorithm.
         evo_type (str): The evo_type of quantum system representation, such as 'state', 'density'.
         reward_weights (list[float] | None): Weights for the reward at each time step. The 0th index refers to the point after the gates from the first time step are applied. If None, only the final time step is weighted. \n
@@ -535,13 +556,39 @@ def optimize_pulse(
             - (default: 30)
         progress: Whether to show progress (cost every 10 iterations) during optimization. (for debugging purposes). This may significantly slow down the optimization process \n
             - (default: False).
+        convergence_window (int): Number of iterations averaged into each of the two disjoint windows compared for convergence. Larger values suppress more reward noise and make slow-but-real progress easier to distinguish from a plateau, at the cost of delaying the earliest possible stop, which is `2 * convergence_window` iterations. Too small a window stops prematurely during the slow early phase of training. Setting it while `convergence_threshold` is None has no effect and warns. \n
+            - (default: None, which uses 50)
+        convergence_patience (int): Number of consecutive window comparisons that must fall below `convergence_threshold` before stopping. Guards against a single comparison landing low by chance. Setting it while `convergence_threshold` is None has no effect and warns. \n
+            - (default: None, which uses 3)
+        initial_trainable_parameters: Parameters to warm start from, so that training continues from an earlier run instead of from a fresh initialization. Pass the `optimized_trainable_parameters` field of a previous `FgResult`. \n
+            - (default: None) If None, parameters are initialized from `system_params` as usual. \n
+            - The previous run must have used the same `mode`, `system_params` and `num_time_steps`, and in 'nn' mode the same `rnn_hidden_size`; a mismatch raises a ValueError describing what differs. \n
+            - The `initial_params` supplied through `system_params` are then only used to determine parameter shapes, since the warm started values replace them. `param_constraints` still applies during the forward pass. \n
+            - Note that only the parameters are carried over, not the Adam optimizer state (its moment estimates restart), so expect a short transient before the previous convergence rate is recovered. \n
     Returns:
         result: Dictionary containing optimized pulse and convergence data.
     """
     if convergence_threshold == None:
         early_stop = False
+        # Without a threshold these two are never consulted, so supplying them
+        # would otherwise silently do nothing.
+        if convergence_window is not None or convergence_patience is not None:
+            warnings.warn(
+                "convergence_window and/or convergence_patience were set, but "
+                "convergence_threshold is None, so convergence checking is "
+                "disabled and they have no effect. Pass a convergence_threshold "
+                "to enable early stopping.",
+                stacklevel=2,
+            )
     else:
         early_stop = True
+
+    # Resolved after the check above, so that "not supplied" stays
+    # distinguishable from a value that happens to equal the default.
+    if convergence_window is None:
+        convergence_window = _DEFAULTS.CONVERGENCE_WINDOW.value
+    if convergence_patience is None:
+        convergence_patience = _DEFAULTS.CONVERGENCE_PATIENCE.value
     if num_time_steps <= 0:
         raise ValueError("Time steps must be greater than 0.")
 
@@ -723,6 +770,14 @@ def optimize_pulse(
                 'initial_params': flat_params,
             }
 
+    if initial_trainable_parameters is not None:
+        # Warm start: the freshly built parameters are kept only as a template
+        # describing the structure this configuration expects, and are then
+        # replaced by the ones the user is continuing from.
+        trainable_params = prepare_warm_start(
+            initial_trainable_parameters, trainable_params, mode
+        )
+
     def loss_fn(trainable_params, rng_key):
         """
         Loss function for the optimization process.
@@ -735,6 +790,12 @@ def optimize_pulse(
         """
 
         loss_sum1 = loss_sum2 = jnp.array(0.0)
+        # reward: weighted mean fidelity/purity actually being optimized for.
+        # Unlike the returned loss (which includes the log-prob REINFORCE term
+        # loss_sum2), this is bounded in [0, 1] for the default weights and is
+        # the interpretable metric to track across training. It equals
+        # -loss_sum1 and is returned as the has_aux output of loss_fn.
+        reward = 0.0
 
         if mode == "no-measurement":
             h_initial_state = None
@@ -797,6 +858,7 @@ def optimize_pulse(
                     loss_sum2 += -weight * jnp.mean(
                         log_prob * jax.lax.stop_gradient(fidelity_value)
                     )
+                    reward += weight * jnp.mean(fidelity_value)
 
         if goal in ["purity", "both"]:
             purity_vmap = jax.vmap(purity)
@@ -812,12 +874,13 @@ def optimize_pulse(
                     loss_sum2 += -weight * jnp.mean(
                         log_prob * jax.lax.stop_gradient(purity_values)
                     )
+                    reward += weight * jnp.mean(purity_values)
 
-        return loss_sum1 + loss_sum2
+        return loss_sum1 + loss_sum2, reward
 
     train_key, eval_key = jax.random.split(train_eval_key)
 
-    best_model_params, iter_idx = _train(
+    best_model_params, iter_idx, reward_history = _train(
         loss_fn=loss_fn,
         trainable_params=trainable_params,
         max_iter=max_iter,
@@ -826,6 +889,8 @@ def optimize_pulse(
         prng_key=train_key,
         progress=progress,
         early_stop=early_stop,
+        convergence_window=convergence_window,
+        convergence_patience=convergence_patience,
     )
 
     result = _evaluate(
@@ -847,6 +912,7 @@ def optimize_pulse(
         rnn_model=rnn_model,
         goal=goal,
         num_iterations=iter_idx,
+        reward_history=reward_history,
     )
 
     return result
@@ -861,13 +927,15 @@ def _train(
     convergence_threshold,
     progress,
     early_stop,
+    convergence_window,
+    convergence_patience,
 ):
     """
     Train the model using the specified optimizer.
     """
     # Optimization
     # set up optimizer and training state
-    best_model_params, iter_idx = optimize_adam_feedback(
+    best_model_params, iter_idx, reward_history = optimize_adam_feedback(
         loss_fn,
         trainable_params,
         max_iter,
@@ -876,11 +944,13 @@ def _train(
         prng_key,
         progress,
         early_stop,
+        convergence_window,
+        convergence_patience,
     )
 
     # Due to the complex parameter l-bfgs is very slow and leads to bad results so is omitted
 
-    return best_model_params, iter_idx
+    return best_model_params, iter_idx, reward_history
 
 
 def _evaluate(
@@ -902,6 +972,7 @@ def _evaluate(
     goal,
     rnn_model,
     num_iterations,
+    reward_history=None,
 ):
     """
     Evaluate the model using the best parameters found during training.
@@ -1000,4 +1071,5 @@ def _evaluate(
         iterations=num_iterations,
         final_state=rho_final,
         returned_params=returned_params,
+        reward_history=reward_history,
     )
